@@ -39,7 +39,7 @@ extension UbiquitousKeyValueStoreAdaptor: CryoAdaptor {
         }
     }
     
-    public func load<Key: CryoKey>(with key: Key) async throws -> Key.Value? {
+    public func loadSynchronously<Key: CryoKey>(with key: Key) throws -> Key.Value? {
         switch Key.Value.self {
         case is String.Type:
             guard store.object(forKey: key.id) != nil else { return nil }

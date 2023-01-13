@@ -85,21 +85,32 @@ extension DocumentAdaptor: CryoAdaptor {
     
     public func load<Key: CryoKey>(with key: Key) async throws -> Key.Value? {
         return try await withCheckedThrowingContinuation { continuation in
-            do {
-                let documentUrl = self.documentUrl(for: key)
-                let data = try Data(contentsOf: documentUrl)
-                let value = try JSONDecoder().decode(Key.Value.self, from: data)
-                
-                continuation.resume(returning: value)
-            }
-            catch {
-                if (error as NSError).code == NSFileReadNoSuchFileError {
-                    continuation.resume(returning: nil)
+            Task.detached {
+                do {
+                    let value = try self.loadSynchronously(with: key)
+                    continuation.resume(returning: value)
                 }
-                else {
+                catch {
                     continuation.resume(throwing: error)
                 }
             }
+        }
+    }
+    
+    public func loadSynchronously<Key: CryoKey>(with key: Key) throws -> Key.Value? {
+        do {
+            let documentUrl = self.documentUrl(for: key)
+            let data = try Data(contentsOf: documentUrl)
+            let value = try JSONDecoder().decode(Key.Value.self, from: data)
+            
+            return value
+        }
+        catch {
+            if (error as NSError).code == NSFileReadNoSuchFileError {
+                return nil
+            }
+            
+            throw error
         }
     }
     
