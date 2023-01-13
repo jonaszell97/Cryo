@@ -19,8 +19,6 @@ extension UbiquitousKeyValueStoreAdaptor: CryoAdaptor {
             return
         }
         
-        print("set \(key.id) = \(value)")
-        
         switch value {
         case let v as String:
             store.set(v, forKey: key.id)
