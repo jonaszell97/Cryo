@@ -37,6 +37,9 @@ final class MockCloudKitAdaptor {
     /// The database to store to.
     var database: [CKRecord.ID: CKRecord]
     
+    /// Cache of schema data.
+    var schemas: [String: CryoSchema] = [:]
+    
     /// Default initializer.
     init() {
         self.database = [:]
@@ -58,6 +61,19 @@ fileprivate extension MockCloudKitAdaptor {
     func fetch(recordWithId id: CKRecord.ID) async throws -> CKRecord? {
         database[id]
     }
+    
+    /// Find or create a schema.
+    func schema<Key: CryoKey>(for key: Key.Type) -> CryoSchema where Key.Value: CryoModel {
+        let schemaName = "\(Key.Value.self)"
+        if let schema = self.schemas[schemaName] {
+            return schema
+        }
+        
+        let schema = Key.Value.schema
+        self.schemas[schemaName] = schema
+        
+        return schema
+    }
 }
 
 extension MockCloudKitAdaptor: CryoDatabaseAdaptor {
@@ -71,8 +87,11 @@ extension MockCloudKitAdaptor: CryoDatabaseAdaptor {
         }
         
         let record = CKRecord(recordType: Key.Value.tableName, recordID: id)
-        for (key, value) in value.data {
-            record[key] = value.nsObject
+        let schema = self.schema(for: Key.self)
+        
+        for (key, details) in schema {
+            let (_, extractValue) = details
+            record[key] = extractValue(value).nsObject
         }
         
         try await self.save(record: record)
@@ -85,19 +104,22 @@ extension MockCloudKitAdaptor: CryoDatabaseAdaptor {
             return nil
         }
         
-        var instance = Key.Value()
-        for (key, details) in Key.Value.model {
+        let schema = self.schema(for: Key.self)
+        
+        var data = [String: CryoValue]()
+        for (key, details) in schema {
+            let (valueType, _) = details
             guard
                 let object = record[key],
-                let value = CryoValue(from: object, as: details.0)
+                let value = CryoValue(from: object, as: valueType)
             else {
                 continue
             }
             
-            instance[keyPath: details.1] = value
+            data[key] = value
         }
         
-        return instance
+        return try Key.Value(from: CryoModelDecoder(data: data))
     }
     
     func removeAll() async throws {

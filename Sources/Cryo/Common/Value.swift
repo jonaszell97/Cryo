@@ -30,6 +30,9 @@ public protocol CryoPersistable {
     
     /// Initialize from a persisted value.
     init? (from value: CryoValue)
+    
+    /// Empty initializer.
+    init ()
 }
 
 // MARK: Default conformances

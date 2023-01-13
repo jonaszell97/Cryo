@@ -11,9 +11,9 @@ final class CryoLocalTests: XCTestCase {
     }
     
     struct MyCodableStruct: Codable, CryoPersistable, Equatable {
-        var x: Int
-        var y: String
-        var z: Date
+        var x: Int = 0
+        var y: String = ""
+        var z: Date = .distantPast
     }
     
     private var userDefaults: UserDefaults? = nil
