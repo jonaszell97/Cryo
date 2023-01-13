@@ -49,14 +49,10 @@ fileprivate class EmptyKeyedDecodingContainer<K: CodingKey>: KeyedDecodingContai
     func decode(_ type: UInt32.Type, forKey key: K) throws -> UInt32 { 0 }
     func decode(_ type: UInt64.Type, forKey key: K) throws -> UInt64 { 0 }
     
-    func decode<T>(_ type: CryoColumn<T>.Type, forKey key: K) throws -> CryoColumn<T> {
-        .init()
-    }
-    
     func decode<T>(_ type: T.Type, forKey key: K) throws -> T where T: Decodable {
         if T.self == URL.self { return URL(string: "file:///") as! T }
         if T.self == Data.self { return Data() as! T }
-        if T.self == CryoValue.self { return CryoValue.integer(value: 0) as! T }
+        
         return try T(from: EmptyDecoder())
     }
     
@@ -98,14 +94,11 @@ fileprivate struct EmptySingleValueDecodingContainer: SingleValueDecodingContain
     func decode(_ type: UInt16.Type) throws -> UInt16 { 0 }
     func decode(_ type: UInt32.Type) throws -> UInt32 { 0 }
     func decode(_ type: UInt64.Type) throws -> UInt64 { 0 }
-    func decode<T>(_ type: CryoColumn<T>.Type) throws -> CryoColumn<T> {
-        .init()
-    }
-    
+
     func decode<T>(_ type: T.Type) throws -> T where T: Decodable {
         if T.self == URL.self { return URL(string: "file:///") as! T }
         if T.self == Data.self { return Data() as! T }
-        if T.self == CryoValue.self { return CryoValue.integer(value: 0) as! T }
+        
         return try T(from: EmptyDecoder())
     }
 }
@@ -138,14 +131,11 @@ fileprivate struct EmptyUnkeyedDecodingContainer: UnkeyedDecodingContainer {
     mutating func decode(_ type: UInt16.Type) throws -> UInt16 { 0 }
     mutating func decode(_ type: UInt32.Type) throws -> UInt32 { 0 }
     mutating func decode(_ type: UInt64.Type) throws -> UInt64 { 0 }
-    mutating func decode<T>(_ type: CryoColumn<T>.Type) throws -> CryoColumn<T> {
-        .init()
-    }
-    
+
     mutating func decode<T>(_ type: T.Type) throws -> T where T: Decodable {
         if T.self == URL.self { return URL(string: "file:///") as! T }
         if T.self == Data.self { return Data() as! T }
-        if T.self == CryoValue.self { return CryoValue.integer(value: 0) as! T }
+        
         return try T(from: EmptyDecoder())
     }
     

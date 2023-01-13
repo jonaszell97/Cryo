@@ -13,7 +13,7 @@ public struct UbiquitousKeyValueStoreAdaptor {
 }
 
 extension UbiquitousKeyValueStoreAdaptor: CryoAdaptor {
-    public func persist<Key: CryoKey>(_ value: Key.Value?, for key: Key) async throws where Key.Value: CryoPersistable {
+    public func persist<Key: CryoKey>(_ value: Key.Value?, for key: Key) async throws {
         guard let value else {
             store.removeObject(forKey: key.id)
             return
@@ -41,7 +41,7 @@ extension UbiquitousKeyValueStoreAdaptor: CryoAdaptor {
         }
     }
     
-    public func load<Key: CryoKey>(with key: Key) async throws -> Key.Value? where Key.Value: CryoPersistable {
+    public func load<Key: CryoKey>(with key: Key) async throws -> Key.Value? {
         switch Key.Value.self {
         case is String.Type:
             guard store.object(forKey: key.id) != nil else { return nil }

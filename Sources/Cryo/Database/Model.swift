@@ -1,8 +1,6 @@
 
 import Foundation
 
-public typealias CryoModelDetails<Value> = [String: (CryoValue.ValueType, WritableKeyPath<Value, CryoValue>)]
-
 /// Protocol for types that can be persisted using CloudKit.
 public protocol CryoModel: Codable {
     /// The name for the table representing this model.
@@ -14,24 +12,10 @@ extension CryoModel {
     public static var tableName: String { "\(Self.self)" }
 }
 
-internal protocol AnyCryoColumn {
-    init()
-}
-
 /// Property wrapper for columns in a CryoModel.
-@propertyWrapper public struct CryoColumn<Value: CryoPersistable> {
+@propertyWrapper public struct CryoColumn<Value: CryoDatabaseValue> {
     /// The wrapped, persistable value.
     public var wrappedValue: Value
-    
-    /// Interface to a writable cryo value that proxies the wrapped value.
-    public var projectedValue: CryoValue {
-        get {
-            try! wrappedValue.persistableValue
-        }
-        set {
-            wrappedValue = .init(from: newValue)!
-        }
-    }
     
     /// Default initializer.
     public init(wrappedValue: Value) {
@@ -39,39 +23,21 @@ internal protocol AnyCryoColumn {
     }
 }
 
-extension CryoColumn: AnyCryoColumn {
-    /// Empty initializer.
-    init() {
-        self.wrappedValue = .init()
-    }
-}
-
 extension CryoColumn: Codable {
     public func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
-        try container.encode(try wrappedValue.persistableValue)
+        try container.encode(wrappedValue)
     }
     
     public init(from decoder: Decoder) throws {
-        if decoder is EmptyDecoder {
-            self.init()
-            return
-        }
-        
         let container = try decoder.singleValueContainer()
-        let cryoValue = try container.decode(CryoValue.self)
-        
-        guard let value = Value(from: cryoValue) else {
-            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "failed to decode CryoValue"))
-        }
-        
-        self.init(wrappedValue: value)
+        self.init(wrappedValue: try container.decode(Value.self))
     }
 }
 
 // MARK: Model reflection
 
-internal typealias CryoSchema = [String: (CryoValue.ValueType, (any CryoModel) -> CryoValue)]
+internal typealias CryoSchema = [String: (CryoColumnType, (any CryoModel) -> any CryoDatabaseValue)]
 
 internal extension CryoModel {
     static var schema: CryoSchema {
@@ -105,7 +71,7 @@ internal extension CryoModel {
             
             let wrappedValueMirror = Mirror(reflecting: wrappedValue.value)
             
-            let columnType: CryoValue.ValueType
+            let columnType: CryoColumnType
             switch wrappedValueMirror.subjectType {
             case is String.Type: columnType = .text
             case is URL.Type:    columnType = .text
@@ -132,56 +98,13 @@ internal extension CryoModel {
                 fatalError("\(wrappedValueMirror.subjectType) is not a valid type for a CryoColumn")
             }
             
-            let extractValue: (any CryoModel) -> CryoValue = { this in
+            let extractValue: (any CryoModel) -> any CryoDatabaseValue = { this in
                 let mirror = Mirror(reflecting: this)
                 let child = mirror.children.first { $0.label == label }!
                 let childMirror = Mirror(reflecting: child.value)
                 let wrappedValue = childMirror.children.first { $0.label == "wrappedValue" }!.value
                 
-                switch wrappedValue {
-                case let v as String:
-                    return .text(value: v)
-                case let v as URL:
-                    return .text(value: v.absoluteString)
-                    
-                case let v as Double:
-                    return .double(value: v)
-                case let v as Float:
-                    return .double(value: Double(v))
-                
-                case let v as Bool:
-                    return .bool(value: v)
-                    
-                case let v as Int:
-                    return .integer(value: v)
-                case let v as Int8:
-                    return .integer(value: Int(v))
-                case let v as Int16:
-                    return .integer(value: Int(v))
-                case let v as Int32:
-                    return .integer(value: Int(v))
-                case let v as Int64:
-                    return .integer(value: Int(v))
-                case let v as UInt:
-                    return .integer(value: Int(v))
-                case let v as UInt8:
-                    return .integer(value: Int(v))
-                case let v as UInt16:
-                    return .integer(value: Int(v))
-                case let v as UInt32:
-                    return .integer(value: Int(v))
-                case let v as UInt64:
-                    return .integer(value: Int(v))
-                    
-                case let v as Date:
-                    return .date(value: v)
-                case let v as Data:
-                    return .data(value: v)
-                    
-                default:
-                    fatalError("\(wrappedValueMirror.subjectType) is not a valid type for a CryoColumn")
-                }
-                
+                return wrappedValue as! any CryoDatabaseValue
             }
             
             schema[name] = (columnType, extractValue)

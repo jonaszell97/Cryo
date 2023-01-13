@@ -2,37 +2,6 @@
 import CloudKit
 @testable import Cryo
 
-struct TestModel: CryoModel {
-    static var tableName: String { "TestModel" }
-    static var model: CryoModelDetails<Self> = [
-        "x": (.integer, \.$x),
-        "y": (.text, \.$y),
-        "z": (.data, \.$z),
-    ]
-    
-    @CryoColumn var x: Int
-    @CryoColumn var y: String
-    @CryoColumn var z: Data
-    
-    init(x: Int, y: String, z: Data) {
-        self._x = .init(wrappedValue: x)
-        self._y = .init(wrappedValue: y)
-        self._z = .init(wrappedValue: z)
-    }
-    
-    init() {
-        self.x = 0
-        self.y = ""
-        self.z = .init()
-    }
-}
-
-extension TestModel: Equatable {
-    static func ==(lhs: TestModel, rhs: TestModel) -> Bool {
-        lhs.x == rhs.x && lhs.y == rhs.y && lhs.z == rhs.z
-    }
-}
-
 final class MockCloudKitAdaptor {
     /// The database to store to.
     var database: [CKRecord.ID: CKRecord]
@@ -91,7 +60,7 @@ extension MockCloudKitAdaptor: CryoDatabaseAdaptor {
         
         for (key, details) in schema {
             let (_, extractValue) = details
-            record[key] = extractValue(value).nsObject
+            record[key] = try self.nsObject(from: extractValue(value))
         }
         
         try await self.save(record: record)
@@ -106,12 +75,12 @@ extension MockCloudKitAdaptor: CryoDatabaseAdaptor {
         
         let schema = self.schema(for: Key.self)
         
-        var data = [String: CryoValue]()
+        var data = [String: any CryoDatabaseValue]()
         for (key, details) in schema {
             let (valueType, _) = details
             guard
                 let object = record[key],
-                let value = CryoValue(from: object, as: valueType)
+                let value = self.decodeValue(from: object, as: valueType)
             else {
                 continue
             }
@@ -120,6 +89,52 @@ extension MockCloudKitAdaptor: CryoDatabaseAdaptor {
         }
         
         return try Key.Value(from: CryoModelDecoder(data: data))
+    }
+    
+    /// Initialize from an NSObject representation.
+    fileprivate func decodeValue(from nsObject: __CKRecordObjCValue, as type: CryoColumnType) -> (any CryoDatabaseValue)? {
+        switch type {
+        case .integer:
+            guard let value = nsObject as? NSNumber else { return nil }
+            return Int(truncating: value)
+        case .double:
+            guard let value = nsObject as? NSNumber else { return nil }
+            return Double(truncating: value)
+        case .text:
+            guard let value = nsObject as? NSString else { return nil }
+            return value as String
+        case .date:
+            guard let value = nsObject as? NSDate else { return nil }
+            return Date(timeIntervalSinceReferenceDate: value.timeIntervalSinceReferenceDate)
+        case .bool:
+            guard let value = nsObject as? NSNumber else { return nil }
+            return value != 0
+        case .data:
+            guard let value = nsObject as? NSData else { return nil }
+            return value as Data
+        }
+    }
+    
+    /// The NSObject representation oft his value.
+    fileprivate func nsObject(from value: any CryoDatabaseValue) throws -> __CKRecordObjCValue {
+        switch value {
+        case is Int:
+            fallthrough
+        case is Float:
+            fallthrough
+        case is Double:
+            return value as! NSNumber
+        case let value as String:
+            return value as NSString
+        case let value as Date:
+            return value as NSDate
+        case let value as Bool:
+            return value as NSNumber
+        case let value as Data:
+            return value as NSData
+        default:
+            return (try JSONEncoder().encode(value)) as NSData
+        }
     }
     
     func removeAll() async throws {
