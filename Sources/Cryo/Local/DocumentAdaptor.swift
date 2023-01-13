@@ -14,6 +14,9 @@ public struct DocumentAdaptor {
         self.fileManager = fileManager
     }
     
+    /// The shared local document adaptor.
+    public static let sharedLocal: DocumentAdaptor = .local()
+    
     /// The local document adaptor.
     public static func local(fileManager: FileManager = .default) -> DocumentAdaptor {
         let documentDirectory = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true)[0]

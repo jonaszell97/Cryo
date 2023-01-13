@@ -5,6 +5,9 @@ public struct UbiquitousKeyValueStoreAdaptor {
     /// The UserDefaults instance.
     let store: NSUbiquitousKeyValueStore
     
+    /// Shared instance using the default NSUbiquitousKeyValueStore.
+    public static let shared: UbiquitousKeyValueStoreAdaptor = UbiquitousKeyValueStoreAdaptor(store: .default)
+    
     /// Default initalizer.
     public init(store: NSUbiquitousKeyValueStore = .default) {
         self.store = store

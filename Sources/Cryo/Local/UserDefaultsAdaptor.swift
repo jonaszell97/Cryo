@@ -5,8 +5,11 @@ public struct UserDefaultsAdaptor {
     /// The UserDefaults instance.
     let defaults: UserDefaults
     
+    /// Shared instance using the standard UserDefaults.
+    public static let shared: UserDefaultsAdaptor = UserDefaultsAdaptor(defaults: .standard)
+    
     /// Default initalizer.
-    public init(defaults: UserDefaults = .standard) {
+    public init(defaults: UserDefaults) {
         self.defaults = defaults
     }
 }
