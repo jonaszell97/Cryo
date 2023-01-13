@@ -5,8 +5,11 @@ public struct UserDefaultsAdaptor {
     /// The UserDefaults instance.
     let defaults: UserDefaults
     
+    /// Shared instance using the standard UserDefaults.
+    public static let shared: UserDefaultsAdaptor = UserDefaultsAdaptor(defaults: .standard)
+    
     /// Default initalizer.
-    public init(defaults: UserDefaults = .standard) {
+    public init(defaults: UserDefaults) {
         self.defaults = defaults
     }
 }
@@ -40,7 +43,7 @@ extension UserDefaultsAdaptor: CryoAdaptor {
         }
     }
     
-    public func load<Key: CryoKey>(with key: Key) async throws -> Key.Value? {
+    public func loadSynchronously<Key: CryoKey>(with key: Key) throws -> Key.Value? {
         switch Key.Value.self {
         case is String.Type:
             guard defaults.object(forKey: key.id) != nil else { return nil }

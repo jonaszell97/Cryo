@@ -10,7 +10,7 @@ final class CryoLocalTests: XCTestCase {
         }
     }
     
-    struct MyCodableStruct: Codable, CryoDatabaseValue, Equatable {
+    struct MyCodableStruct: Codable, Equatable {
         var x: Int = 0
         var y: String = ""
         var z: Date = .distantPast
@@ -42,6 +42,7 @@ final class CryoLocalTests: XCTestCase {
             try await adaptor.persist(8493123, for: intKey)
             intValue = try await adaptor.load(with: intKey)
             XCTAssertEqual(8493123, intValue)
+            XCTAssertEqual(8493123, try adaptor.loadSynchronously(with: intKey))
             
             // Strings
             let stringKey = AnyKey(id: "testString", for: String.self)
@@ -73,7 +74,8 @@ final class CryoLocalTests: XCTestCase {
             let arrayKey = AnyKey(id: "testArray", for: [Int].self)
             try await adaptor.persist([1,2,3], for: arrayKey)
             let arrayValue = try await adaptor.load(with: arrayKey)
-            XCTAssertEqual(arrayValue, [1,2,3])
+            XCTAssertEqual([1,2,3], arrayValue)
+            XCTAssertEqual([1,2,3], try adaptor.loadSynchronously(with: arrayKey))
             
             // Remove All
             try await adaptor.removeAll()

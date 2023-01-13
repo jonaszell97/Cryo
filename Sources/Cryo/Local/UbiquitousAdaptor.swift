@@ -5,6 +5,9 @@ public struct UbiquitousKeyValueStoreAdaptor {
     /// The UserDefaults instance.
     let store: NSUbiquitousKeyValueStore
     
+    /// Shared instance using the default NSUbiquitousKeyValueStore.
+    public static let shared: UbiquitousKeyValueStoreAdaptor = UbiquitousKeyValueStoreAdaptor(store: .default)
+    
     /// Default initalizer.
     public init(store: NSUbiquitousKeyValueStore = .default) {
         self.store = store
@@ -18,8 +21,6 @@ extension UbiquitousKeyValueStoreAdaptor: CryoAdaptor {
             store.removeObject(forKey: key.id)
             return
         }
-        
-        print("set \(key.id) = \(value)")
         
         switch value {
         case let v as String:
@@ -41,7 +42,7 @@ extension UbiquitousKeyValueStoreAdaptor: CryoAdaptor {
         }
     }
     
-    public func load<Key: CryoKey>(with key: Key) async throws -> Key.Value? {
+    public func loadSynchronously<Key: CryoKey>(with key: Key) throws -> Key.Value? {
         switch Key.Value.self {
         case is String.Type:
             guard store.object(forKey: key.id) != nil else { return nil }
