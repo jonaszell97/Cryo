@@ -19,47 +19,55 @@ extension UbiquitousKeyValueStoreAdaptor: CryoAdaptor {
             return
         }
         
-        let persistableValue = try value.persistableValue
-        switch persistableValue {
-        case .integer(let value):
-            store.set(value, forKey: key.id)
-        case .double(let value):
-            store.set(value, forKey: key.id)
-        case .text(let value):
-            store.set(value, forKey: key.id)
-        case .date(let value):
-            store.set(value, forKey: key.id)
-        case .bool(let value):
-            store.set(value, forKey: key.id)
-        case .data(let value):
-            store.set(value, forKey: key.id)
+        print("set \(key.id) = \(value)")
+        
+        switch value {
+        case let v as String:
+            store.set(v, forKey: key.id)
+        case let v as Double:
+            store.set(v, forKey: key.id)
+        case let v as Float:
+            store.set(Double(v), forKey: key.id)
+        case let v as Bool:
+            store.set(v, forKey: key.id)
+        case let v as Int:
+            store.set(Int64(v), forKey: key.id)
+        case let v as Date:
+            store.set(v.timeIntervalSinceReferenceDate, forKey: key.id)
+        case let v as Data:
+            store.set(v, forKey: key.id)
+        default:
+            store.set(try JSONEncoder().encode(value), forKey: key.id)
         }
     }
     
     public func load<Key: CryoKey>(with key: Key) async throws -> Key.Value? where Key.Value: CryoPersistable {
-        let cryoValue: CryoValue
-        switch Key.Value.valueType {
-        case .integer:
+        switch Key.Value.self {
+        case is String.Type:
             guard store.object(forKey: key.id) != nil else { return nil }
-            cryoValue = .integer(value: Int(store.longLong(forKey: key.id)))
-        case .double:
+            return store.string(forKey: key.id) as? Key.Value
+        case is Double.Type:
             guard store.object(forKey: key.id) != nil else { return nil }
-            cryoValue = .double(value: store.double(forKey: key.id))
-        case .text:
-            guard let value = store.string(forKey: key.id) else { return nil }
-            cryoValue = .text(value: value)
-        case .date:
-            guard let value = store.object(forKey: key.id) as? NSDate else { return nil }
-            cryoValue = .date(value: value as Date)
-        case .bool:
+            return store.double(forKey: key.id) as? Key.Value
+        case is Float.Type:
             guard store.object(forKey: key.id) != nil else { return nil }
-            cryoValue = .bool(value: store.bool(forKey: key.id))
-        case .data:
-            guard let value = store.data(forKey: key.id) else { return nil }
-            cryoValue = .data(value: value)
+            return Float(store.double(forKey: key.id)) as? Key.Value
+        case is Bool.Type:
+            guard store.object(forKey: key.id) != nil else { return nil }
+            return store.bool(forKey: key.id) as? Key.Value
+        case is Int.Type:
+            guard store.object(forKey: key.id) != nil else { return nil }
+            return Int(store.longLong(forKey: key.id)) as? Key.Value
+        case is Date.Type:
+            guard store.object(forKey: key.id) != nil else { return nil }
+            return Date(timeIntervalSinceReferenceDate: store.double(forKey: key.id)) as? Key.Value
+        case is Data.Type:
+            guard store.object(forKey: key.id) != nil else { return nil }
+            return store.data(forKey: key.id) as? Key.Value
+        default:
+            guard let data = store.data(forKey: key.id) else { return nil }
+            return try JSONDecoder().decode(Key.Value.self, from: data)
         }
-        
-        return Key.Value(from: cryoValue)
     }
     
     public func synchronize() {

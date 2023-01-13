@@ -21,7 +21,7 @@ public enum CryoValue {
     case data(value: Data)
 }
 
-public protocol CryoPersistable {
+public protocol CryoPersistable: Codable {
     /// The value type of this persistable value.
     static var valueType: CryoValue.ValueType { get }
     
