@@ -5,7 +5,7 @@ import Foundation
 
 public protocol CryoKey {
     /// The value type stored by this key.
-    associatedtype Value
+    associatedtype Value: Codable
     
     /// The unique identifier for the stored value.
     var id: String { get }

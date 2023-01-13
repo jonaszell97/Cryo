@@ -2,6 +2,18 @@
 import XCTest
 @testable import Cryo
 
+fileprivate struct TestModel: CryoModel {
+    @CryoColumn var x: Int = 0
+    @CryoColumn var y: String = ""
+    @CryoColumn var z: Data = .init()
+}
+
+extension TestModel: Equatable {
+    static func ==(lhs: TestModel, rhs: TestModel) -> Bool {
+        lhs.x == rhs.x && lhs.y == rhs.y && lhs.z == rhs.z
+    }
+}
+
 final class CryoDatabaseTests: XCTestCase {
     struct AnyKey<Value: CryoModel>: CryoKey {
         let id: String
@@ -21,6 +33,8 @@ final class CryoDatabaseTests: XCTestCase {
             
             let loadedValue = try await adaptor.load(with: key)
             XCTAssertEqual(value, loadedValue)
+            
+            print(adaptor.database)
         }
         catch {
             XCTAssert(false, error.localizedDescription)

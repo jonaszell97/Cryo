@@ -2,7 +2,7 @@
 import CloudKit
 import Foundation
 
-public struct CloudKitAdaptor {
+public final class CloudKitAdaptor {
     /// The configuration.
     let config: CryoConfig
     
@@ -14,6 +14,9 @@ public struct CloudKitAdaptor {
     
     /// The unique iCloud record ID for the user.
     public let iCloudRecordID: String
+    
+    /// Cache of schema data.
+    var schemas: [String: CryoSchema] = [:]
     
     /// Default initializer.
     public init?(config: CryoConfig, containerIdentifier: String, database: KeyPath<CKContainer, CKDatabase>) async {
@@ -83,6 +86,19 @@ fileprivate extension CloudKitAdaptor {
             }
         }
     }
+    
+    /// Find or create a schema.
+    func schema<Key: CryoKey>(for key: Key.Type) -> CryoSchema where Key.Value: CryoModel {
+        let schemaName = "\(Key.Value.self)"
+        if let schema = self.schemas[schemaName] {
+            return schema
+        }
+        
+        let schema = Key.Value.schema
+        self.schemas[schemaName] = schema
+        
+        return schema
+    }
 }
 
 extension CloudKitAdaptor: CryoDatabaseAdaptor {
@@ -96,8 +112,11 @@ extension CloudKitAdaptor: CryoDatabaseAdaptor {
         }
         
         let record = CKRecord(recordType: Key.Value.tableName, recordID: id)
-        for (key, value) in value.data {
-            record[key] = value.nsObject
+        let schema = self.schema(for: Key.self)
+        
+        for (key, details) in schema {
+            let (_, extractValue) = details
+            record[key] = try self.nsObject(from: extractValue(value))
         }
         
         try await self.save(record: record)
@@ -110,19 +129,22 @@ extension CloudKitAdaptor: CryoDatabaseAdaptor {
             return nil
         }
         
-        var instance = Key.Value()
-        for (key, details) in Key.Value.model {
+        let schema = self.schema(for: Key.self)
+        
+        var data = [String: any CryoDatabaseValue]()
+        for (key, details) in schema {
+            let (valueType, _) = details
             guard
                 let object = record[key],
-                let value = CryoValue(from: object, as: details.0)
+                let value = self.decodeValue(from: object, as: valueType)
             else {
                 continue
             }
             
-            instance[keyPath: details.1] = value
+            data[key] = value
         }
         
-        return instance
+        return try Key.Value(from: CryoModelDecoder(data: data))
     }
     
     public func removeAll() async throws {
@@ -130,60 +152,50 @@ extension CloudKitAdaptor: CryoDatabaseAdaptor {
             try await database.deleteRecordZone(withID: zone.zoneID)
         }
     }
-}
-
-internal extension CryoModel {
-    /// - returns: The model data for this instance.
-    var data: [String: CryoValue] {
-        var data: [String: CryoValue] = [:]
-        for (key, details) in Self.model {
-            data[key] = self[keyPath: details.1]
-        }
-        
-        return data
-    }
-}
-
-internal extension CryoValue {
-    /// The NSObject representation oft his value.
-    var nsObject: __CKRecordObjCValue {
-        switch self {
-        case .integer(let value):
-            return value as NSNumber
-        case .double(let value):
-            return value as NSNumber
-        case .text(let value):
-            return value as NSString
-        case .date(let value):
-            return value as NSDate
-        case .bool(let value):
-            return value as NSNumber
-        case .data(let value):
-            return value as NSData
-        }
-    }
     
     /// Initialize from an NSObject representation.
-    init?(from nsObject: __CKRecordObjCValue, as type: ValueType) {
+    fileprivate func decodeValue(from nsObject: __CKRecordObjCValue, as type: CryoColumnType) -> (any CryoDatabaseValue)? {
         switch type {
         case .integer:
             guard let value = nsObject as? NSNumber else { return nil }
-            self = .integer(value: Int(truncating: value))
+            return Int(truncating: value)
         case .double:
             guard let value = nsObject as? NSNumber else { return nil }
-            self = .double(value: Double(truncating: value))
+            return Double(truncating: value)
         case .text:
             guard let value = nsObject as? NSString else { return nil }
-            self = .text(value: value as String)
+            return value as String
         case .date:
             guard let value = nsObject as? NSDate else { return nil }
-            self = .date(value: Date(timeIntervalSinceReferenceDate: value.timeIntervalSinceReferenceDate))
+            return Date(timeIntervalSinceReferenceDate: value.timeIntervalSinceReferenceDate)
         case .bool:
             guard let value = nsObject as? NSNumber else { return nil }
-            self = .bool(value: value != 0)
+            return value != 0
         case .data:
             guard let value = nsObject as? NSData else { return nil }
-            self = .data(value: value as Data)
+            return value as Data
+        }
+    }
+    
+    /// The NSObject representation oft his value.
+    fileprivate func nsObject(from value: any CryoDatabaseValue) throws -> __CKRecordObjCValue {
+        switch value {
+        case is Int:
+            fallthrough
+        case is Float:
+            fallthrough
+        case is Double:
+            return value as! NSNumber
+        case let value as String:
+            return value as NSString
+        case let value as Date:
+            return value as NSDate
+        case let value as Bool:
+            return value as NSNumber
+        case let value as Data:
+            return value as NSData
+        default:
+            return (try JSONEncoder().encode(value)) as NSData
         }
     }
 }

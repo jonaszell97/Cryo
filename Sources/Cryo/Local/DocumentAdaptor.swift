@@ -63,12 +63,12 @@ extension DocumentAdaptor: CryoAdaptor {
         }
     }
     
-    public func persist<Key: CryoKey>(_ value: Key.Value?, for key: Key) async throws where Key.Value: CryoPersistable {
+    public func persist<Key: CryoKey>(_ value: Key.Value?, for key: Key) async throws {
         return try await withCheckedThrowingContinuation { continuation in
             do {
                 let documentUrl = self.documentUrl(for: key)
                 if let value {
-                    let data = try JSONEncoder().encode(value.persistableValue)
+                    let data = try JSONEncoder().encode(value)
                     try data.write(to: documentUrl)
                 }
                 else {
@@ -83,14 +83,14 @@ extension DocumentAdaptor: CryoAdaptor {
         }
     }
     
-    public func load<Key: CryoKey>(with key: Key) async throws -> Key.Value? where Key.Value: CryoPersistable {
+    public func load<Key: CryoKey>(with key: Key) async throws -> Key.Value? {
         return try await withCheckedThrowingContinuation { continuation in
             do {
                 let documentUrl = self.documentUrl(for: key)
                 let data = try Data(contentsOf: documentUrl)
-                let cryoValue = try JSONDecoder().decode(CryoValue.self, from: data)
+                let value = try JSONDecoder().decode(Key.Value.self, from: data)
                 
-                continuation.resume(returning: Key.Value(from: cryoValue))
+                continuation.resume(returning: value)
             }
             catch {
                 if (error as NSError).code == NSFileReadNoSuchFileError {

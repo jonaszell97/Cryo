@@ -6,11 +6,9 @@ import Foundation
 public protocol CryoAdaptor {
     /// Persist the given value for a key.
     func persist<Key: CryoKey>(_ value: Key.Value?, for key: Key) async throws
-        where Key.Value: CryoPersistable
     
     /// - returns: The value previously persisted for `key`, or nil if none exists.
     func load<Key: CryoKey>(with key: Key) async throws -> Key.Value?
-        where Key.Value: CryoPersistable
     
     /// Remove the values for all keys associated with this adaptor.
     func removeAll() async throws
@@ -22,7 +20,7 @@ public protocol CryoAdaptor {
 extension CryoAdaptor {
     /// - returns: The value previously persisted for `key`, or `defaultValue` if none exists.
     public func load<Key: CryoKey>(with key: Key, defaultValue: @autoclosure () -> Key.Value) async throws
-        -> Key.Value where Key.Value: CryoPersistable
+        -> Key.Value
     {
         guard let value = try await self.load(with: key) else {
             return defaultValue()
@@ -32,7 +30,7 @@ extension CryoAdaptor {
     }
     
     /// Remove the given value for a key.
-    public func remove<Key: CryoKey>(with key: Key) async throws where Key.Value: CryoPersistable {
+    public func remove<Key: CryoKey>(with key: Key) async throws {
         try await persist(nil, for: key)
     }
     
