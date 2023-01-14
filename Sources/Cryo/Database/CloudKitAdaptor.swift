@@ -47,8 +47,8 @@ extension AnyCloudKitAdaptor {
         let schema = self.schema(for: modelType)
         
         for (key, details) in schema {
-            let (_, extractValue) = details
-            record[key] = try self.nsObject(from: extractValue(model))
+            let (valueType, extractValue) = details
+            record[key] = try self.nsObject(from: extractValue(model), valueType: valueType)
         }
         
         try await self.save(record: record)
@@ -101,6 +101,9 @@ extension AnyCloudKitAdaptor {
         case .bool:
             guard let value = nsObject as? NSNumber else { return nil }
             return value != 0
+        case .asset:
+            guard let value = nsObject as? CKAsset else { return nil }
+            return value.fileURL
         case .data:
             guard let value = nsObject as? NSData else { return nil }
             return value as Data
@@ -108,7 +111,7 @@ extension AnyCloudKitAdaptor {
     }
     
     /// The NSObject representation oft his value.
-    fileprivate func nsObject(from value: any CryoDatabaseValue) throws -> __CKRecordObjCValue {
+    fileprivate func nsObject(from value: any CryoDatabaseValue, valueType: CryoColumnType) throws -> __CKRecordObjCValue {
         switch value {
         case is Int:
             fallthrough
@@ -124,6 +127,12 @@ extension AnyCloudKitAdaptor {
             return value as NSNumber
         case let value as Data:
             return value as NSData
+        case let url as URL:
+            if case .asset = valueType {
+                return CKAsset(fileURL: url)
+            }
+            
+            fallthrough
         default:
             return (try JSONEncoder().encode(value)) as NSData
         }

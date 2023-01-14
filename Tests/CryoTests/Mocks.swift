@@ -28,7 +28,30 @@ extension MockCloudKitAdaptor: AnyCloudKitAdaptor {
     
     /// Fetch a record with the given id.
     func fetch(recordWithId id: CKRecord.ID) async throws -> CKRecord? {
-        database[id]
+        guard let record = database[id] else {
+            return nil
+        }
+        
+        // Replace asset URLs with random new ones
+        for key in record.allKeys() {
+            guard let asset = record[key] as? CKAsset, let url = asset.fileURL else {
+                continue
+            }
+            
+            guard let data = try? Data(contentsOf: url) else {
+                continue
+            }
+            
+            let newUrl = DocumentAdaptor.sharedLocal.url.appendingPathComponent("\(UUID()).txt")
+            do {
+                try data.write(to: newUrl)
+                record[key] = CKAsset(fileURL: newUrl)
+            }
+            catch {
+            }
+        }
+        
+        return record
     }
     
     /// Find or create a schema.

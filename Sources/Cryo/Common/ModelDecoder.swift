@@ -217,6 +217,14 @@ fileprivate struct CryoModelSingleValueDecodingContainer: SingleValueDecodingCon
 
         return Float(value)
     }
+    
+    func decode(_ type: URL.Type) throws -> URL {
+        guard let value = value as? URL else {
+            throw DecodingError.typeMismatch(CryoDatabaseValue.self, .init(codingPath: codingPath, debugDescription: "unexpected CryoPersistable: \(value)"))
+        }
+        
+        return value
+    }
 
     func decodeInt<T: BinaryInteger>(_ type: T.Type) throws -> T {
         guard let value = value as? T else {
@@ -238,7 +246,7 @@ fileprivate struct CryoModelSingleValueDecodingContainer: SingleValueDecodingCon
     func decode(_ type: UInt64.Type) throws -> UInt64 { fatalError("UInt64 cannot be represented") }
 
     func decode<T>(_ type: T.Type) throws -> T where T: Decodable {
-        if T.self == URL.self { return URL(string: "file:///") as! T }
+        if T.self == URL.self { return try self.decode(URL.self) as! T }
         if T.self == Data.self { return try self.decode(Data.self) as! T }
         
         return try T(from: CryoModelValueDecoder(value: value))

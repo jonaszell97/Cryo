@@ -19,6 +19,9 @@ internal enum CryoColumnType {
     
     /// Data type for raw data. Stored as NSData.
     case data
+    
+    /// A CloudKit asset.
+    case asset
 }
 
 public protocol CryoDatabaseValue: Codable {
@@ -46,3 +49,9 @@ extension String: CryoDatabaseValue {}
 extension Bool: CryoDatabaseValue {}
 extension Date: CryoDatabaseValue {}
 extension Data: CryoDatabaseValue {}
+
+extension URL: CryoDatabaseValue {
+    public init() {
+        self = URL(string: "file:///")!
+    }
+}

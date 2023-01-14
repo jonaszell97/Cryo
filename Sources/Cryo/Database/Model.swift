@@ -35,6 +35,29 @@ extension CryoColumn: Codable {
     }
 }
 
+/// Property wrapper for assets in a CryoModel.
+@propertyWrapper public struct CryoAsset {
+    /// The wrapped, persistable value.
+    public var wrappedValue: URL
+    
+    /// Default initializer.
+    public init(wrappedValue: URL) {
+        self.wrappedValue = wrappedValue
+    }
+}
+
+extension CryoAsset: Codable {
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(wrappedValue)
+    }
+    
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        self.init(wrappedValue: try container.decode(URL.self))
+    }
+}
+
 // MARK: Model reflection
 
 internal typealias CryoSchema = [String: (CryoColumnType, (any CryoModel) -> any CryoDatabaseValue)]
@@ -69,33 +92,43 @@ internal extension CryoModel {
                 continue
             }
             
-            let wrappedValueMirror = Mirror(reflecting: wrappedValue.value)
             
             let columnType: CryoColumnType
-            switch wrappedValueMirror.subjectType {
-            case is String.Type: columnType = .text
-            case is URL.Type:    columnType = .text
-                
-            case is Double.Type: columnType = .double
-            case is Float.Type:  columnType = .double
-                
-            case is Bool.Type:   columnType = .bool
-                
-            case is Int.Type:    columnType = .integer
-            case is Int.Type:    columnType = .integer
-            case is Int8.Type:   columnType = .integer
-            case is Int16.Type:  columnType = .integer
-            case is Int32.Type:  columnType = .integer
-            case is Int64.Type:  columnType = .integer
-            case is UInt.Type:   columnType = .integer
-            case is UInt8.Type:  columnType = .integer
-            case is UInt16.Type: columnType = .integer
-            case is UInt32.Type: columnType = .integer
-                
-            case is Date.Type:   columnType = .date
-            case is Data.Type:   columnType = .data
-            default:
-                fatalError("\(wrappedValueMirror.subjectType) is not a valid type for a CryoColumn")
+            let childTypeName = "\(childMirror.subjectType)"
+            
+            let wrappedValueMirror = Mirror(reflecting: wrappedValue.value)
+            if childTypeName.starts(with: "CryoColumn") {
+                switch wrappedValueMirror.subjectType {
+                case is String.Type: columnType = .text
+                case is URL.Type:    columnType = .text
+                    
+                case is Double.Type: columnType = .double
+                case is Float.Type:  columnType = .double
+                    
+                case is Bool.Type:   columnType = .bool
+                    
+                case is Int.Type:    columnType = .integer
+                case is Int.Type:    columnType = .integer
+                case is Int8.Type:   columnType = .integer
+                case is Int16.Type:  columnType = .integer
+                case is Int32.Type:  columnType = .integer
+                case is Int64.Type:  columnType = .integer
+                case is UInt.Type:   columnType = .integer
+                case is UInt8.Type:  columnType = .integer
+                case is UInt16.Type: columnType = .integer
+                case is UInt32.Type: columnType = .integer
+                    
+                case is Date.Type:   columnType = .date
+                case is Data.Type:   columnType = .data
+                default:
+                    fatalError("\(wrappedValueMirror.subjectType) is not a valid type for a CryoColumn")
+                }
+            }
+            else if childTypeName.starts(with: "CryoAsset") {
+                columnType = .asset
+            }
+            else {
+                continue
             }
             
             let extractValue: (any CryoModel) -> any CryoDatabaseValue = { this in
