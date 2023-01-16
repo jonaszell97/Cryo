@@ -50,7 +50,7 @@ extension CryoPropertyWrapper {
     }
     
     /// Memberwise initializer.
-    init(wrappedValue: Value, id: String, adaptor: any CryoAdaptor) {
+    public init(wrappedValue: Value, _ id: String, adaptor: any CryoAdaptor) {
         self.id = id
         self.adaptor = adaptor
         self.wrappedValue = (try? adaptor.loadSynchronously(with: Key(id: id))) ?? wrappedValue
@@ -83,7 +83,7 @@ extension CryoPropertyWrapper {
     }
     
     /// Memberwise initializer.
-    init(wrappedValue: Value, id: String) {
+    public init(wrappedValue: Value, _ id: String) {
         self.id = id
         self.wrappedValue = (try? UserDefaultsAdaptor.shared.loadSynchronously(with: Key(id: id))) ?? wrappedValue
     }
@@ -115,7 +115,7 @@ extension CryoPropertyWrapper {
     }
     
     /// Memberwise initializer.
-    init(wrappedValue: Value, id: String) {
+    public init(wrappedValue: Value, _ id: String) {
         self.id = id
         self.wrappedValue = wrappedValue
         self.wrappedValue = (try? UbiquitousKeyValueStoreAdaptor.shared.loadSynchronously(with: Key(id: id))) ?? wrappedValue
@@ -148,7 +148,7 @@ extension CryoPropertyWrapper {
     }
     
     /// Memberwise initializer.
-    init(wrappedValue: Value, id: String) {
+    public init(wrappedValue: Value, _ id: String) {
         self.id = id
         self.wrappedValue = (try? DocumentAdaptor.sharedLocal.loadSynchronously(with: Key(id: id))) ?? wrappedValue
     }
