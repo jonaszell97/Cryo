@@ -54,6 +54,11 @@ extension MockCloudKitAdaptor: AnyCloudKitAdaptor {
         return record
     }
     
+    /// Fetch a record with the given id.
+    func fetchAllBatched(tableName: String, receiveBatch: ([CKRecord]) throws -> Bool) async throws {
+        _ = try receiveBatch(database.values.filter { $0.recordType == tableName })
+    }
+    
     /// Find or create a schema.
     func schema<Key: CryoKey>(for key: Key.Type) -> CryoSchema where Key.Value: CryoModel {
         let schemaName = "\(Key.Value.self)"

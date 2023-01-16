@@ -17,9 +17,9 @@ final class PropertyWrapperTests: XCTestCase {
     
     func testUserDefaults() async {
         struct TestStruct {
-            @CryoPersisted(id: "testValue1", adaptor: PropertyWrapperTests.userDefaultsAdaptor!) var testValue1: Int = 0
-            @CryoPersisted(id: "testValue2", adaptor: PropertyWrapperTests.userDefaultsAdaptor!) var testValue2: String = "hello"
-            @CryoPersisted(id: "testValue3", adaptor: PropertyWrapperTests.userDefaultsAdaptor!) var testValue3: Date = .distantPast
+            @CryoPersisted("testValue1", adaptor: PropertyWrapperTests.userDefaultsAdaptor!) var testValue1: Int = 0
+            @CryoPersisted("testValue2", adaptor: PropertyWrapperTests.userDefaultsAdaptor!) var testValue2: String = "hello"
+            @CryoPersisted("testValue3", adaptor: PropertyWrapperTests.userDefaultsAdaptor!) var testValue3: Date = .distantPast
         }
         
         do {

@@ -9,7 +9,7 @@ fileprivate struct TestModel: CryoModel {
     @CryoAsset var w: URL
 }
 
-extension TestModel: Equatable {
+extension TestModel: Hashable {
     static func ==(lhs: TestModel, rhs: TestModel) -> Bool {
         guard lhs.x == rhs.x && lhs.y == rhs.y && lhs.z == rhs.z else {
             return false
@@ -20,6 +20,16 @@ extension TestModel: Equatable {
         }
         
         return data1 == data2
+    }
+    
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(x)
+        hasher.combine(y)
+        hasher.combine(z)
+        
+        if let data = try? Data(contentsOf: w) {
+            hasher.combine(data)
+        }
     }
 }
 
@@ -45,12 +55,20 @@ final class CryoDatabaseTests: XCTestCase {
         }
         
         let value = TestModel(x: 123, y: "Hello there", z: .init(count: 50), w: assetUrl)
+        let value2 = TestModel(x: 32919023, y: "Hello therexxx", z: .init(count: 10), w: assetUrl)
+        
         do {
             let key = AnyKey(id: "test-123", for: TestModel.self)
             try await adaptor.persist(value, for: key)
             
             let loadedValue = try await adaptor.load(with: key)
             XCTAssertEqual(value, loadedValue)
+            
+            try await adaptor.persist(value2, for: AnyKey(id: "test-1234", for: TestModel.self))
+            
+            let allValues = try await adaptor.loadAll(with: AnyKey<TestModel>.self)
+            XCTAssertNotNil(allValues)
+            XCTAssertEqual(Set(allValues!), Set([value, value2]))
         }
         catch {
             XCTAssert(false, error.localizedDescription)

@@ -12,8 +12,27 @@ internal protocol AnyCloudKitAdaptor: AnyObject, CryoAdaptor {
     /// Fetch a record with the given id.
     func fetch(recordWithId id: CKRecord.ID) async throws -> CKRecord?
     
+    /// Fetch a record with the given id.
+    func fetchAll(tableName: String, limit: Int) async throws -> [CKRecord]?
+    
+    /// Fetch a record with the given id.
+    func fetchAllBatched(tableName: String, receiveBatch: ([CKRecord]) throws -> Bool) async throws
+    
     /// Cache for schemas.
     var schemas: [String: CryoSchema] { get set }
+}
+
+extension AnyCloudKitAdaptor {
+    /// Fetch a record with the given id.
+    func fetchAll(tableName: String, limit: Int) async throws -> [CKRecord]? {
+        var records = [CKRecord]()
+        try await self.fetchAllBatched(tableName: tableName) {
+            records.append(contentsOf: $0)
+            return limit == 0 || records.count < limit
+        }
+        
+        return records
+    }
 }
 
 extension AnyCloudKitAdaptor {
@@ -81,6 +100,39 @@ extension AnyCloudKitAdaptor {
         }
         
         return try Key.Value(from: CryoModelDecoder(data: data))
+    }
+    
+    /// Load all values of the given Key type. Not all adaptors support this operation.
+    public func loadAllBatched<Key: CryoKey>(with key: Key.Type, receiveBatch: ([Key.Value]) -> Bool) async throws -> Bool {
+        guard let modelType = Key.Value.self as? CryoModel.Type else {
+            return false
+        }
+        
+        let schema = self.schema(for: modelType)
+        try await self.fetchAllBatched(tableName: modelType.tableName) { records in
+            var batch = [Key.Value]()
+            for record in records {
+                var data = [String: any CryoDatabaseValue]()
+                for (key, details) in schema {
+                    let (valueType, _) = details
+                    guard
+                        let object = record[key],
+                        let value = self.decodeValue(from: object, as: valueType)
+                    else {
+                        continue
+                    }
+                    
+                    data[key] = value
+                }
+                
+                let nextValue = try Key.Value(from: CryoModelDecoder(data: data))
+                batch.append(nextValue)
+            }
+            
+            return receiveBatch(batch)
+        }
+        
+        return true
     }
     
     /// Initialize from an NSObject representation.
@@ -220,6 +272,45 @@ extension CloudKitAdaptor: AnyCloudKitAdaptor {
                 }
                 
                 continuation.resume(returning: record)
+            }
+        }
+    }
+    
+    /// Fetch a record with the given id.
+    func fetchAllBatched(tableName: String, receiveBatch: ([CKRecord]) throws -> Bool) async throws {
+        let query = CKQuery(recordType: tableName, predicate: NSPredicate(value: true))
+        
+        var operation: CKQueryOperation? = CKQueryOperation(query: query)
+        operation?.resultsLimit = CKQueryOperation.maximumResults
+        
+        while let nextOperation = operation {
+            var data = [CKRecord]()
+            var encounteredError = false
+            
+            let cursor: CKQueryOperation.Cursor? = try await withCheckedThrowingContinuation { continuation in
+                nextOperation.queryResultBlock =  {
+                    guard !encounteredError else { return }
+                    continuation.resume(with: $0)
+                }
+                nextOperation.recordMatchedBlock = { _, result in
+                    switch result {
+                    case .success(let record):
+                        data.append(record)
+                    case .failure(let error):
+                        encounteredError = true
+                        continuation.resume(throwing: error)
+                    }
+                }
+                
+                self.database.add(nextOperation)
+            }
+            
+            let shouldContinue = try receiveBatch(data)
+            if let cursor = cursor, shouldContinue {
+                operation = CKQueryOperation(cursor: cursor)
+            }
+            else {
+                break
             }
         }
     }
