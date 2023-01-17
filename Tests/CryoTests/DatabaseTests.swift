@@ -2,10 +2,15 @@
 import XCTest
 @testable import Cryo
 
+fileprivate enum TestEnum: Int, CryoColumnIntValue, Hashable {
+    case zero = 0
+    case a = 300, b = 400, c = 500
+}
+
 fileprivate struct TestModel: CryoModel {
-    @CryoColumn var x: Int = 0
+    @CryoColumn var x: Int16 = 0
     @CryoColumn var y: String = ""
-    @CryoColumn var z: Data = .init()
+    @CryoColumn var z: TestEnum = .c
     @CryoAsset var w: URL
 }
 
@@ -54,8 +59,10 @@ final class CryoDatabaseTests: XCTestCase {
             XCTAssert(false, error.localizedDescription)
         }
         
-        let value = TestModel(x: 123, y: "Hello there", z: .init(count: 50), w: assetUrl)
-        let value2 = TestModel(x: 32919023, y: "Hello therexxx", z: .init(count: 10), w: assetUrl)
+        let value = TestModel(x: 123, y: "Hello there", z: .a, w: assetUrl)
+        let value2 = TestModel(x: 3291, y: "Hello therexxx", z: .c, w: assetUrl)
+        
+        XCTAssertEqual(Set(TestModel.schema.keys), ["x", "y", "z", "w"])
         
         do {
             let key = AnyKey(id: "test-123", for: TestModel.self)

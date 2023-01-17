@@ -86,7 +86,7 @@ extension AnyCloudKitAdaptor {
         
         let schema = self.schema(for: modelType)
         
-        var data = [String: any CryoDatabaseValue]()
+        var data = [String: _AnyCryoColumnValue]()
         for (key, details) in schema {
             let (valueType, _) = details
             guard
@@ -112,7 +112,7 @@ extension AnyCloudKitAdaptor {
         try await self.fetchAllBatched(tableName: modelType.tableName) { records in
             var batch = [Key.Value]()
             for record in records {
-                var data = [String: any CryoDatabaseValue]()
+                var data = [String: _AnyCryoColumnValue]()
                 for (key, details) in schema {
                     let (valueType, _) = details
                     guard
@@ -136,7 +136,7 @@ extension AnyCloudKitAdaptor {
     }
     
     /// Initialize from an NSObject representation.
-    fileprivate func decodeValue(from nsObject: __CKRecordObjCValue, as type: CryoColumnType) -> (any CryoDatabaseValue)? {
+    fileprivate func decodeValue(from nsObject: __CKRecordObjCValue, as type: CryoColumnType) -> _AnyCryoColumnValue? {
         switch type {
         case .integer:
             guard let value = nsObject as? NSNumber else { return nil }
@@ -163,28 +163,23 @@ extension AnyCloudKitAdaptor {
     }
     
     /// The NSObject representation oft his value.
-    fileprivate func nsObject(from value: any CryoDatabaseValue, valueType: CryoColumnType) throws -> __CKRecordObjCValue {
+    fileprivate func nsObject(from value: _AnyCryoColumnValue, valueType: CryoColumnType) throws -> __CKRecordObjCValue {
         switch value {
-        case is Int:
-            fallthrough
-        case is Float:
-            fallthrough
-        case is Double:
-            return value as! NSNumber
-        case let value as String:
-            return value as NSString
-        case let value as Date:
-            return value as NSDate
-        case let value as Bool:
-            return value as NSNumber
-        case let value as Data:
-            return value as NSData
         case let url as URL:
             if case .asset = valueType {
                 return CKAsset(fileURL: url)
             }
             
-            fallthrough
+            return url.absoluteString as NSString
+        case let value as CryoColumnIntValue:
+            return value.integerValue as NSNumber
+        case let value as CryoColumnDoubleValue:
+            return value.doubleValue as NSNumber
+        case let value as CryoColumnStringValue:
+            return value.stringValue as NSString
+        case let value as CryoColumnDataValue:
+            return value.dataValue as NSData
+        
         default:
             return (try JSONEncoder().encode(value)) as NSData
         }
