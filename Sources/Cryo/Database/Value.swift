@@ -52,6 +52,14 @@ public protocol CryoColumnStringValue: _AnyCryoColumnValue {
     init (stringValue: String)
 }
 
+public protocol CryoColumnDateValue: _AnyCryoColumnValue {
+    /// The date value of this instance.
+    var dateValue: Date { get }
+    
+    /// Initialize from a date value.
+    init (dateValue: Date)
+}
+
 public protocol CryoColumnDataValue: _AnyCryoColumnValue {
     /// The data value of this instance.
     var dataValue: Data { get throws }
@@ -166,12 +174,12 @@ extension Float: CryoColumnDoubleValue {
     public init (doubleValue: Double) { self = Self(doubleValue) }
 }
 
-extension Date: CryoColumnDoubleValue {
-    /// The double value of this instance.
-    public var doubleValue: Double { Double(self.timeIntervalSinceReferenceDate) }
+extension Date: CryoColumnDateValue {
+    /// The date value of this instance.
+    public var dateValue: Date { self }
     
-    /// Initialize from an integer value.
-    public init (doubleValue: Double) { self = Date(timeIntervalSinceReferenceDate: doubleValue) }
+    /// Initialize from a date value.
+    public init (dateValue: Date) { self = dateValue }
 }
 
 extension RawRepresentable where RawValue: CryoColumnDoubleValue {

@@ -248,6 +248,7 @@ fileprivate struct CryoModelSingleValueDecodingContainer: SingleValueDecodingCon
     func decode<T>(_ type: T.Type) throws -> T where T: Decodable {
         if T.self == URL.self { return try self.decode(URL.self) as! T }
         if T.self == Data.self { return try self.decode(Data.self) as! T }
+        if T.self == Date.self { return try self.decode(Date.self) as! T }
         
         return try T(from: CryoModelValueDecoder(value: value))
     }

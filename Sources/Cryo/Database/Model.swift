@@ -102,6 +102,7 @@ internal extension CryoModel {
                 case is CryoColumnIntValue.Type: columnType = .integer
                 case is CryoColumnDoubleValue.Type: columnType = .double
                 case is CryoColumnStringValue.Type: columnType = .text
+                case is CryoColumnDateValue.Type: columnType = .date
                 case is CryoColumnDataValue.Type: columnType = .data
                 default:
                     fatalError("\(wrappedValueMirror.subjectType) is not a valid type for a CryoColumn")

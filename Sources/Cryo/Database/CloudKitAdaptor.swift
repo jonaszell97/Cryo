@@ -182,6 +182,8 @@ extension AnyCloudKitAdaptor {
             return value.doubleValue as NSNumber
         case let value as CryoColumnStringValue:
             return value.stringValue as NSString
+        case let value as CryoColumnDateValue:
+            return value.dateValue as NSDate
         case let value as CryoColumnDataValue:
             return try value.dataValue as NSData
         
