@@ -13,10 +13,10 @@ internal protocol AnyCloudKitAdaptor: AnyObject, CryoAdaptor {
     func fetch(recordWithId id: CKRecord.ID) async throws -> CKRecord?
     
     /// Fetch a record with the given id.
-    func fetchAll(tableName: String, limit: Int) async throws -> [CKRecord]?
+    func fetchAll(tableName: String, predicate: NSPredicate, limit: Int) async throws -> [CKRecord]?
     
     /// Fetch a record with the given id.
-    func fetchAllBatched(tableName: String, receiveBatch: ([CKRecord]) throws -> Bool) async throws
+    func fetchAllBatched(tableName: String, predicate: NSPredicate, receiveBatch: ([CKRecord]) throws -> Bool) async throws
     
     /// Cache for schemas.
     var schemas: [String: CryoSchema] { get set }
@@ -24,9 +24,9 @@ internal protocol AnyCloudKitAdaptor: AnyObject, CryoAdaptor {
 
 extension AnyCloudKitAdaptor {
     /// Fetch a record with the given id.
-    func fetchAll(tableName: String, limit: Int) async throws -> [CKRecord]? {
+    func fetchAll(tableName: String, predicate: NSPredicate, limit: Int) async throws -> [CKRecord]? {
         var records = [CKRecord]()
-        try await self.fetchAllBatched(tableName: tableName) {
+        try await self.fetchAllBatched(tableName: tableName, predicate: predicate) {
             records.append(contentsOf: $0)
             return limit == 0 || records.count < limit
         }
@@ -104,12 +104,17 @@ extension AnyCloudKitAdaptor {
     
     /// Load all values of the given Key type. Not all adaptors support this operation.
     public func loadAllBatched<Key: CryoKey>(with key: Key.Type, receiveBatch: ([Key.Value]) -> Bool) async throws -> Bool {
+        try await self.loadAllBatched(with: key, predicate: NSPredicate(value: true), receiveBatch: receiveBatch)
+    }
+    
+    /// Load all values of the given Key type. Not all adaptors support this operation.
+    public func loadAllBatched<Key: CryoKey>(with key: Key.Type, predicate: NSPredicate, receiveBatch: ([Key.Value]) -> Bool) async throws -> Bool {
         guard let modelType = Key.Value.self as? CryoModel.Type else {
             return false
         }
         
         let schema = self.schema(for: modelType)
-        try await self.fetchAllBatched(tableName: modelType.tableName) { records in
+        try await self.fetchAllBatched(tableName: modelType.tableName, predicate: predicate) { records in
             var batch = [Key.Value]()
             for record in records {
                 var data = [String: _AnyCryoColumnValue]()
@@ -272,8 +277,8 @@ extension CloudKitAdaptor: AnyCloudKitAdaptor {
     }
     
     /// Fetch a record with the given id.
-    func fetchAllBatched(tableName: String, receiveBatch: ([CKRecord]) throws -> Bool) async throws {
-        let query = CKQuery(recordType: tableName, predicate: NSPredicate(value: true))
+    public func fetchAllBatched(tableName: String, predicate: NSPredicate, receiveBatch: ([CKRecord]) throws -> Bool) async throws {
+        let query = CKQuery(recordType: tableName, predicate: predicate)
         
         var operation: CKQueryOperation? = CKQueryOperation(query: query)
         operation?.resultsLimit = CKQueryOperation.maximumResults

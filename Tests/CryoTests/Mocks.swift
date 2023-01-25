@@ -55,7 +55,7 @@ extension MockCloudKitAdaptor: AnyCloudKitAdaptor {
     }
     
     /// Fetch a record with the given id.
-    func fetchAllBatched(tableName: String, receiveBatch: ([CKRecord]) throws -> Bool) async throws {
+    func fetchAllBatched(tableName: String, predicate: NSPredicate, receiveBatch: ([CKRecord]) throws -> Bool) async throws {
         _ = try receiveBatch(database.values.filter { $0.recordType == tableName })
     }
     
