@@ -104,11 +104,11 @@ extension AnyCloudKitAdaptor {
     
     /// Load all values of the given Key type. Not all adaptors support this operation.
     public func loadAllBatched<Key: CryoKey>(with key: Key.Type, receiveBatch: ([Key.Value]) -> Bool) async throws -> Bool {
-        try await self.loadAllBatched(with: key, predicate: NSPredicate(value: true), receiveBatch: receiveBatch)
+        try await self._loadAllBatched(with: key, predicate: NSPredicate(value: true), receiveBatch: receiveBatch)
     }
     
     /// Load all values of the given Key type. Not all adaptors support this operation.
-    public func loadAllBatched<Key: CryoKey>(with key: Key.Type, predicate: NSPredicate, receiveBatch: ([Key.Value]) -> Bool) async throws -> Bool {
+    func _loadAllBatched<Key: CryoKey>(with key: Key.Type, predicate: NSPredicate, receiveBatch: ([Key.Value]) -> Bool) async throws -> Bool {
         guard let modelType = Key.Value.self as? CryoModel.Type else {
             return false
         }
@@ -276,8 +276,13 @@ extension CloudKitAdaptor: AnyCloudKitAdaptor {
         }
     }
     
+    /// Load all values of the given Key type. Not all adaptors support this operation.
+    public func loadAllBatched<Key: CryoKey>(with key: Key.Type, predicate: NSPredicate, receiveBatch: ([Key.Value]) -> Bool) async throws -> Bool {
+        try await self._loadAllBatched(with: key, predicate: predicate, receiveBatch: receiveBatch)
+    }
+    
     /// Fetch a record with the given id.
-    public func fetchAllBatched(tableName: String, predicate: NSPredicate, receiveBatch: ([CKRecord]) throws -> Bool) async throws {
+    func fetchAllBatched(tableName: String, predicate: NSPredicate, receiveBatch: ([CKRecord]) throws -> Bool) async throws {
         let query = CKQuery(recordType: tableName, predicate: predicate)
         
         var operation: CKQueryOperation? = CKQueryOperation(query: query)
