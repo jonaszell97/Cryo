@@ -55,7 +55,7 @@ fileprivate class EmptyKeyedDecodingContainer<K: CodingKey>: KeyedDecodingContai
         if let intType = T.self as? CryoColumnIntValue.Type { return intType.init(integerValue: 0) as! T }
         if let doubleType = T.self as? CryoColumnDoubleValue.Type { return doubleType.init(doubleValue: 0) as! T }
         if let stringType = T.self as? CryoColumnStringValue.Type { return stringType.init(stringValue: "") as! T }
-        if let dataType = T.self as? CryoColumnDataValue.Type { return dataType.init(dataValue: .init()) as! T }
+        if let dataType = T.self as? CryoColumnDataValue.Type { return try dataType.init(dataValue: .init()) as! T }
         
         return try T(from: EmptyDecoder())
     }
@@ -105,7 +105,7 @@ fileprivate struct EmptySingleValueDecodingContainer: SingleValueDecodingContain
         if let intType = T.self as? CryoColumnIntValue.Type { return intType.init(integerValue: 0) as! T }
         if let doubleType = T.self as? CryoColumnDoubleValue.Type { return doubleType.init(doubleValue: 0) as! T }
         if let stringType = T.self as? CryoColumnStringValue.Type { return stringType.init(stringValue: "") as! T }
-        if let dataType = T.self as? CryoColumnDataValue.Type { return dataType.init(dataValue: .init()) as! T }
+        if let dataType = T.self as? CryoColumnDataValue.Type { return try dataType.init(dataValue: .init()) as! T }
         
         return try T(from: EmptyDecoder())
     }
@@ -146,7 +146,7 @@ fileprivate struct EmptyUnkeyedDecodingContainer: UnkeyedDecodingContainer {
         if let intType = T.self as? CryoColumnIntValue.Type { return intType.init(integerValue: 0) as! T }
         if let doubleType = T.self as? CryoColumnDoubleValue.Type { return doubleType.init(doubleValue: 0) as! T }
         if let stringType = T.self as? CryoColumnStringValue.Type { return stringType.init(stringValue: "") as! T }
-        if let dataType = T.self as? CryoColumnDataValue.Type { return dataType.init(dataValue: .init()) as! T }
+        if let dataType = T.self as? CryoColumnDataValue.Type { return try dataType.init(dataValue: .init()) as! T }
         
         return try T(from: EmptyDecoder())
     }

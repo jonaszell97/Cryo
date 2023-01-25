@@ -183,7 +183,7 @@ extension AnyCloudKitAdaptor {
         case let value as CryoColumnStringValue:
             return value.stringValue as NSString
         case let value as CryoColumnDataValue:
-            return value.dataValue as NSData
+            return try value.dataValue as NSData
         
         default:
             return (try JSONEncoder().encode(value)) as NSData

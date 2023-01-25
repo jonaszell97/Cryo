@@ -24,9 +24,6 @@ internal enum CryoColumnType {
     case asset
 }
 
-//public protocol CryoDatabaseValue: Codable {
-//}
-
 public protocol _AnyCryoColumnValue: Codable {
     
 }
@@ -57,10 +54,10 @@ public protocol CryoColumnStringValue: _AnyCryoColumnValue {
 
 public protocol CryoColumnDataValue: _AnyCryoColumnValue {
     /// The data value of this instance.
-    var dataValue: Data { get }
+    var dataValue: Data { get throws }
     
     /// Initialize from a data value.
-    init (dataValue: Data)
+    init (dataValue: Data) throws
 }
 
 // MARK: CryoDatabaseValue conformances
@@ -215,4 +212,20 @@ extension Data: CryoColumnDataValue {
     
     /// Initialize from a data value.
     public init (dataValue: Data) { self = dataValue }
+}
+
+extension Encodable {
+    /// The data value of this instance.
+    public var dataValue: Data {
+        get throws {
+            try JSONEncoder().encode(self)
+        }
+    }
+}
+
+extension Decodable {
+    /// Initialize from a data value.
+    public init (dataValue: Data) throws {
+        self = try JSONDecoder().decode(Self.self, from: dataValue)
+    }
 }
