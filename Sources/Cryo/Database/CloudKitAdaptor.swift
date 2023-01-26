@@ -19,7 +19,7 @@ internal protocol AnyCloudKitAdaptor: AnyObject, CryoAdaptor {
     func fetchAllBatched(tableName: String, predicate: NSPredicate, receiveBatch: ([CKRecord]) throws -> Bool) async throws
     
     /// Cache for schemas.
-    var schemas: [String: CryoSchema] { get set }
+    var schemas: [ObjectIdentifier: CryoSchema] { get set }
 }
 
 extension AnyCloudKitAdaptor {
@@ -38,13 +38,13 @@ extension AnyCloudKitAdaptor {
 extension AnyCloudKitAdaptor {
     /// Find or create a schema.
     func schema<Model: CryoModel>(for model: Model.Type) -> CryoSchema {
-        let schemaName = "\(Model.self)"
-        if let schema = self.schemas[schemaName] {
+        let schemaKey = ObjectIdentifier(Model.self)
+        if let schema = self.schemas[schemaKey] {
             return schema
         }
         
         let schema = Model.schema
-        self.schemas[schemaName] = schema
+        self.schemas[schemaKey] = schema
         
         return schema
     }
@@ -207,7 +207,7 @@ public final class CloudKitAdaptor {
     let iCloudRecordID: String
     
     /// Cache of schema data.
-    var schemas: [String: CryoSchema] = [:]
+    var schemas: [ObjectIdentifier: CryoSchema] = [:]
     
     /// Default initializer.
     public init?(config: CryoConfig, containerIdentifier: String, database: KeyPath<CKContainer, CKDatabase>) async {
@@ -322,19 +322,6 @@ extension CloudKitAdaptor: AnyCloudKitAdaptor {
         }
     }
     
-    /// Find or create a schema.
-    func schema<Model: CryoModel>(for model: Model.Type) -> CryoSchema {
-        let schemaName = "\(Model.self)"
-        if let schema = self.schemas[schemaName] {
-            return schema
-        }
-        
-        let schema = Model.schema
-        self.schemas[schemaName] = schema
-        
-        return schema
-    }
-     
     public func removeAll() async throws {
         for zone in try await database.allRecordZones() {
             try await database.deleteRecordZone(withID: zone.zoneID)

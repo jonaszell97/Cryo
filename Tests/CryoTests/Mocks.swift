@@ -7,7 +7,7 @@ final class MockCloudKitAdaptor {
     var database: [CKRecord.ID: CKRecord]
     
     /// Cache of schema data.
-    var schemas: [String: CryoSchema] = [:]
+    var schemas: [ObjectIdentifier: CryoSchema] = [:]
     
     /// Default initializer.
     init() {
@@ -57,19 +57,6 @@ extension MockCloudKitAdaptor: AnyCloudKitAdaptor {
     /// Fetch a record with the given id.
     func fetchAllBatched(tableName: String, predicate: NSPredicate, receiveBatch: ([CKRecord]) throws -> Bool) async throws {
         _ = try receiveBatch(database.values.filter { $0.recordType == tableName })
-    }
-    
-    /// Find or create a schema.
-    func schema<Key: CryoKey>(for key: Key.Type) -> CryoSchema where Key.Value: CryoModel {
-        let schemaName = "\(Key.Value.self)"
-        if let schema = self.schemas[schemaName] {
-            return schema
-        }
-        
-        let schema = Key.Value.schema
-        self.schemas[schemaName] = schema
-        
-        return schema
     }
     
     func removeAll() async throws {
