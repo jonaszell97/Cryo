@@ -132,4 +132,21 @@ extension DocumentAdaptor: CryoAdaptor {
             }
         }
     }
+    
+    public func removeAll(matching condition: (URL) -> Bool) async throws {
+        return try await withCheckedThrowingContinuation { continuation in
+            do {
+                let urls = try FileManager.default.contentsOfDirectory(at: self.url, includingPropertiesForKeys: nil)
+                for url in urls {
+                    guard condition(url) else { continue }
+                    try self.fileManager.removeItem(at: url)
+                }
+                
+                continuation.resume()
+            }
+            catch {
+                continuation.resume(throwing: error)
+            }
+        }
+    }
 }

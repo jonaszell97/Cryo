@@ -7,7 +7,7 @@ final class MockCloudKitAdaptor {
     var database: [CKRecord.ID: CKRecord]
     
     /// Cache of schema data.
-    var schemas: [String: CryoSchema] = [:]
+    var schemas: [ObjectIdentifier: CryoSchema] = [:]
     
     /// Default initializer.
     init() {
@@ -28,20 +28,35 @@ extension MockCloudKitAdaptor: AnyCloudKitAdaptor {
     
     /// Fetch a record with the given id.
     func fetch(recordWithId id: CKRecord.ID) async throws -> CKRecord? {
-        database[id]
-    }
-    
-    /// Find or create a schema.
-    func schema<Key: CryoKey>(for key: Key.Type) -> CryoSchema where Key.Value: CryoModel {
-        let schemaName = "\(Key.Value.self)"
-        if let schema = self.schemas[schemaName] {
-            return schema
+        guard let record = database[id] else {
+            return nil
         }
         
-        let schema = Key.Value.schema
-        self.schemas[schemaName] = schema
+        // Replace asset URLs with random new ones
+        for key in record.allKeys() {
+            guard let asset = record[key] as? CKAsset, let url = asset.fileURL else {
+                continue
+            }
+            
+            guard let data = try? Data(contentsOf: url) else {
+                continue
+            }
+            
+            let newUrl = DocumentAdaptor.sharedLocal.url.appendingPathComponent("\(UUID()).txt")
+            do {
+                try data.write(to: newUrl)
+                record[key] = CKAsset(fileURL: newUrl)
+            }
+            catch {
+            }
+        }
         
-        return schema
+        return record
+    }
+    
+    /// Fetch a record with the given id.
+    func fetchAllBatched(tableName: String, predicate: NSPredicate, receiveBatch: ([CKRecord]) throws -> Bool) async throws {
+        _ = try receiveBatch(database.values.filter { $0.recordType == tableName })
     }
     
     func removeAll() async throws {
