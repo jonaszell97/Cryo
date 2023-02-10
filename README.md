@@ -1,9 +1,19 @@
 # Cryo
 
-Cryo is a persistence library for Swift apps. Out-of-the-box, it supports persistence with UserDefaults, NSUbiquitousKeyValueStore, Documents, and CloudKit.
+Cryo is a persistence library for Swift apps using Swift Concurrency. It provides a unified API for `UserDefaults`, `NSUbiquitousKeyValueStore`, local and iCloud document storage, as well as CloudKit.
 
-Custom adaptors for other persistence backends can be defined by conforming to the `CryoAdaptor` protocol. 
+## Installation
+
+Cryo can be added as a dependency in your project using Swift Package Manager.
+
+```swift
+// ...
+dependencies: [
+    .package(url: "https://github.com/jonaszell97/Cryo.git", from: "0.1.0"),
+],
+// ...
+```
 
 ## Documentation
 
-Cryo is still in a pre-release alpha. Documentation will be added once the API stabilizes.
+You can find the documentation for this package [here](https://cryo.jonaszell.dev).

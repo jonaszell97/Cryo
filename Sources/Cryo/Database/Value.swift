@@ -24,10 +24,12 @@ internal enum CryoColumnType {
     case asset
 }
 
+/// Protocol for types that can be stored in a CloudKIt column.
 public protocol _AnyCryoColumnValue: Codable {
     
 }
 
+/// Protocol for types that can be stored in a CloudKIt column as an `Int64`.
 public protocol CryoColumnIntValue: _AnyCryoColumnValue {
     /// The integer value of this instance.
     var integerValue: Int64 { get }
@@ -36,6 +38,7 @@ public protocol CryoColumnIntValue: _AnyCryoColumnValue {
     init (integerValue: Int64)
 }
 
+/// Protocol for types that can be stored in a CloudKIt column as a `Double`.
 public protocol CryoColumnDoubleValue: _AnyCryoColumnValue {
     /// The double value of this instance.
     var doubleValue: Double { get }
@@ -44,6 +47,7 @@ public protocol CryoColumnDoubleValue: _AnyCryoColumnValue {
     init (doubleValue: Double)
 }
 
+/// Protocol for types that can be stored in a CloudKIt column as a `String`.
 public protocol CryoColumnStringValue: _AnyCryoColumnValue {
     /// The string value of this instance.
     var stringValue: String { get }
@@ -52,6 +56,7 @@ public protocol CryoColumnStringValue: _AnyCryoColumnValue {
     init (stringValue: String)
 }
 
+/// Protocol for types that can be stored in a CloudKIt column as a `Date`.
 public protocol CryoColumnDateValue: _AnyCryoColumnValue {
     /// The date value of this instance.
     var dateValue: Date { get }
@@ -60,6 +65,7 @@ public protocol CryoColumnDateValue: _AnyCryoColumnValue {
     init (dateValue: Date)
 }
 
+/// Protocol for types that can be stored in a CloudKIt column as `Data`.
 public protocol CryoColumnDataValue: _AnyCryoColumnValue {
     /// The data value of this instance.
     var dataValue: Data { get throws }

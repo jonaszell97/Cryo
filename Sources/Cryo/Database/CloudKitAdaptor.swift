@@ -193,6 +193,41 @@ extension AnyCloudKitAdaptor {
     }
 }
 
+/// Implementation of ``CryoAdaptor`` that persists values in a CloudKit database.
+///
+/// Values stored by this adaptor must conform to the ``CryoModel`` protocol. For every such type,
+/// this adaptor creates a CloudKit table whose name is given by the ``CryoModel/tableName-3pg2z`` property.
+///
+/// A column is created for every model property that is annotated with either ``CryoColumn`` or ``CryoAsset``.
+///
+/// - Note: This adaptor does not support synchronous loading via ``CryoAdaptor/loadSynchronously(with:)-1ser``.
+///
+/// Take the following model definition as an example:
+///
+/// ```swift
+/// struct Message: CryoModel {
+///     @CryoColumn var content: String
+///     @CryoColumn var created: Date
+///     @CryoAsset var attachment
+/// }
+///
+/// try await adaptor.persist(Message(content: "Hello", created: Date.now, attachment: /*...*/),
+///                           with: CryoNamedKey(id: "1", for: Message.self))
+/// try await adaptor.persist(Message(content: "Hi", created: Date.now, attachment: /*...*/),
+///                           with: CryoNamedKey(id: "2", for: Message.self))
+/// try await adaptor.persist(Message(content: "How are you?", created: Date.now, attachment: /*...*/),
+///                           with: CryoNamedKey(id: "3", for: Message.self))
+///
+/// ```
+///
+/// Based on this definition, `CloudKitAdaptor` will create a table in CloudKIt named `Message`
+/// with the following structure:
+///
+/// | ID  | content: `NSString` | created: `NSDate` | attachment: `NSURL` |
+/// | ---- | ---------- | ---------- | -------------- |
+/// | 1   | "Hello"  | YYYY-MM-DD | /... |
+/// | 2   | "Hi"  | YYYY-MM-DD | /... |
+/// | 3   | "How are you?"  | YYYY-MM-DD | /... |
 public final class CloudKitAdaptor {
     /// The configuration.
     let config: CryoConfig

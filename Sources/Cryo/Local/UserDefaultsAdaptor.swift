@@ -1,14 +1,27 @@
 
 import Foundation
 
+/// An implementation of ``CryoAdaptor`` using `UserDefaults` as a storage backend.
+///
+/// This adaptor can natively store values of type `Int`, `Bool`, `Double`, `Float`, `String`, `Date`, `URL`, and `Data`.
+/// All other values will be encoded using a `JSONEncoder` and stored as `Data`.
+///
+/// ```swift
+/// let adaptor = UserDefaultsAdaptor.shared
+/// try await adaptor.persist(3, CryoNamedKey(id: "intValue", for: Int.self))
+/// try await adaptor.persist("Hi there", CryoNamedKey(id: "stringValue", for: String.self))
+/// try await adaptor.persist(Date.now, CryoNamedKey(id: "dateValue", for: Date.self))
+/// ```
 public struct UserDefaultsAdaptor {
     /// The UserDefaults instance.
     let defaults: UserDefaults
     
-    /// Shared instance using the standard UserDefaults.
+    /// Shared instance using `UserDefaults.standard`.
     public static let shared: UserDefaultsAdaptor = UserDefaultsAdaptor(defaults: .standard)
     
-    /// Default initalizer.
+    /// Create a user defaults adaptor.
+    ///
+    /// - Parameter defaults: The defaults instance to use.
     public init(defaults: UserDefaults) {
         self.defaults = defaults
     }

@@ -1,14 +1,27 @@
 
 import Foundation
 
+/// An implementation of ``CryoAdaptor`` using `NSUbiquitousKeyValueStore` as a storage backend.
+///
+/// This adaptor can natively store values of type `Int`, `Bool`, `Double`, `Float`, `String`, `Date`, `URL`, and `Data`.
+/// All other values will be encoded using a `JSONEncoder` and stored as `Data`.
+///
+/// ```swift
+/// let adaptor = UbiquitousKeyValueStoreAdaptor.shared
+/// try await adaptor.persist(3, CryoNamedKey(id: "intValue", for: Int.self))
+/// try await adaptor.persist("Hi there", CryoNamedKey(id: "stringValue", for: String.self))
+/// try await adaptor.persist(Date.now, CryoNamedKey(id: "dateValue", for: Date.self))
+/// ```
 public struct UbiquitousKeyValueStoreAdaptor {
     /// The UserDefaults instance.
     let store: NSUbiquitousKeyValueStore
     
-    /// Shared instance using the default NSUbiquitousKeyValueStore.
+    /// Shared instance using the `NSUbiquitousKeyValueStore.default`.
     public static let shared: UbiquitousKeyValueStoreAdaptor = UbiquitousKeyValueStoreAdaptor(store: .default)
     
-    /// Default initalizer.
+    /// Create a ubiquitous key value adaptor.
+    ///
+    /// - Parameter store: The store instance to use.
     public init(store: NSUbiquitousKeyValueStore = .default) {
         self.store = store
         store.synchronize()
