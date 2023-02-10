@@ -1,6 +1,22 @@
 
 import Foundation
 
+/// An implementation of ``CryoAdaptor`` that persists values as documents.
+///
+/// This adaptor stores values by encoding them using a `JSONEncoder` and writing the resulting `Data` to a file.
+/// Two shared instances of this provider are available. ``DocumentAdaptor/sharedLocal`` stores values in the
+/// a folder named `.cryo` within the App's document directory.
+///
+/// ``DocumentAdaptor/cloud(fileManager:)`` can be used to create an adaptor instance that stores values in
+/// the user's iCloud documents directory. This call will fail if the user is not logged in to iCloud or if iCloud is not available
+/// for some other reason.
+///
+/// ```swift
+/// let adaptor = DocumentAdaptor.sharedLocal
+/// try await adaptor.persist(3, CryoNamedKey(id: "intValue", for: Int.self))
+/// try await adaptor.persist("Hi there", CryoNamedKey(id: "stringValue", for: String.self))
+/// try await adaptor.persist(Date.now, CryoNamedKey(id: "dateValue", for: Date.self))
+/// ```
 public struct DocumentAdaptor {
     /// The URL documents should be saved to.
     let url: URL
@@ -8,7 +24,11 @@ public struct DocumentAdaptor {
     /// The file manager instance to use.
     let fileManager: FileManager
     
-    /// Initialize with a URL.
+    /// Create a document adaptor.
+    ///
+    /// - Parameters:
+    ///   - url: The URL to the directory where data should be stored.
+    ///   - fileManager: The file manager instance to use for file operations.
     public init(url: URL, fileManager: FileManager = .default) {
         self.url = url
         self.fileManager = fileManager
@@ -17,7 +37,10 @@ public struct DocumentAdaptor {
     /// The shared local document adaptor.
     public static let sharedLocal: DocumentAdaptor = .local()
     
-    /// The local document adaptor.
+    /// Create a local document adaptor.
+    ///
+    /// - Parameter fileManager: The file manager instance to use for file operations.
+    /// - Returns: A document adaptor using the local documents URL.
     public static func local(fileManager: FileManager = .default) -> DocumentAdaptor {
         let documentDirectory = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true)[0]
         
@@ -27,7 +50,10 @@ public struct DocumentAdaptor {
         return DocumentAdaptor(url: url, fileManager: fileManager)
     }
     
-    /// The iCloud document adaptor.
+    /// Create an iCloud based document adaptor.
+    ///
+    /// - Parameter fileManager: The file manager instance to use for file operations.
+    /// - Returns: A document adaptor using the iCloud documents URL, or `nil` if iCloud is not available.
     public static func cloud(fileManager: FileManager = .default) async -> DocumentAdaptor? {
         guard FileManager.default.ubiquityIdentityToken != nil else {
             return nil

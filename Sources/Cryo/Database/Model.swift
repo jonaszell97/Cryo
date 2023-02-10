@@ -2,22 +2,70 @@
 import Foundation
 
 /// Protocol for types that can be persisted using CloudKit.
+///
+/// If you want to persist a type using ``CloudKitAdaptor``, you need to implement a
+/// conformance to this protocol. `CloudKitAdaptor` will persist all of the type's properties
+/// that are annotated with either the ``CryoColumn`` or the ``CryoAsset`` property wrappers.
+///
+/// Each such property will be assigned a column in the database table.
+///
+/// Take the following model definition as an example:
+///
+/// ```swift
+/// struct Message: CryoModel {
+///     @CryoColumn var content: String
+///     @CryoColumn var created: Date
+///     @CryoAsset var attachment
+/// }
+///
+/// try await adaptor.persist(Message(content: "Hello", created: Date.now, attachment: /*...*/),
+///                           with: CryoNamedKey(id: "1", for: Message.self))
+/// try await adaptor.persist(Message(content: "Hi", created: Date.now, attachment: /*...*/),
+///                           with: CryoNamedKey(id: "2", for: Message.self))
+/// try await adaptor.persist(Message(content: "How are you?", created: Date.now, attachment: /*...*/),
+///                           with: CryoNamedKey(id: "3", for: Message.self))
+///
+/// ```
+///
+/// Based on this definition, `CloudKitAdaptor` will create a table in CloudKIt named `Message`
+/// with the following structure:
+///
+/// | ID  | content: `NSString` | created: `NSDate` | attachment: `NSURL` |
+/// | ---- | ---------- | ---------- | -------------- |
+/// | 1   | "Hello"  | YYYY-MM-DD | /... |
+/// | 2   | "Hi"  | YYYY-MM-DD | /... |
+/// | 3   | "How are you?"  | YYYY-MM-DD | /... |
 public protocol CryoModel: Codable {
-    /// The name for the table representing this model.
+    /// The name of the table representing this model.
+    ///
+    /// By default, the type name is used as the table name.
     static var tableName: String { get }
 }
 
 extension CryoModel {
-    /// The name for the table representing this model.
+    /// The name of the table representing this model.
     public static var tableName: String { "\(Self.self)" }
 }
 
-/// Property wrapper for columns in a CryoModel.
+/// Property wrapper for columns in a ``CryoModel``.
+///
+/// Each property that is annotated as a `CryoColumn` will receive a column in the database table
+/// of the containing ``CryoModel``. The column name is equal to the name of the property.
+///
+/// This property wrapper supports values of type `Int`, `Bool`, `Double`, `Float`, `String`,
+/// `Date`, `URL`, and `Data`.
+///
+/// ```swift
+/// struct Message: CryoModel {
+///     @CryoColumn var content: String
+///     @CryoColumn var created: Date
+/// }
+/// ```
 @propertyWrapper public struct CryoColumn<Value: _AnyCryoColumnValue> {
     /// The wrapped, persistable value.
     public var wrappedValue: Value
     
-    /// Default initializer.
+    /// Create a column wrapper.
     public init(wrappedValue: Value) {
         self.wrappedValue = wrappedValue
     }
@@ -35,12 +83,19 @@ extension CryoColumn: Codable {
     }
 }
 
-/// Property wrapper for assets in a CryoModel.
+/// Property wrapper for assets in a ``CryoModel``.
+///
+/// Each property that is annotated as a `CryoAsset` will receive a column in the database table
+/// of the containing ``CryoModel``. The column name is equal to the name of the property.
+///
+/// When persisting a model with a stored `CryoAsset`, the contents of the file at the ``CryoAsset/wrappedValue``
+/// URL will be uploaded as a CloudKit asset. For values fetched from CloudKit, this URL will point to
+/// the local asset file created by CloudKit.
 @propertyWrapper public struct CryoAsset {
-    /// The wrapped, persistable value.
+    /// The URL of the asset.
     public var wrappedValue: URL
     
-    /// Default initializer.
+    /// Create an asset wrapper.
     public init(wrappedValue: URL) {
         self.wrappedValue = wrappedValue
     }
