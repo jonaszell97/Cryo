@@ -115,7 +115,18 @@ extension CryoAsset: Codable {
 
 // MARK: Model reflection
 
-internal typealias CryoSchema = [String: (CryoColumnType, (any CryoModel) -> _AnyCryoColumnValue)]
+internal struct CryoSchemaColumn {
+    /// The name of the column.
+    let columnName: String
+    
+    /// The type of the column.
+    let type: CryoColumnType
+    
+    /// Function to extract the value of this column from a model value.
+    let getValue: (any CryoModel) -> _AnyCryoColumnValue
+}
+
+internal typealias CryoSchema = [CryoSchemaColumn]
 
 internal extension CryoModel {
     static var schema: CryoSchema {
@@ -179,7 +190,7 @@ internal extension CryoModel {
                 return wrappedValue as! _AnyCryoColumnValue
             }
             
-            schema[name] = (columnType, extractValue)
+            schema.append(.init(columnName: name, type: columnType, getValue: extractValue))
         }
         
         return schema

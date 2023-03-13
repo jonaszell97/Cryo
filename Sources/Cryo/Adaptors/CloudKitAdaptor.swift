@@ -65,9 +65,8 @@ extension AnyCloudKitAdaptor {
         let record = CKRecord(recordType: modelType.tableName, recordID: id)
         let schema = self.schema(for: modelType)
         
-        for (key, details) in schema {
-            let (valueType, extractValue) = details
-            record[key] = try self.nsObject(from: extractValue(model), valueType: valueType)
+        for columnDetails in schema {
+            record[columnDetails.columnName] = try self.nsObject(from: columnDetails.getValue(model), valueType: columnDetails.type)
         }
         
         try await self.save(record: record)
@@ -87,16 +86,15 @@ extension AnyCloudKitAdaptor {
         let schema = self.schema(for: modelType)
         
         var data = [String: _AnyCryoColumnValue]()
-        for (key, details) in schema {
-            let (valueType, _) = details
+        for columnDetails in schema {
             guard
-                let object = record[key],
-                let value = self.decodeValue(from: object, as: valueType)
+                let object = record[columnDetails.columnName],
+                let value = self.decodeValue(from: object, as: columnDetails.type)
             else {
                 continue
             }
             
-            data[key] = value
+            data[columnDetails.columnName] = value
         }
         
         return try Key.Value(from: CryoModelDecoder(data: data))
@@ -118,16 +116,15 @@ extension AnyCloudKitAdaptor {
             var batch = [Key.Value]()
             for record in records {
                 var data = [String: _AnyCryoColumnValue]()
-                for (key, details) in schema {
-                    let (valueType, _) = details
+                for columnDetails in schema {
                     guard
-                        let object = record[key],
-                        let value = self.decodeValue(from: object, as: valueType)
+                        let object = record[columnDetails.columnName],
+                        let value = self.decodeValue(from: object, as: columnDetails.type)
                     else {
                         continue
                     }
                     
-                    data[key] = value
+                    data[columnDetails.columnName] = value
                 }
                 
                 let nextValue = try Key.Value(from: CryoModelDecoder(data: data))

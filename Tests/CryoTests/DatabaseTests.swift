@@ -62,7 +62,7 @@ final class CryoDatabaseTests: XCTestCase {
         let value = TestModel(x: 123, y: "Hello there", z: .a, w: assetUrl)
         let value2 = TestModel(x: 3291, y: "Hello therexxx", z: .c, w: assetUrl)
         
-        XCTAssertEqual(Set(TestModel.schema.keys), ["x", "y", "z", "w"])
+        XCTAssertEqual(TestModel.schema.map { $0.columnName }, ["x", "y", "z", "w"])
         
         do {
             let key = AnyKey(id: "test-123", for: TestModel.self)
