@@ -34,33 +34,6 @@ extension AnyCloudKitAdaptor {
         try await self.delete(tableName: model.tableName)
     }
     
-    /// Fetch a record with the given id.
-    func fetchAll(tableName: String, predicate: NSPredicate, limit: Int) async throws -> [CKRecord]? {
-        var records = [CKRecord]()
-        try await self.fetchAllBatched(tableName: tableName, predicate: predicate) {
-            records.append(contentsOf: $0)
-            return limit == 0 || records.count < limit
-        }
-        
-        return records
-    }
-}
-
-extension AnyCloudKitAdaptor {
-    /// Find or create a schema.
-    func schema<Model: CryoModel>(for model: Model.Type) -> CryoSchema {
-        let schemaKey = ObjectIdentifier(Model.self)
-        if let schema = self.schemas[schemaKey] {
-            return schema
-        }
-        
-        let schema = Model.schema
-        self.schemas[schemaKey] = schema
-        
-        return schema
-    }
-    
-    /// Persist the given value for a key.
     public func persist<Key: CryoKey>(_ value: Key.Value?, for key: Key) async throws {
         let id = CKRecord.ID(recordName: key.id)
         guard let value else {
@@ -83,7 +56,6 @@ extension AnyCloudKitAdaptor {
         try await self.save(record: record)
     }
     
-    /// - returns: The value previously persisted for `key`, or nil if none exists.
     public func load<Key: CryoKey>(with key: Key) async throws -> Key.Value? {
         let id = CKRecord.ID(recordName: key.id)
         guard let record = try await self.fetch(recordWithId: id) else {
@@ -111,9 +83,31 @@ extension AnyCloudKitAdaptor {
         return try Key.Value(from: CryoModelDecoder(data: data))
     }
     
-    /// Load all values of the given Key type. Not all adaptors support this operation.
     public func loadAllBatched<Key: CryoKey>(with key: Key.Type, receiveBatch: ([Key.Value]) -> Bool) async throws where Key.Value: CryoModel {
         try await self._loadAllBatched(with: key, predicate: NSPredicate(value: true), receiveBatch: receiveBatch)
+    }
+    
+    func fetchAll(tableName: String, predicate: NSPredicate, limit: Int) async throws -> [CKRecord]? {
+        var records = [CKRecord]()
+        try await self.fetchAllBatched(tableName: tableName, predicate: predicate) {
+            records.append(contentsOf: $0)
+            return limit == 0 || records.count < limit
+        }
+        
+        return records
+    }
+    
+    /// Find or create a schema.
+    func schema<Model: CryoModel>(for model: Model.Type) -> CryoSchema {
+        let schemaKey = ObjectIdentifier(Model.self)
+        if let schema = self.schemas[schemaKey] {
+            return schema
+        }
+        
+        let schema = Model.schema
+        self.schemas[schemaKey] = schema
+        
+        return schema
     }
     
     /// Load all values of the given Key type. Not all adaptors support this operation.
@@ -202,7 +196,7 @@ extension AnyCloudKitAdaptor {
 ///
 /// A column is created for every model property that is annotated with either ``CryoColumn`` or ``CryoAsset``.
 ///
-/// - Note: This adaptor does not support synchronous loading via ``CryoAdaptor/loadSynchronously(with:)-1ser``.
+/// - Note: This adaptor does not support synchronous loading via ``CryoSyncronousAdaptor/loadSynchronously(with:)``.
 ///
 /// Take the following model definition as an example:
 ///
@@ -241,20 +235,20 @@ public final class CloudKitAdaptor {
     let database: CKDatabase
     
     /// The unique iCloud record ID for the user.
-    let iCloudRecordID: String
+    var iCloudRecordID: String?
     
     /// Cache of schema data.
     var schemas: [ObjectIdentifier: CryoSchema] = [:]
     
     /// Default initializer.
-    public init?(config: CryoConfig, containerIdentifier: String, database: KeyPath<CKContainer, CKDatabase>) async {
+    public init(config: CryoConfig, containerIdentifier: String, database: KeyPath<CKContainer, CKDatabase>) async {
         self.config = config
         
         let container = CKContainer(identifier: containerIdentifier)
         self.container = container
         self.database = container[keyPath: database]
         
-        let iCloudRecordID: String? = await withCheckedContinuation { continuation in
+        self.iCloudRecordID = await withCheckedContinuation { continuation in
             container.fetchUserRecordID(completionHandler: { (recordID, error) in
                 if let error {
                     config.log?(.fault, "error fetching user record id: \(error.localizedDescription)")
@@ -263,18 +257,36 @@ public final class CloudKitAdaptor {
                 continuation.resume(returning: recordID?.recordName)
             })
         }
-        
-        guard let iCloudRecordID else {
-            return nil
-        }
-        
-        self.iCloudRecordID = iCloudRecordID
     }
 }
 
 extension CloudKitAdaptor: AnyCloudKitAdaptor {
+    /// Check for availability of the database.
+    func ensureAvailability() async throws {
+        guard self.iCloudRecordID == nil else {
+            return
+        }
+        
+        self.iCloudRecordID = await withCheckedContinuation { continuation in
+            container.fetchUserRecordID(completionHandler: { (recordID, error) in
+                if let error {
+                    self.config.log?(.fault, "error fetching user record id: \(error.localizedDescription)")
+                }
+                
+                continuation.resume(returning: recordID?.recordName)
+            })
+        }
+        
+        guard self.iCloudRecordID == nil else {
+            return
+        }
+        
+        throw CryoError.iCloudNotAvailable
+    }
+    
     /// Delete a record with the given id.
     func delete(recordWithId id: CKRecord.ID) async throws {
+        try await ensureAvailability()
         return try await withCheckedThrowingContinuation { continuation in
             database.delete(withRecordID: id) { _, error in
                 if let error {
@@ -288,6 +300,8 @@ extension CloudKitAdaptor: AnyCloudKitAdaptor {
     }
     
     func delete(tableName: String) async throws {
+        try await ensureAvailability()
+        
         var recordIDs = [CKRecord.ID]()
         try await self.fetchAllBatched(tableName: tableName, predicate: NSPredicate(value: true)) { records in
             recordIDs.append(contentsOf: records.map { $0.recordID })
@@ -303,6 +317,7 @@ extension CloudKitAdaptor: AnyCloudKitAdaptor {
     
     /// Save the given record.
     func save(record: CKRecord) async throws {
+        try await ensureAvailability()
         return try await withCheckedThrowingContinuation { continuation in
             database.save(record) { _, error in
                 if let error {
@@ -317,6 +332,7 @@ extension CloudKitAdaptor: AnyCloudKitAdaptor {
     
     /// Fetch a record with the given id.
     func fetch(recordWithId id: CKRecord.ID) async throws -> CKRecord? {
+        try await ensureAvailability()
         return try await withCheckedThrowingContinuation { continuation in
             database.fetch(withRecordID: id) { record, error in
                 if let error {
@@ -329,13 +345,10 @@ extension CloudKitAdaptor: AnyCloudKitAdaptor {
         }
     }
     
-    /// Load all values of the given Key type. Not all adaptors support this operation.
-    public func loadAllBatched<Key: CryoKey>(with key: Key.Type, predicate: NSPredicate, receiveBatch: ([Key.Value]) -> Bool) async throws where Key.Value: CryoModel {
-        try await self._loadAllBatched(with: key, predicate: predicate, receiveBatch: receiveBatch)
-    }
-    
     /// Fetch a record with the given id.
     func fetchAllBatched(tableName: String, predicate: NSPredicate, receiveBatch: ([CKRecord]) throws -> Bool) async throws {
+        try await ensureAvailability()
+        
         let query = CKQuery(recordType: tableName, predicate: predicate)
         
         var operation: CKQueryOperation? = CKQueryOperation(query: query)
@@ -372,8 +385,14 @@ extension CloudKitAdaptor: AnyCloudKitAdaptor {
             }
         }
     }
+}
+
+public extension CloudKitAdaptor {
+    func loadAllBatched<Key: CryoKey>(with key: Key.Type, predicate: NSPredicate, receiveBatch: ([Key.Value]) -> Bool) async throws where Key.Value: CryoModel {
+        try await self._loadAllBatched(with: key, predicate: predicate, receiveBatch: receiveBatch)
+    }
     
-    public func removeAll() async throws {
+    func removeAll() async throws {
         for zone in try await database.allRecordZones() {
             try await database.deleteRecordZone(withID: zone.zoneID)
         }
