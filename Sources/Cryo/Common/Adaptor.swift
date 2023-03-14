@@ -95,6 +95,7 @@ public protocol CryoIndexingAdaptor: CryoAdaptor {
     /// - Parameter key: The Key type of which all values should be loaded.
     /// - Returns: All values of the given key, or `nil` if the adaptor does not support this operation.
     func loadAll<Key: CryoKey>(with key: Key.Type) async throws -> [Key.Value]?
+        where Key.Value: CryoModel
     
     /// Load all values of the given `Key` type in batches. Not all adaptors support this operation.
     ///
@@ -104,16 +105,18 @@ public protocol CryoIndexingAdaptor: CryoAdaptor {
     ///   returns `false`, no more batches will be fetched.
     /// - Returns: `true` if batched loading is supported.
     func loadAllBatched<Key: CryoKey>(with key: Key.Type, receiveBatch: ([Key.Value]) -> Bool) async throws
+        where Key.Value: CryoModel
     
     /// Remove the values for all keys associated with this adaptor.
     ///
     /// - Warning: This is a destructive operation. Be sure to check whether you really want
     /// to delete all data before calling it.
     func removeAll<Key: CryoKey>(with key: Key.Type) async throws
+        where Key.Value: CryoModel
 }
 
 extension CryoIndexingAdaptor {
-    public func loadAll<Key: CryoKey>(with key: Key.Type) async throws -> [Key.Value]? {
+    public func loadAll<Key: CryoKey>(with key: Key.Type) async throws -> [Key.Value]? where Key.Value: CryoModel {
         var values = [Key.Value]()
         try await self.loadAllBatched(with: Key.self) { nextBatch in
             values.append(contentsOf: nextBatch)
@@ -122,4 +125,18 @@ extension CryoIndexingAdaptor {
         
         return values
     }
+}
+
+public protocol CryoObservableAdaptor {
+    /// The change data type.
+    associatedtype ChangeData = Void
+    
+    /// The change observer identifier type.
+    associatedtype ObserverID = Void
+    
+    /// Install a listener for external changes.
+    func observeChanges(_ callback: @escaping (ChangeData) -> Void) -> ObserverID
+    
+    /// Remove a change observer.
+    func removeObserver(withId id: ObserverID)
 }

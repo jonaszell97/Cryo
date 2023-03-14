@@ -99,12 +99,24 @@ extension UbiquitousKeyValueStoreAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
     }
 }
 
+public struct UbiquitousKeyValueStoreChangeData {
+    enum ChangeReason {
+        case unknown, dataChanged, initalSync, quotaViolation, accountChange
+    }
+    
+    /// The change reason.
+    var reason: ChangeReason = .unknown
+    
+    /// The changed keys.
+    var changedKeys: [String]? = nil
+}
+
 fileprivate final class UbiquitousKeyValueStoreObserver: NSObject {
     /// The user callback.
-    let callback: () -> Void
+    let callback: (UbiquitousKeyValueStoreChangeData) -> Void
     
     /// Create an observer.
-    init(callback: @escaping () -> Void) {
+    init(callback: @escaping (UbiquitousKeyValueStoreChangeData) -> Void) {
         self.callback = callback
     }
     
@@ -122,13 +134,33 @@ fileprivate final class UbiquitousKeyValueStoreObserver: NSObject {
     }
     
     @objc private func ubiquitousKeyValueStoreDidChange(_ notification: Notification) {
-        callback()
+        var data = UbiquitousKeyValueStoreChangeData()
+        if let userInfo = notification.userInfo {
+            if let reasonForChange = userInfo[NSUbiquitousKeyValueStoreChangeReasonKey] as? Int {
+                switch reasonForChange {
+                case NSUbiquitousKeyValueStoreServerChange:
+                    data.reason = .dataChanged
+                case NSUbiquitousKeyValueStoreInitialSyncChange:
+                    data.reason = .initalSync
+                case NSUbiquitousKeyValueStoreQuotaViolationChange:
+                    data.reason = .quotaViolation
+                case NSUbiquitousKeyValueStoreAccountChange:
+                    data.reason = .accountChange
+                default:
+                    data.reason = .unknown
+                }
+            }
+            
+            data.changedKeys = userInfo[NSUbiquitousKeyValueStoreChangedKeysKey] as? [String]
+        }
+        
+        callback(data)
     }
 }
 
-extension UbiquitousKeyValueStoreAdaptor {
+extension UbiquitousKeyValueStoreAdaptor: CryoObservableAdaptor {
     /// Install a listener for external changes.
-    public func observeChanges(_ callback: @escaping () -> Void) -> ObjectIdentifier {
+    public func observeChanges(_ callback: @escaping (UbiquitousKeyValueStoreChangeData) -> Void) -> ObjectIdentifier {
         let observer = UbiquitousKeyValueStoreObserver(callback: callback)
         observer.register()
         

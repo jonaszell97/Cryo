@@ -358,11 +358,8 @@ extension SQLiteAdaptor: CryoAdaptor, CryoSynchronousAdaptor, CryoIndexingAdapto
         return try model.init(from: CryoModelDecoder(data: data)) as? Key.Value
     }
     
-    public func loadAll<Key: CryoKey>(with key: Key.Type) async throws -> [Key.Value]? {
-        guard let model = Key.Value.self as? CryoModel.Type else {
-            throw CryoError.cannotPersistValue(valueType: Key.Value.self, adaptorType: SQLiteAdaptor.self)
-        }
-        
+    public func loadAll<Key: CryoKey>(with key: Key.Type) async throws -> [Key.Value]? where Key.Value: CryoModel {
+        let model = Key.Value.self
         let schema = try self.schema(for: model)
         let query = try self.createSelectAllQuery(for: model)
         
@@ -375,17 +372,13 @@ extension SQLiteAdaptor: CryoAdaptor, CryoSynchronousAdaptor, CryoIndexingAdapto
                 data[schema[i].columnName] = row[i]
             }
             
-            guard let value = try model.init(from: CryoModelDecoder(data: data)) as? Key.Value else {
-                return nil
-            }
-            
-            values.append(value)
+            values.append(try .init(from: CryoModelDecoder(data: data)))
         }
         
         return values
     }
     
-    public func loadAllBatched<Key: CryoKey>(with key: Key.Type, receiveBatch: ([Key.Value]) -> Bool) async throws {
+    public func loadAllBatched<Key: CryoKey>(with key: Key.Type, receiveBatch: ([Key.Value]) -> Bool) async throws where Key.Value: CryoModel {
         _ = receiveBatch(try await self.loadAll(with: key) ?? [])
     }
     
@@ -404,12 +397,8 @@ extension SQLiteAdaptor: CryoAdaptor, CryoSynchronousAdaptor, CryoIndexingAdapto
         try FileManager.default.removeItem(at: self.databaseUrl)
     }
     
-    public func removeAll<Key: CryoKey>(with key: Key.Type) async throws {
-        guard let model = Key.Value.self as? CryoModel.Type else {
-            throw CryoError.cannotPersistValue(valueType: Key.Value.self, adaptorType: SQLiteAdaptor.self)
-        }
-        
-        let query = try createDeleteAllQuery(for: model)
+    public func removeAll<Key: CryoKey>(with key: Key.Type) async throws where Key.Value: CryoModel {
+        let query = try createDeleteAllQuery(for: Key.Value.self)
         try db.query(query, bindings: [])
     }
 }

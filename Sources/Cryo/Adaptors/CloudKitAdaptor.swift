@@ -112,18 +112,14 @@ extension AnyCloudKitAdaptor {
     }
     
     /// Load all values of the given Key type. Not all adaptors support this operation.
-    public func loadAllBatched<Key: CryoKey>(with key: Key.Type, receiveBatch: ([Key.Value]) -> Bool) async throws {
+    public func loadAllBatched<Key: CryoKey>(with key: Key.Type, receiveBatch: ([Key.Value]) -> Bool) async throws where Key.Value: CryoModel {
         try await self._loadAllBatched(with: key, predicate: NSPredicate(value: true), receiveBatch: receiveBatch)
     }
     
     /// Load all values of the given Key type. Not all adaptors support this operation.
-    func _loadAllBatched<Key: CryoKey>(with key: Key.Type, predicate: NSPredicate, receiveBatch: ([Key.Value]) -> Bool) async throws {
-        guard let modelType = Key.Value.self as? CryoModel.Type else {
-            return
-        }
-        
-        let schema = self.schema(for: modelType)
-        try await self.fetchAllBatched(tableName: modelType.tableName, predicate: predicate) { records in
+    func _loadAllBatched<Key: CryoKey>(with key: Key.Type, predicate: NSPredicate, receiveBatch: ([Key.Value]) -> Bool) async throws where Key.Value: CryoModel {
+        let schema = self.schema(for: Key.Value.self)
+        try await self.fetchAllBatched(tableName: Key.Value.tableName, predicate: predicate) { records in
             var batch = [Key.Value]()
             for record in records {
                 var data = [String: _AnyCryoColumnValue]()
@@ -334,7 +330,7 @@ extension CloudKitAdaptor: AnyCloudKitAdaptor {
     }
     
     /// Load all values of the given Key type. Not all adaptors support this operation.
-    public func loadAllBatched<Key: CryoKey>(with key: Key.Type, predicate: NSPredicate, receiveBatch: ([Key.Value]) -> Bool) async throws {
+    public func loadAllBatched<Key: CryoKey>(with key: Key.Type, predicate: NSPredicate, receiveBatch: ([Key.Value]) -> Bool) async throws where Key.Value: CryoModel {
         try await self._loadAllBatched(with: key, predicate: predicate, receiveBatch: receiveBatch)
     }
     
