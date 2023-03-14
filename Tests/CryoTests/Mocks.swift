@@ -21,6 +21,9 @@ extension MockCloudKitAdaptor: AnyCloudKitAdaptor {
         database[id] = nil
     }
     
+    func delete(tableName: String) async throws {
+    }
+    
     /// Save the given record.
     func save(record: CKRecord) async throws {
         database[record.recordID] = record

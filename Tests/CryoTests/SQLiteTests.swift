@@ -89,6 +89,11 @@ INSERT INTO TestModel(_cryo_key,x,y,z) VALUES (?,?,?,?);
             let allValues = try await adaptor.loadAll(with: AnyKey<TestModel>.self)
             XCTAssertNotNil(allValues)
             XCTAssertEqual(Set(allValues!), Set([value, value2]))
+            
+            try await adaptor.removeAll(with: AnyKey<TestModel>.self)
+            
+            let allValues2 = try await adaptor.loadAll(with: AnyKey<TestModel>.self)
+            XCTAssertEqual(allValues2?.count, 0)
         }
         catch {
             XCTAssert(false, error.localizedDescription)

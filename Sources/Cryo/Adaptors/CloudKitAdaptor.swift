@@ -2,9 +2,12 @@
 import CloudKit
 import Foundation
 
-internal protocol AnyCloudKitAdaptor: AnyObject, CryoAdaptor {
+internal protocol AnyCloudKitAdaptor: AnyObject, CryoIndexingAdaptor {
     /// Delete a record with the given id.
     func delete(recordWithId id: CKRecord.ID) async throws
+    
+    /// Delete a table.
+    func delete(tableName: String) async throws
     
     /// Save the given record.
     func save(record: CKRecord) async throws
@@ -23,6 +26,14 @@ internal protocol AnyCloudKitAdaptor: AnyObject, CryoAdaptor {
 }
 
 extension AnyCloudKitAdaptor {
+    public func removeAll<Key: CryoKey>(with key: Key.Type) async throws {
+        guard let model = key as? CryoModel.Type else {
+            throw CryoError.cannotPersistValue(valueType: Key.Value.self, adaptorType: CloudKitAdaptor.self)
+        }
+        
+        try await self.delete(tableName: model.tableName)
+    }
+    
     /// Fetch a record with the given id.
     func fetchAll(tableName: String, predicate: NSPredicate, limit: Int) async throws -> [CKRecord]? {
         var records = [CKRecord]()
@@ -101,14 +112,14 @@ extension AnyCloudKitAdaptor {
     }
     
     /// Load all values of the given Key type. Not all adaptors support this operation.
-    public func loadAllBatched<Key: CryoKey>(with key: Key.Type, receiveBatch: ([Key.Value]) -> Bool) async throws -> Bool {
+    public func loadAllBatched<Key: CryoKey>(with key: Key.Type, receiveBatch: ([Key.Value]) -> Bool) async throws {
         try await self._loadAllBatched(with: key, predicate: NSPredicate(value: true), receiveBatch: receiveBatch)
     }
     
     /// Load all values of the given Key type. Not all adaptors support this operation.
-    func _loadAllBatched<Key: CryoKey>(with key: Key.Type, predicate: NSPredicate, receiveBatch: ([Key.Value]) -> Bool) async throws -> Bool {
+    func _loadAllBatched<Key: CryoKey>(with key: Key.Type, predicate: NSPredicate, receiveBatch: ([Key.Value]) -> Bool) async throws {
         guard let modelType = Key.Value.self as? CryoModel.Type else {
-            return false
+            return
         }
         
         let schema = self.schema(for: modelType)
@@ -133,8 +144,6 @@ extension AnyCloudKitAdaptor {
             
             return receiveBatch(batch)
         }
-        
-        return true
     }
     
     /// Initialize from an NSObject representation.
@@ -282,6 +291,20 @@ extension CloudKitAdaptor: AnyCloudKitAdaptor {
         }
     }
     
+    func delete(tableName: String) async throws {
+        var recordIDs = [CKRecord.ID]()
+        try await self.fetchAllBatched(tableName: tableName, predicate: NSPredicate(value: true)) { records in
+            recordIDs.append(contentsOf: records.map { $0.recordID })
+            return true
+        }
+        
+        return try await withCheckedThrowingContinuation { continuation in
+            database.modifyRecords(saving: [], deleting: recordIDs) { _ in
+                continuation.resume()
+            }
+        }
+    }
+    
     /// Save the given record.
     func save(record: CKRecord) async throws {
         return try await withCheckedThrowingContinuation { continuation in
@@ -311,7 +334,7 @@ extension CloudKitAdaptor: AnyCloudKitAdaptor {
     }
     
     /// Load all values of the given Key type. Not all adaptors support this operation.
-    public func loadAllBatched<Key: CryoKey>(with key: Key.Type, predicate: NSPredicate, receiveBatch: ([Key.Value]) -> Bool) async throws -> Bool {
+    public func loadAllBatched<Key: CryoKey>(with key: Key.Type, predicate: NSPredicate, receiveBatch: ([Key.Value]) -> Bool) async throws {
         try await self._loadAllBatched(with: key, predicate: predicate, receiveBatch: receiveBatch)
     }
     

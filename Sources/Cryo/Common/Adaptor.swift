@@ -1,8 +1,6 @@
 
 import Foundation
 
-// MARK: CryoAdaptor
-
 /// Provides a unified interface for heterogeneous persistence backends.
 ///
 /// `CryoAdaptor` implementations are responsible for persisting and loading data in `Cryo`.
@@ -32,21 +30,6 @@ public protocol CryoAdaptor {
     /// - Parameter key: The key that uniquely identifies the persisted value.
     /// - Returns: The value previously persisted for `key`, or nil if none exists.
     func load<Key: CryoKey>(with key: Key) async throws -> Key.Value?
-    
-    /// Load all values of the given `Key` type. Not all adaptors support this operation.
-    ///
-    /// - Parameter key: The Key type of which all values should be loaded.
-    /// - Returns: All values of the given key, or `nil` if the adaptor does not support this operation.
-    func loadAll<Key: CryoKey>(with key: Key.Type) async throws -> [Key.Value]?
-    
-    /// Load all values of the given `Key` type in batches. Not all adaptors support this operation.
-    ///
-    /// - Parameters:
-    ///   - key: The Key type of which all values should be loaded.
-    ///   - receiveBatch: Closure that is invoked whenever a new batch of values is fetched. If this closure
-    ///   returns `false`, no more batches will be fetched.
-    /// - Returns: `true` if batched loading is supported.
-    func loadAllBatched<Key: CryoKey>(with key: Key.Type, receiveBatch: ([Key.Value]) -> Bool) async throws -> Bool
     
     /// Remove the given value for a key.
     ///
@@ -89,24 +72,6 @@ extension CryoAdaptor {
         try await persist(nil, for: key)
     }
     
-    public func loadAll<Key: CryoKey>(with key: Key.Type) async throws -> [Key.Value]? {
-        var values = [Key.Value]()
-        
-        let isSupported = try await self.loadAllBatched(with: Key.self) { nextBatch in
-            values.append(contentsOf: nextBatch)
-            return true
-        }
-        
-        guard isSupported else { return nil }
-        return values
-    }
-    
-    public func loadAllBatched<Key: CryoKey>(with key: Key.Type, receiveBatch: ([Key.Value]) -> Bool)
-        async throws -> Bool
-    {
-        false
-    }
-    
     public func synchronize() { }
 }
 
@@ -121,5 +86,40 @@ public protocol CryoSynchronousAdaptor: CryoAdaptor {
 extension CryoSynchronousAdaptor {
     public func load<Key: CryoKey>(with key: Key) async throws -> Key.Value? {
         try self.loadSynchronously(with: key)
+    }
+}
+
+public protocol CryoIndexingAdaptor: CryoAdaptor {
+    /// Load all values of the given `Key` type. Not all adaptors support this operation.
+    ///
+    /// - Parameter key: The Key type of which all values should be loaded.
+    /// - Returns: All values of the given key, or `nil` if the adaptor does not support this operation.
+    func loadAll<Key: CryoKey>(with key: Key.Type) async throws -> [Key.Value]?
+    
+    /// Load all values of the given `Key` type in batches. Not all adaptors support this operation.
+    ///
+    /// - Parameters:
+    ///   - key: The Key type of which all values should be loaded.
+    ///   - receiveBatch: Closure that is invoked whenever a new batch of values is fetched. If this closure
+    ///   returns `false`, no more batches will be fetched.
+    /// - Returns: `true` if batched loading is supported.
+    func loadAllBatched<Key: CryoKey>(with key: Key.Type, receiveBatch: ([Key.Value]) -> Bool) async throws
+    
+    /// Remove the values for all keys associated with this adaptor.
+    ///
+    /// - Warning: This is a destructive operation. Be sure to check whether you really want
+    /// to delete all data before calling it.
+    func removeAll<Key: CryoKey>(with key: Key.Type) async throws
+}
+
+extension CryoIndexingAdaptor {
+    public func loadAll<Key: CryoKey>(with key: Key.Type) async throws -> [Key.Value]? {
+        var values = [Key.Value]()
+        try await self.loadAllBatched(with: Key.self) { nextBatch in
+            values.append(contentsOf: nextBatch)
+            return true
+        }
+        
+        return values
     }
 }

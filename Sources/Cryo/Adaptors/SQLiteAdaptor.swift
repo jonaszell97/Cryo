@@ -266,6 +266,11 @@ INSERT INTO \(Model.tableName)(_cryo_key,\(columns.joined(separator: ","))) VALU
         [key.id]
     }
     
+    /// Build the query string for a deletion query.
+    func createDeleteAllQuery<Model: CryoModel>(for key: Model.Type) throws -> String {
+        "DELETE FROM \(Model.tableName);"
+    }
+    
     // MARK: Update
     
     /// Build the query string for an update query.
@@ -306,7 +311,7 @@ INSERT INTO \(Model.tableName)(_cryo_key,\(columns.joined(separator: ","))) VALU
     }
 }
 
-extension SQLiteAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
+extension SQLiteAdaptor: CryoAdaptor, CryoSynchronousAdaptor, CryoIndexingAdaptor {
     public func persist<Key: CryoKey>(_ value: Key.Value?, for key: Key) async throws {
         guard let model = value as? CryoModel else {
             throw CryoError.cannotPersistValue(valueType: Key.Value.self, adaptorType: SQLiteAdaptor.self)
@@ -380,6 +385,10 @@ extension SQLiteAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
         return values
     }
     
+    public func loadAllBatched<Key: CryoKey>(with key: Key.Type, receiveBatch: ([Key.Value]) -> Bool) async throws {
+        _ = receiveBatch(try await self.loadAll(with: key) ?? [])
+    }
+    
     public func remove<Key: CryoKey>(with key: Key) async throws {
         guard let model = Key.Value.self as? CryoModel.Type else {
             throw CryoError.cannotPersistValue(valueType: Key.Value.self, adaptorType: SQLiteAdaptor.self)
@@ -393,5 +402,14 @@ extension SQLiteAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
     
     public func removeAll() async throws {
         try FileManager.default.removeItem(at: self.databaseUrl)
+    }
+    
+    public func removeAll<Key: CryoKey>(with key: Key.Type) async throws {
+        guard let model = Key.Value.self as? CryoModel.Type else {
+            throw CryoError.cannotPersistValue(valueType: Key.Value.self, adaptorType: SQLiteAdaptor.self)
+        }
+        
+        let query = try createDeleteAllQuery(for: model)
+        try db.query(query, bindings: [])
     }
 }
