@@ -33,14 +33,6 @@ public protocol CryoAdaptor {
     /// - Returns: The value previously persisted for `key`, or nil if none exists.
     func load<Key: CryoKey>(with key: Key) async throws -> Key.Value?
     
-    /// A synchronous version of ``CryoAdaptor/load(with:)-25w6c``.
-    ///
-    /// - Note: Not all adaptors support synchronous loading, so you should only call this method if you are sure
-    /// the adaptor supports it.
-    /// - Parameter key: The key that uniquely identifies the persisted value.
-    /// - Returns: The value previously persisted for `key`, or nil if none exists.
-    func loadSynchronously<Key: CryoKey>(with key: Key) throws -> Key.Value?
-    
     /// Load all values of the given `Key` type. Not all adaptors support this operation.
     ///
     /// - Parameter key: The Key type of which all values should be loaded.
@@ -97,14 +89,6 @@ extension CryoAdaptor {
         try await persist(nil, for: key)
     }
     
-    public func load<Key: CryoKey>(with key: Key) async throws -> Key.Value? {
-        try self.loadSynchronously(with: key)
-    }
-    
-    public func loadSynchronously<Key: CryoKey>(with key: Key) throws -> Key.Value? {
-        fatalError("adaptor \(Self.self) does not support synchronous loading")
-    }
-    
     public func loadAll<Key: CryoKey>(with key: Key.Type) async throws -> [Key.Value]? {
         var values = [Key.Value]()
         
@@ -124,4 +108,18 @@ extension CryoAdaptor {
     }
     
     public func synchronize() { }
+}
+
+public protocol CryoSynchronousAdaptor: CryoAdaptor {
+    /// A synchronous version of ``CryoAdaptor/load(with:)-25w6c``.
+    ///
+    /// - Parameter key: The key that uniquely identifies the persisted value.
+    /// - Returns: The value previously persisted for `key`, or nil if none exists.
+    func loadSynchronously<Key: CryoKey>(with key: Key) throws -> Key.Value?
+}
+
+extension CryoSynchronousAdaptor {
+    public func load<Key: CryoKey>(with key: Key) async throws -> Key.Value? {
+        try self.loadSynchronously(with: key)
+    }
 }

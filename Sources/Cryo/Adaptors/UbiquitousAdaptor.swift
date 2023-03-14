@@ -12,9 +12,12 @@ import Foundation
 /// try await adaptor.persist("Hi there", CryoNamedKey(id: "stringValue", for: String.self))
 /// try await adaptor.persist(Date.now, CryoNamedKey(id: "dateValue", for: Date.self))
 /// ```
-public struct UbiquitousKeyValueStoreAdaptor {
+public final class UbiquitousKeyValueStoreAdaptor {
     /// The UserDefaults instance.
     let store: NSUbiquitousKeyValueStore
+    
+    /// List of active Change observers.
+    fileprivate var observers: [UbiquitousKeyValueStoreObserver] = []
     
     /// Shared instance using the `NSUbiquitousKeyValueStore.default`.
     public static let shared: UbiquitousKeyValueStoreAdaptor = UbiquitousKeyValueStoreAdaptor(store: .default)
@@ -28,7 +31,7 @@ public struct UbiquitousKeyValueStoreAdaptor {
     }
 }
 
-extension UbiquitousKeyValueStoreAdaptor: CryoAdaptor {
+extension UbiquitousKeyValueStoreAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
     public func persist<Key: CryoKey>(_ value: Key.Value?, for key: Key) async throws {
         guard let value else {
             store.removeObject(forKey: key.id)
@@ -93,5 +96,53 @@ extension UbiquitousKeyValueStoreAdaptor: CryoAdaptor {
         for key in keys {
             store.removeObject(forKey: key)
         }
+    }
+}
+
+fileprivate final class UbiquitousKeyValueStoreObserver: NSObject {
+    /// The user callback.
+    let callback: () -> Void
+    
+    /// Create an observer.
+    init(callback: @escaping () -> Void) {
+        self.callback = callback
+    }
+    
+    /// Install the observer.
+    func register() {
+        NotificationCenter.default.addObserver(self,
+                                               selector: #selector(ubiquitousKeyValueStoreDidChange(_:)),
+                                               name: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
+                                               object: NSUbiquitousKeyValueStore.default)
+    }
+    
+    /// Unregister the observer.
+    func unregister() {
+        NotificationCenter.default.removeObserver(self)
+    }
+    
+    @objc private func ubiquitousKeyValueStoreDidChange(_ notification: Notification) {
+        callback()
+    }
+}
+
+extension UbiquitousKeyValueStoreAdaptor {
+    /// Install a listener for external changes.
+    public func observeChanges(_ callback: @escaping () -> Void) -> ObjectIdentifier {
+        let observer = UbiquitousKeyValueStoreObserver(callback: callback)
+        observer.register()
+        
+        self.observers.append(observer)
+        return ObjectIdentifier(observer)
+    }
+    
+    /// Remove a change observer.
+    public func removeObserver(withId id: ObjectIdentifier) {
+        guard let observerIndex = (self.observers.firstIndex { id == ObjectIdentifier($0) }) else {
+            return
+        }
+        
+        self.observers[observerIndex].unregister()
+        self.observers.remove(at: observerIndex)
     }
 }

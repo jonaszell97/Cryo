@@ -27,7 +27,7 @@ public struct UserDefaultsAdaptor {
     }
 }
 
-extension UserDefaultsAdaptor: CryoAdaptor {
+extension UserDefaultsAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
     public func persist<Key: CryoKey>(_ value: Key.Value?, for key: Key) async throws {
         guard let value else {
             defaults.removeObject(forKey: key.id)

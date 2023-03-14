@@ -82,7 +82,7 @@ public struct DocumentAdaptor {
     }
 }
 
-extension DocumentAdaptor: CryoAdaptor {
+extension DocumentAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
     func documentUrl<Key: CryoKey>(for key: Key) -> URL {
         if #available(iOS 16, macOS 13, *) {
             return self.url.appending(component: key.id)

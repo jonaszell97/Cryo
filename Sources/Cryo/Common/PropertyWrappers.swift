@@ -27,7 +27,7 @@ import Foundation
     let id: String
     
     /// The adaptor to use for persistence.
-    let adaptor: any CryoAdaptor
+    let adaptor: any CryoSynchronousAdaptor
     
     /// The key for this instance.
     var key: Key { .init(id: id) }
@@ -50,7 +50,7 @@ import Foundation
     ///   - id: The identifier to use as a key.
     ///   - saveOnWrite: Whether to automatically persist the value after every modification.
     ///   - adaptor: The adaptor to use for persistence.
-    public init(wrappedValue: Value, _ id: String, saveOnWrite: Bool = true, adaptor: any CryoAdaptor) {
+    public init(wrappedValue: Value, _ id: String, saveOnWrite: Bool = true, adaptor: any CryoSynchronousAdaptor) {
         self.id = id
         self.adaptor = adaptor
         self.saveOnWrite = saveOnWrite

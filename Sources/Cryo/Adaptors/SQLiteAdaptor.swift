@@ -306,7 +306,7 @@ INSERT INTO \(Model.tableName)(_cryo_key,\(columns.joined(separator: ","))) VALU
     }
 }
 
-extension SQLiteAdaptor: CryoAdaptor {
+extension SQLiteAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
     public func persist<Key: CryoKey>(_ value: Key.Value?, for key: Key) async throws {
         guard let model = value as? CryoModel else {
             throw CryoError.cannotPersistValue(valueType: Key.Value.self, adaptorType: SQLiteAdaptor.self)

@@ -25,7 +25,7 @@ final class CryoLocalTests: XCTestCase {
         userDefaults?.removePersistentDomain(forName: "CryoTestsSuite")
     }
     
-    func adaptorTest(for adaptor: CryoAdaptor) async {
+    func adaptorTest(for adaptor: CryoSynchronousAdaptor) async {
         do {
             // Remove All
             try await adaptor.removeAll()
