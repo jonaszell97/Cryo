@@ -50,6 +50,17 @@ extension AnyCloudKitAdaptor {
         try await self.save(record: record)
     }
     
+    func persist(key: String, tableName: String, data: [DatabaseOperationValue]) async throws {
+        let id = CKRecord.ID(recordName: key)
+        
+        let record = CKRecord(recordType: tableName, recordID: id)
+        for item in data {
+            record[item.columnName] = item.value.objcValue
+        }
+        
+        try await self.save(record: record)
+    }
+    
     public func load<Key: CryoKey>(with key: Key) async throws -> Key.Value?
         where Key.Value: CryoModel
     {
@@ -259,29 +270,6 @@ public final class CloudKitAdaptor {
 }
 
 extension CloudKitAdaptor: AnyCloudKitAdaptor {
-    /// Check for availability of the database.
-    func ensureAvailability() async throws {
-        guard self.iCloudRecordID == nil else {
-            return
-        }
-        
-        self.iCloudRecordID = await withCheckedContinuation { continuation in
-            container.fetchUserRecordID(completionHandler: { (recordID, error) in
-                if let error {
-                    self.config.log?(.fault, "error fetching user record id: \(error.localizedDescription)")
-                }
-                
-                continuation.resume(returning: recordID?.recordName)
-            })
-        }
-        
-        guard self.iCloudRecordID == nil else {
-            return
-        }
-        
-        throw CryoError.iCloudNotAvailable
-    }
-    
     /// Delete a record with the given id.
     func delete(recordWithId id: CKRecord.ID) async throws {
         try await ensureAvailability()
@@ -398,4 +386,52 @@ public extension CloudKitAdaptor {
             try await database.deleteRecordZone(withID: zone.zoneID)
         }
     }
+}
+
+extension CloudKitAdaptor: CryoDatabaseAdaptor {
+    public func execute(operation: DatabaseOperation) async throws {
+        switch operation.type {
+        case .insert:
+            fallthrough
+        case .update:
+            try await self.persist(key: operation.rowId, tableName: operation.tableName, data: operation.data)
+        case .delete:
+            if operation.tableName.isEmpty {
+                try await self.removeAll()
+                return
+            }
+            else if operation.rowId.isEmpty {
+                try await self.delete(tableName: operation.tableName)
+            }
+            else {
+                try await self.delete(recordWithId: .init(recordName: operation.rowId))
+            }
+        }
+    }
+    
+    /// Check for availability of the database.
+    public func ensureAvailability() async throws {
+        guard self.iCloudRecordID == nil else {
+            return
+        }
+        
+        self.iCloudRecordID = await withCheckedContinuation { continuation in
+            container.fetchUserRecordID(completionHandler: { (recordID, error) in
+                if let error {
+                    self.config.log?(.fault, "error fetching user record id: \(error.localizedDescription)")
+                }
+                
+                continuation.resume(returning: recordID?.recordName)
+            })
+        }
+        
+        guard self.iCloudRecordID == nil else {
+            return
+        }
+        
+        throw CryoError.backendNotAvailable
+    }
+    
+    /// Whether CloudKit is available.
+    public var isAvailable: Bool { iCloudRecordID != nil }
 }

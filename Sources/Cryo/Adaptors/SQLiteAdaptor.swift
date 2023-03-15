@@ -3,6 +3,7 @@ import Foundation
 import SQLite3
 
 fileprivate let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+fileprivate let metadataColumnCount: Int = 3
 
 public final class SQLiteQuery {
     /// The original query string.
@@ -15,13 +16,13 @@ public final class SQLiteQuery {
     let connection: OpaquePointer
 
     /// The number of bound variables.
-    var boundVariables: Int32
+    var boundVariables: [any _AnyCryoColumnValue]
     
     /// Create a query.
     fileprivate init(queryString: String, connection: OpaquePointer) throws {
         self.queryString = queryString
         self.connection = connection
-        self.boundVariables = 1
+        self.boundVariables = []
         
         var queryStatement: OpaquePointer?
         
@@ -48,69 +49,89 @@ public final class SQLiteQuery {
 
 extension SQLiteQuery {
     /// Bind an integer value.
-    public func bind(_ value: Int) -> Self {
-        sqlite3_bind_int(queryStatement, boundVariables, Int32(value))
-        self.boundVariables += 1
+    @discardableResult public func bind(_ value: Int) -> Self {
+        sqlite3_bind_int(queryStatement, Int32(boundVariables.count + 1), Int32(value))
+        self.boundVariables.append(value)
         return self
     }
     
     /// Bind a double value.
-    public func bind(_ value: Double) -> Self {
-        sqlite3_bind_double(queryStatement, boundVariables, value)
-        self.boundVariables += 1
+    @discardableResult public func bind(_ value: Double) -> Self {
+        sqlite3_bind_double(queryStatement, Int32(boundVariables.count + 1), value)
+        self.boundVariables.append(value)
         return self
     }
     
     /// Bind a string value.
-    public func bind(_ value: String) -> Self {
+    @discardableResult public func bind(_ value: String) -> Self {
         _ = value.utf8CString.withUnsafeBufferPointer { buffer in
-            sqlite3_bind_text(queryStatement, boundVariables, buffer.baseAddress, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(queryStatement, Int32(boundVariables.count + 1), buffer.baseAddress, -1, SQLITE_TRANSIENT)
         }
         
-        self.boundVariables += 1
+        self.boundVariables.append(value)
         return self
     }
     
     /// Bind a date value.
-    public func bind(_ value: Date) -> Self {
+    @discardableResult public func bind(_ value: Date) -> Self {
         let dateString = ISO8601DateFormatter().string(from: value.dateValue)
         _ = dateString.utf8CString.withUnsafeBufferPointer { buffer in
-            sqlite3_bind_text(queryStatement, boundVariables, buffer.baseAddress, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(queryStatement, Int32(boundVariables.count + 1), buffer.baseAddress, -1, SQLITE_TRANSIENT)
         }
         
-        self.boundVariables += 1
+        self.boundVariables.append(value)
         return self
     }
     
     /// Bind a URL value.
-    public func bind(_ value: URL) -> Self {
+    @discardableResult public func bind(_ value: URL) -> Self {
         let string = value.absoluteString
         _ = string.utf8CString.withUnsafeBufferPointer { buffer in
-            sqlite3_bind_text(queryStatement, boundVariables, buffer.baseAddress, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(queryStatement, Int32(boundVariables.count + 1), buffer.baseAddress, -1, SQLITE_TRANSIENT)
         }
         
-        self.boundVariables += 1
+        self.boundVariables.append(value)
         return self
     }
     
     /// Bind a data value.
-    public func bind(_ value: Data) -> Self {
+    @discardableResult public func bind(_ value: Data) -> Self {
         _ = value.withUnsafeBytes { (bytes: UnsafeRawBufferPointer) in
-            sqlite3_bind_blob(queryStatement, boundVariables, bytes.baseAddress, Int32(bytes.count), nil)
+            sqlite3_bind_blob(queryStatement, Int32(boundVariables.count + 1), bytes.baseAddress, Int32(bytes.count), nil)
         }
         
-        self.boundVariables += 1
+        self.boundVariables.append(value)
         return self
     }
     
     /// Bind a codable value.
-    public func bind<T: Codable>(_ value: T) throws -> Self {
+    @discardableResult public func bind<T: Codable>(_ value: T) throws -> Self {
         let data = try JSONEncoder().encode(value)
         _ = data.withUnsafeBytes { (bytes: UnsafeRawBufferPointer) in
-            sqlite3_bind_blob(queryStatement, boundVariables, bytes.baseAddress, Int32(bytes.count), nil)
+            sqlite3_bind_blob(queryStatement, Int32(boundVariables.count + 1), bytes.baseAddress, Int32(bytes.count), nil)
         }
         
-        self.boundVariables += 1
+        self.boundVariables.append(data)
+        return self
+    }
+    
+    /// Bind an array of values.
+    @discardableResult public func bind(_ values: [DatabaseOperationValue]) -> Self {
+        for value in values {
+            switch value.value {
+            case .string(let value):
+                _ = self.bind(value)
+            case .number(let value):
+                self.bind(value)
+            case .date(let value):
+                self.bind(value)
+            case .data(let value):
+                self.bind(value)
+            case .asset(let value):
+                self.bind(value)
+            }
+        }
+        
         return self
     }
 }
@@ -231,7 +252,8 @@ fileprivate final class SQLite3Connection {
             var row = [any _AnyCryoColumnValue]()
             
             for i in 0..<columns.count {
-                let value = try self.columnValue(queryStatement!, columnName: columns[i].0, type: columns[i].1, index: Int32(i + 1))
+                let value = try self.columnValue(queryStatement!, columnName: columns[i].0, type: columns[i].1,
+                                                 index: Int32(i + metadataColumnCount - 1))
                 row.append(value)
             }
             
@@ -376,7 +398,7 @@ CREATE TABLE IF NOT EXISTS \(Model.tableName)(
         let columns: [String] = schema.map { $0.columnName }
         
         return """
-INSERT INTO \(Model.tableName)(_cryo_key,_cryo_created,_cryo_modified,\(columns.joined(separator: ","))) VALUES (?,?,?,\(columns.map { _ in "?" }.joined(separator: ",")));
+INSERT OR REPLACE INTO \(Model.tableName)(_cryo_key,_cryo_created,_cryo_modified,\(columns.joined(separator: ","))) VALUES (?,?,?,\(columns.map { _ in "?" }.joined(separator: ",")));
 """
     }
     
@@ -512,17 +534,8 @@ extension SQLiteAdaptor: CryoIndexingAdaptor {
             throw CryoError.cannotPersistValue(valueType: Key.Value.self, adaptorType: SQLiteAdaptor.self)
         }
         
-        let query: String
-        let bindings: [any _AnyCryoColumnValue]
-        
-        if try await load(with: key) != nil {
-            query = try createUpdateQuery(for: model)
-            bindings = try getUpdateBindings(for: key, value: model)
-        }
-        else {
-            query = try createInsertQuery(for: model)
-            bindings = try getInsertBindings(for: key, value: model)
-        }
+        let query = try createInsertQuery(for: model)
+        let bindings = try getInsertBindings(for: key, value: model)
         
         try db.query(query, bindings: bindings)
     }
@@ -595,5 +608,50 @@ extension SQLiteAdaptor: CryoIndexingAdaptor {
     public func removeAll<Record: CryoModel>(of type: Record.Type) async throws {
         let query = try createDeleteAllQuery(for: Record.self)
         try db.query(query, bindings: [])
+    }
+}
+
+extension SQLiteAdaptor: CryoDatabaseAdaptor {
+    public func execute(operation: DatabaseOperation) async throws {
+        let query: SQLiteQuery
+        switch operation.type {
+        case .insert:
+            let columnNames = operation.data.map { $0.columnName }
+            query = try self.query("""
+INSERT OR REPLACE INTO \(operation.tableName)(_cryo_key,_cryo_created,_cryo_modified,\(columnNames.joined(separator: ","))) VALUES (?,?,?,\(columnNames.map { _ in "?" }.joined(separator: ",")));
+""")
+            .bind(operation.rowId)
+            .bind(Date.now)
+            .bind(Date.now)
+            .bind(operation.data)
+        case .update:
+            let columnNames = operation.data.map { $0.columnName }
+            query = try self.query("""
+UPDATE \(operation.tableName) SET _cryo_modified = ?, \(columnNames.map { "\($0) = ?" }.joined(separator: ", ")) WHERE _cryo_key == ?;
+""")
+            .bind(Date.now)
+            .bind(operation.data)
+            .bind(operation.rowId)
+        case .delete:
+            if operation.tableName.isEmpty {
+                try await self.removeAll()
+                return
+            }
+            else if operation.rowId.isEmpty {
+                query = try self.query("DELETE FROM \(operation.tableName);")
+            }
+            else {
+                query = try self.query("DELETE FROM \(operation.tableName) WHERE _cryo_key == ?;")
+                    .bind(operation.rowId)
+            }
+        }
+        
+        try query.execute()
+    }
+    
+    public nonisolated var isAvailable: Bool { true }
+    
+    public func ensureAvailability() async throws {
+        
     }
 }

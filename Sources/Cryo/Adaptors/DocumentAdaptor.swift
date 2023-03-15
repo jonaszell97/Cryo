@@ -41,12 +41,15 @@ public struct DocumentAdaptor {
     ///
     /// - Parameter fileManager: The file manager instance to use for file operations.
     /// - Returns: A document adaptor using the local documents URL.
-    public static func local(fileManager: FileManager = .default) -> DocumentAdaptor {
+    public static func local(subdirectory: String? = nil, fileManager: FileManager = .default) -> DocumentAdaptor {
         let documentDirectory = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true)[0]
         
-        let url = URL(fileURLWithPath: documentDirectory).appendingPathComponent(".cryo")
-        try? fileManager.createDirectory(at: url, withIntermediateDirectories: false)
+        var url = URL(fileURLWithPath: documentDirectory).appendingPathComponent(".cryo")
+        if let subdirectory {
+            url = url.appendingPathComponent(subdirectory)
+        }
         
+        try? fileManager.createDirectory(at: url, withIntermediateDirectories: false)
         return DocumentAdaptor(url: url, fileManager: fileManager)
     }
     

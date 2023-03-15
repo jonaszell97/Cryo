@@ -150,11 +150,26 @@ extension CryoIndexingAdaptor {
         return values
     }
     
+    public func loadAllBatched<Record: CryoModel>(of type: Record.Type, receiveBatch: ([Record]) -> Bool) async throws {
+        _ = receiveBatch(try await self.loadAll(of: type) ?? [])
+    }
+    
     public func remove<Key: CryoKey>(with key: Key) async throws
         where Key.Value: CryoModel
     {
         try await persist(nil, for: key)
     }
+}
+
+public protocol CryoDatabaseAdaptor: CryoIndexingAdaptor {
+    /// Execute a database operation.
+    func execute(operation: DatabaseOperation) async throws
+    
+    /// Check the availability of the database.
+    var isAvailable: Bool { get }
+    
+    /// Ensure that the database is available and throw an error if it is not.
+    func ensureAvailability() async throws
 }
 
 public protocol CryoObservableAdaptor {

@@ -11,8 +11,8 @@ public enum CryoError: Error {
     /// Failed to connect to a database.
     case databaseConnectionFailed(dbName: String, status: Int32)
     
-    /// iCloud is not available.
-    case iCloudNotAvailable
+    /// The storage backend is not available.
+    case backendNotAvailable
     
     // MARK: SQLite
     

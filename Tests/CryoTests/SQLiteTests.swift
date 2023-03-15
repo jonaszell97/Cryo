@@ -67,7 +67,7 @@ CREATE TABLE IF NOT EXISTS TestModel(
         let query = try await adaptor.createInsertQuery(for: value)
         
         XCTAssertEqual(query, """
-INSERT INTO TestModel(_cryo_key,_cryo_created,_cryo_modified,x,y,z) VALUES (?,?,?,?,?,?,?);
+INSERT OR REPLACE INTO TestModel(_cryo_key,_cryo_created,_cryo_modified,x,y,z) VALUES (?,?,?,?,?,?);
 """)
     }
     
