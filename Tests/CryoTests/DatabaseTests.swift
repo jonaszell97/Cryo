@@ -73,7 +73,7 @@ final class CryoDatabaseTests: XCTestCase {
             
             try await adaptor.persist(value2, for: AnyKey(id: "test-1234", for: TestModel.self))
             
-            let allValues = try await adaptor.loadAll(with: AnyKey<TestModel>.self)
+            let allValues = try await adaptor.loadAll(of: TestModel.self)
             XCTAssertNotNil(allValues)
             XCTAssertEqual(Set(allValues!), Set([value, value2]))
         }

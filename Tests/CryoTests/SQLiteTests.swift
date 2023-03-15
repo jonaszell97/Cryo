@@ -86,13 +86,13 @@ INSERT INTO TestModel(_cryo_key,x,y,z) VALUES (?,?,?,?);
             
             try await adaptor.persist(value2, for: AnyKey(id: "test-1234", for: TestModel.self))
             
-            let allValues = try await adaptor.loadAll(with: AnyKey<TestModel>.self)
+            let allValues = try await adaptor.loadAll(of: TestModel.self)
             XCTAssertNotNil(allValues)
             XCTAssertEqual(Set(allValues!), Set([value, value2]))
             
-            try await adaptor.removeAll(with: AnyKey<TestModel>.self)
+            try await adaptor.removeAll(of: TestModel.self)
             
-            let allValues2 = try await adaptor.loadAll(with: AnyKey<TestModel>.self)
+            let allValues2 = try await adaptor.loadAll(of: TestModel.self)
             XCTAssertEqual(allValues2?.count, 0)
         }
         catch {

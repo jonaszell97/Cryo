@@ -26,46 +26,39 @@ internal protocol AnyCloudKitAdaptor: AnyObject, CryoIndexingAdaptor {
 }
 
 extension AnyCloudKitAdaptor {
-    public func removeAll<Key: CryoKey>(with key: Key.Type) async throws {
-        guard let model = key as? CryoModel.Type else {
-            throw CryoError.cannotPersistValue(valueType: Key.Value.self, adaptorType: CloudKitAdaptor.self)
-        }
-        
-        try await self.delete(tableName: model.tableName)
+    public func removeAll<Record: CryoModel>(of type: Record.Type) async throws {
+        try await self.delete(tableName: Record.tableName)
     }
     
-    public func persist<Key: CryoKey>(_ value: Key.Value?, for key: Key) async throws {
+    public func persist<Key: CryoKey>(_ value: Key.Value?, for key: Key) async throws
+        where Key.Value: CryoModel
+    {
         let id = CKRecord.ID(recordName: key.id)
         guard let value else {
             try await self.delete(recordWithId: id)
             return
         }
         
-        guard let model = value as? CryoModel else {
-            throw CryoError.cannotPersistValue(valueType: Key.Value.self, adaptorType: CloudKitAdaptor.self)
-        }
-        
-        let modelType = type(of: model)
+        let modelType = Key.Value.self
         let record = CKRecord(recordType: modelType.tableName, recordID: id)
         let schema = self.schema(for: modelType)
         
         for columnDetails in schema {
-            record[columnDetails.columnName] = try self.nsObject(from: columnDetails.getValue(model), valueType: columnDetails.type)
+            record[columnDetails.columnName] = try self.nsObject(from: columnDetails.getValue(value), valueType: columnDetails.type)
         }
         
         try await self.save(record: record)
     }
     
-    public func load<Key: CryoKey>(with key: Key) async throws -> Key.Value? {
+    public func load<Key: CryoKey>(with key: Key) async throws -> Key.Value?
+        where Key.Value: CryoModel
+    {
         let id = CKRecord.ID(recordName: key.id)
         guard let record = try await self.fetch(recordWithId: id) else {
             return nil
         }
         
-        guard let modelType = Key.Value.self as? CryoModel.Type else {
-            throw CryoError.cannotPersistValue(valueType: Key.Value.self, adaptorType: CloudKitAdaptor.self)
-        }
-        
+        let modelType = Key.Value.self
         let schema = self.schema(for: modelType)
         
         var data = [String: _AnyCryoColumnValue]()
@@ -83,8 +76,11 @@ extension AnyCloudKitAdaptor {
         return try Key.Value(from: CryoModelDecoder(data: data))
     }
     
-    public func loadAllBatched<Key: CryoKey>(with key: Key.Type, receiveBatch: ([Key.Value]) -> Bool) async throws where Key.Value: CryoModel {
-        try await self._loadAllBatched(with: key, predicate: NSPredicate(value: true), receiveBatch: receiveBatch)
+    public func loadAllBatched<Record: CryoModel>(of type: Record.Type,
+                                                  receiveBatch: ([Record]) -> Bool) async throws {
+        try await self._loadAllBatched(of: Record.self,
+                                       predicate: NSPredicate(value: true),
+                                       receiveBatch: receiveBatch)
     }
     
     func fetchAll(tableName: String, predicate: NSPredicate, limit: Int) async throws -> [CKRecord]? {
@@ -111,10 +107,12 @@ extension AnyCloudKitAdaptor {
     }
     
     /// Load all values of the given Key type. Not all adaptors support this operation.
-    func _loadAllBatched<Key: CryoKey>(with key: Key.Type, predicate: NSPredicate, receiveBatch: ([Key.Value]) -> Bool) async throws where Key.Value: CryoModel {
-        let schema = self.schema(for: Key.Value.self)
-        try await self.fetchAllBatched(tableName: Key.Value.tableName, predicate: predicate) { records in
-            var batch = [Key.Value]()
+    func _loadAllBatched<Record: CryoModel>(of type: Record.Type,
+                                            predicate: NSPredicate,
+                                            receiveBatch: ([Record]) -> Bool) async throws {
+        let schema = self.schema(for: Record.self)
+        try await self.fetchAllBatched(tableName: Record.tableName, predicate: predicate) { records in
+            var batch = [Record]()
             for record in records {
                 var data = [String: _AnyCryoColumnValue]()
                 for columnDetails in schema {
@@ -128,7 +126,7 @@ extension AnyCloudKitAdaptor {
                     data[columnDetails.columnName] = value
                 }
                 
-                let nextValue = try Key.Value(from: CryoModelDecoder(data: data))
+                let nextValue = try Record(from: CryoModelDecoder(data: data))
                 batch.append(nextValue)
             }
             
@@ -137,7 +135,7 @@ extension AnyCloudKitAdaptor {
     }
     
     /// Initialize from an NSObject representation.
-    fileprivate func decodeValue(from nsObject: __CKRecordObjCValue, as type: CryoColumnType) -> _AnyCryoColumnValue? {
+    func decodeValue(from nsObject: __CKRecordObjCValue, as type: CryoColumnType) -> _AnyCryoColumnValue? {
         switch type {
         case .integer:
             guard let value = nsObject as? NSNumber else { return nil }
@@ -164,7 +162,7 @@ extension AnyCloudKitAdaptor {
     }
     
     /// The NSObject representation oft his value.
-    fileprivate func nsObject(from value: _AnyCryoColumnValue, valueType: CryoColumnType) throws -> __CKRecordObjCValue {
+    func nsObject(from value: _AnyCryoColumnValue, valueType: CryoColumnType) throws -> __CKRecordObjCValue {
         switch value {
         case let url as URL:
             if case .asset = valueType {
@@ -388,8 +386,11 @@ extension CloudKitAdaptor: AnyCloudKitAdaptor {
 }
 
 public extension CloudKitAdaptor {
-    func loadAllBatched<Key: CryoKey>(with key: Key.Type, predicate: NSPredicate, receiveBatch: ([Key.Value]) -> Bool) async throws where Key.Value: CryoModel {
-        try await self._loadAllBatched(with: key, predicate: predicate, receiveBatch: receiveBatch)
+    func loadAllBatched<Record: CryoModel>(of type: Record.Type,
+                                           predicate: NSPredicate,
+                                           receiveBatch: ([Record]) -> Bool) async throws {
+        try await self._loadAllBatched(of: type, predicate: predicate,
+                                       receiveBatch: receiveBatch)
     }
     
     func removeAll() async throws {
