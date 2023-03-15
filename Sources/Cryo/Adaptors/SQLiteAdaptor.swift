@@ -4,12 +4,126 @@ import SQLite3
 
 fileprivate let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
+public final class SQLiteQuery {
+    /// The original query string.
+    public let queryString: String
+    
+    /// The compiled query statement.
+    let queryStatement: OpaquePointer
+
+    /// The SQLite connection.
+    let connection: OpaquePointer
+
+    /// The number of bound variables.
+    var boundVariables: Int32
+    
+    /// Create a query.
+    fileprivate init(queryString: String, connection: OpaquePointer) throws {
+        self.queryString = queryString
+        self.connection = connection
+        self.boundVariables = 1
+        
+        var queryStatement: OpaquePointer?
+        
+        let prepareStatus = sqlite3_prepare_v3(connection, queryString, -1, 0, &queryStatement, nil)
+        guard prepareStatus == SQLITE_OK, let queryStatement else {
+            throw CryoError.queryCompilationFailed(query: queryString, status: prepareStatus)
+        }
+        
+        self.queryStatement = queryStatement
+    }
+    
+    /// Finalize and execute the query.
+    public func execute() throws {
+        defer {
+            sqlite3_finalize(queryStatement)
+        }
+        
+        let executeStatus = sqlite3_step(queryStatement)
+        guard executeStatus == SQLITE_DONE else {
+            throw CryoError.queryExecutionFailed(query: queryString, status: executeStatus)
+        }
+    }
+}
+
+extension SQLiteQuery {
+    /// Bind an integer value.
+    public func bind(_ value: Int) -> Self {
+        sqlite3_bind_int(queryStatement, boundVariables, Int32(value))
+        self.boundVariables += 1
+        return self
+    }
+    
+    /// Bind a double value.
+    public func bind(_ value: Double) -> Self {
+        sqlite3_bind_double(queryStatement, boundVariables, value)
+        self.boundVariables += 1
+        return self
+    }
+    
+    /// Bind a string value.
+    public func bind(_ value: String) -> Self {
+        _ = value.utf8CString.withUnsafeBufferPointer { buffer in
+            sqlite3_bind_text(queryStatement, boundVariables, buffer.baseAddress, -1, SQLITE_TRANSIENT)
+        }
+        
+        self.boundVariables += 1
+        return self
+    }
+    
+    /// Bind a date value.
+    public func bind(_ value: Date) -> Self {
+        let dateString = ISO8601DateFormatter().string(from: value.dateValue)
+        _ = dateString.utf8CString.withUnsafeBufferPointer { buffer in
+            sqlite3_bind_text(queryStatement, boundVariables, buffer.baseAddress, -1, SQLITE_TRANSIENT)
+        }
+        
+        self.boundVariables += 1
+        return self
+    }
+    
+    /// Bind a URL value.
+    public func bind(_ value: URL) -> Self {
+        let string = value.absoluteString
+        _ = string.utf8CString.withUnsafeBufferPointer { buffer in
+            sqlite3_bind_text(queryStatement, boundVariables, buffer.baseAddress, -1, SQLITE_TRANSIENT)
+        }
+        
+        self.boundVariables += 1
+        return self
+    }
+    
+    /// Bind a data value.
+    public func bind(_ value: Data) -> Self {
+        _ = value.withUnsafeBytes { (bytes: UnsafeRawBufferPointer) in
+            sqlite3_bind_blob(queryStatement, boundVariables, bytes.baseAddress, Int32(bytes.count), nil)
+        }
+        
+        self.boundVariables += 1
+        return self
+    }
+    
+    /// Bind a codable value.
+    public func bind<T: Codable>(_ value: T) throws -> Self {
+        let data = try JSONEncoder().encode(value)
+        _ = data.withUnsafeBytes { (bytes: UnsafeRawBufferPointer) in
+            sqlite3_bind_blob(queryStatement, boundVariables, bytes.baseAddress, Int32(bytes.count), nil)
+        }
+        
+        self.boundVariables += 1
+        return self
+    }
+}
+
 fileprivate final class SQLite3Connection {
     /// The pointer to the database connection object.
     let connection: OpaquePointer
     
+    /// The cryo config.
+    let config: CryoConfig?
+    
     /// Create a database connection.
-    init(databaseUrl: URL) throws {
+    init(databaseUrl: URL, config: CryoConfig?) throws {
         var connection: OpaquePointer?
         let status = sqlite3_open(databaseUrl.absoluteString, &connection)
         
@@ -18,6 +132,7 @@ fileprivate final class SQLite3Connection {
         }
         
         self.connection = connection
+        self.config = config
     }
     
     /// Close the connection.
@@ -25,8 +140,15 @@ fileprivate final class SQLite3Connection {
         sqlite3_close(connection)
     }
     
+    /// Create a query object.
+    func query(_ queryString: String) throws -> SQLiteQuery {
+        try .init(queryString: queryString, connection: connection)
+    }
+    
     /// Execute a query on the database connection.
     func query(_ queryString: String, bindings: [any _AnyCryoColumnValue]) throws {
+        config?.log?(.debug, "[SQLite3Connection] query \(queryString), bindings \(bindings.map { "\($0)" })")
+        
         var queryStatement: OpaquePointer?
         
         let prepareStatus = sqlite3_prepare_v3(connection, queryString, -1, 0, &queryStatement, nil)
@@ -49,7 +171,7 @@ fileprivate final class SQLite3Connection {
     }
     
     /// Bind a value in the given query.
-    private func bindValue(_ statement: OpaquePointer, value: _AnyCryoColumnValue, index: Int32) throws {
+    fileprivate func bindValue(_ statement: OpaquePointer, value: _AnyCryoColumnValue, index: Int32) throws {
         switch value {
         case let value as CryoColumnIntValue:
             sqlite3_bind_int(statement, index, Int32(value.integerValue))
@@ -85,6 +207,8 @@ fileprivate final class SQLite3Connection {
     func query(_ queryString: String,
                bindings: [any _AnyCryoColumnValue],
                columns: [(String, CryoColumnType)]) throws -> [[any _AnyCryoColumnValue]] {
+        config?.log?(.debug, "[SQLite3Connection] query \(queryString), bindings \(bindings.map { "\($0)" }), columns \(columns.map { $0.0 })")
+        
         var queryStatement: OpaquePointer?
         
         let prepareStatus = sqlite3_prepare_v3(connection, queryString, -1, 0, &queryStatement, nil)
@@ -160,7 +284,7 @@ fileprivate final class SQLite3Connection {
     }
 }
 
-public final class SQLiteAdaptor {
+public final actor SQLiteAdaptor {
     /// The database connection object.
     fileprivate let db: SQLite3Connection
     
@@ -170,11 +294,15 @@ public final class SQLiteAdaptor {
     /// Cache for schemas.
     var schemas: [ObjectIdentifier: CryoSchema]
     
+    /// The cryo config.
+    let config: CryoConfig?
+    
     /// Create an SQLite adaptor.
-    public init(databaseUrl: URL) throws {
+    public init(databaseUrl: URL, config: CryoConfig? = nil) throws {
         self.schemas = [:]
         self.databaseUrl = databaseUrl
-        self.db = try .init(databaseUrl: databaseUrl)
+        self.config = config
+        self.db = try .init(databaseUrl: databaseUrl, config: config)
     }
 }
 
@@ -215,12 +343,17 @@ extension SQLiteAdaptor {
         return schema
     }
     
+    /// Create a generic query.
+    public func query(_ queryString: String) throws -> SQLiteQuery {
+        try db.query(queryString)
+    }
+    
     // MARK: Create table
     
     /// Build the query for creating a table for a given model.
     func createTableQuery<Model: CryoModel>(for modelType: Model.Type) throws -> String {
         let schema = try self.schema(for: modelType)
-        var columns = "_cryo_key TEXT NOT NULL UNIQUE"
+        var columns = ""
         
         for columnDetails in schema {
             columns += ",\n    \(columnDetails.columnName) \(Self.sqliteTypeName(for: columnDetails.type))"
@@ -228,7 +361,9 @@ extension SQLiteAdaptor {
         
         return """
 CREATE TABLE IF NOT EXISTS \(Model.tableName)(
-    \(columns)
+    _cryo_key TEXT NOT NULL UNIQUE,
+    _cryo_created TEXT NOT NULL,
+    _cryo_modified TEXT NOT NULL\(columns)
 );
 """
     }
@@ -241,19 +376,24 @@ CREATE TABLE IF NOT EXISTS \(Model.tableName)(
         let columns: [String] = schema.map { $0.columnName }
         
         return """
-INSERT INTO \(Model.tableName)(_cryo_key,\(columns.joined(separator: ","))) VALUES (?,\(columns.map { _ in "?" }.joined(separator: ",")));
+INSERT INTO \(Model.tableName)(_cryo_key,_cryo_created,_cryo_modified,\(columns.joined(separator: ","))) VALUES (?,?,?,\(columns.map { _ in "?" }.joined(separator: ",")));
 """
     }
     
     /// Get the values for an insertion query.
     func getInsertBindings<Key: CryoKey, Model: CryoModel>(for key: Key, value: Model) throws -> [any _AnyCryoColumnValue] {
         let schema = try self.schema(for: type(of: value))
-        var bindings: [any _AnyCryoColumnValue] = [key.id]
+        var bindings: [any _AnyCryoColumnValue] = [key.id, ISO8601DateFormatter().string(from: .now)]
         bindings.append(contentsOf: schema.map { $0.getValue(value) })
         
         return bindings
     }
     
+    /// Create a query to insert all rows from an attached database into a table.
+    func createInsertOrIgnoreFromAttachedDbQuery<Model: CryoModel>(table: Model.Type, databaseName: String) throws -> String {
+        "INSERT OR IGNORE INTO \(Model.tableName) SELECT * FROM \(databaseName).\(Model.tableName);"
+    }
+
     // MARK: Deletion
     
     /// Build the query string for a deletion query.
@@ -278,7 +418,7 @@ INSERT INTO \(Model.tableName)(_cryo_key,\(columns.joined(separator: ","))) VALU
         let schema = try self.schema(for: type(of: value))
         let columns: [String] = schema.map { $0.columnName }
         
-        return "UPDATE \(Model.tableName) SET \(columns.map { "\($0) = ?" }.joined(separator: ", ")) WHERE _cryo_key == ?;"
+        return "UPDATE \(Model.tableName) SET _cryo_modified = ?, \(columns.map { "\($0) = ?" }.joined(separator: ", ")) WHERE _cryo_key == ?;"
     }
     
     /// Get the values for an update query.
@@ -287,7 +427,8 @@ INSERT INTO \(Model.tableName)(_cryo_key,\(columns.joined(separator: ","))) VALU
     {
         let schema = try self.schema(for: type(of: value))
         
-        var bindings = schema.map { $0.getValue(value) }
+        var bindings: [any _AnyCryoColumnValue] = [ISO8601DateFormatter().string(from: .now)]
+        bindings.append(contentsOf: schema.map { $0.getValue(value) })
         bindings.append(key.id)
         
         return bindings
@@ -308,6 +449,60 @@ INSERT INTO \(Model.tableName)(_cryo_key,\(columns.joined(separator: ","))) VALU
     /// Get the values for a selection query.
     func getSelectByIdBindings<Key: CryoKey>(for key: Key) throws -> [any _AnyCryoColumnValue] {
         [key.id]
+    }
+    
+    // MARK: Attach
+    
+    /// Build a query string to attach another database file.
+    func createAttachQuery(databaseUrl: URL, name: String) throws -> String {
+        "ATTACH DATABASE \(databaseUrl.absoluteString) AS \(name);"
+    }
+    
+    /// Build a query string to detach another database file.
+    func createDetachQuery(name: String) throws -> String {
+        "DETACH \(name);"
+    }
+    
+    // MARK: Transactions
+    
+    /// Build the query for a transaction start.
+    func createBeginTransactionQuery() throws -> String {
+        "BEGIN;"
+    }
+    
+    /// Build the query for a transaction commit.
+    func createCommitTransactionQuery() throws -> String {
+        "COMMIT;"
+    }
+}
+
+extension SQLiteAdaptor {
+    /// Execute operations in a transaction.
+    public func transaction(_ operations: () async throws -> Void) async throws {
+        try db.query(self.createBeginTransactionQuery(), bindings: [])
+        defer {
+            do {
+                try db.query(self.createCommitTransactionQuery(), bindings: [])
+            }
+            catch { }
+        }
+        
+        try await operations()
+    }
+    
+    /// Execute operations with another attached database.
+    public func withAttachedDatabase(databaseUrl: URL, _ operations: (String) async throws -> Void) async throws {
+        let databaseName = "\(UUID().uuidString.prefix(10))".replacingOccurrences(of: "-", with: "_")
+        
+        try db.query(self.createAttachQuery(databaseUrl: databaseUrl, name: databaseName), bindings: [])
+        defer {
+            do {
+                try db.query(self.createDetachQuery(name: databaseName), bindings: [])
+            }
+            catch { }
+        }
+        
+        try await operations(databaseName)
     }
 }
 

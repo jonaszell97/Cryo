@@ -100,7 +100,7 @@ extension UbiquitousKeyValueStoreAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
 }
 
 public struct UbiquitousKeyValueStoreChangeData {
-    enum ChangeReason {
+    enum ChangeReason: String {
         case unknown, dataChanged, initalSync, quotaViolation, accountChange
     }
     

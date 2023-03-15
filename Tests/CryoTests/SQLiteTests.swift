@@ -45,13 +45,15 @@ final class CryoSQLiteTests: XCTestCase {
         FileManager.default.createFile(atPath: self.databaseUrl!.absoluteString, contents: nil)
     }
     
-    func testCreateTableQuery() throws {
+    func testCreateTableQuery() async throws {
         let adaptor = try SQLiteAdaptor(databaseUrl: self.databaseUrl!)
-        let query = try adaptor.createTableQuery(for: TestModel.self)
+        let query = try await adaptor.createTableQuery(for: TestModel.self)
         
         XCTAssertEqual(query, """
 CREATE TABLE IF NOT EXISTS TestModel(
     _cryo_key TEXT NOT NULL UNIQUE,
+    _cryo_created TEXT NOT NULL,
+    _cryo_modified TEXT NOT NULL,
     x INTEGER,
     y REAL,
     z INTEGER
@@ -59,12 +61,13 @@ CREATE TABLE IF NOT EXISTS TestModel(
 """);
     }
     
-    func testCreateInsertQuery() throws {
+    func testCreateInsertQuery() async throws {
         let adaptor = try SQLiteAdaptor(databaseUrl: self.databaseUrl!)
         let value = TestModel(x: 123, y: "Hello there", z: .a)
+        let query = try await adaptor.createInsertQuery(for: value)
         
-        XCTAssertEqual(try adaptor.createInsertQuery(for: value), """
-INSERT INTO TestModel(_cryo_key,x,y,z) VALUES (?,?,?,?);
+        XCTAssertEqual(query, """
+INSERT INTO TestModel(_cryo_key,_cryo_created,_cryo_modified,x,y,z) VALUES (?,?,?,?,?,?,?);
 """)
     }
     
