@@ -21,11 +21,15 @@ internal protocol AnyCloudKitAdaptor: AnyObject, CryoDatabaseAdaptor {
     /// Fetch a record with the given id.
     func fetchAllBatched(tableName: String, predicate: NSPredicate, receiveBatch: ([CKRecord]) throws -> Bool) async throws
     
-    /// Cache for schemas.
-    var schemas: [ObjectIdentifier: CryoSchema] { get set }
 }
 
 // MARK: CryoDatabaseAdaptor implementation
+
+extension AnyCloudKitAdaptor {
+    public func select<Model: CryoModel>(from: Model.Type) async throws -> any CryoSelectQuery<Model> {
+        fatalError("TODO")
+    }
+}
 
 extension AnyCloudKitAdaptor {
     public func removeAll<Record: CryoModel>(of type: Record.Type) async throws {
@@ -43,7 +47,7 @@ extension AnyCloudKitAdaptor {
         
         let modelType = Key.Value.self
         let record = CKRecord(recordType: modelType.tableName, recordID: id)
-        let schema = self.schema(for: modelType)
+        let schema = await CryoSchemaManager.shared.schema(for: modelType)
         
         for columnDetails in schema {
             record[columnDetails.columnName] = try self.nsObject(from: columnDetails.getValue(value), valueType: columnDetails.type)
@@ -61,7 +65,7 @@ extension AnyCloudKitAdaptor {
         }
         
         let modelType = Key.Value.self
-        let schema = self.schema(for: modelType)
+        let schema = await CryoSchemaManager.shared.schema(for: modelType)
         
         var data = [String: _AnyCryoColumnValue]()
         for columnDetails in schema {
@@ -158,19 +162,6 @@ extension AnyCloudKitAdaptor {
 // MARK: Utility functions
 
 extension AnyCloudKitAdaptor {
-    /// Find or create a schema.
-    func schema<Model: CryoModel>(for model: Model.Type) -> CryoSchema {
-        let schemaKey = ObjectIdentifier(Model.self)
-        if let schema = self.schemas[schemaKey] {
-            return schema
-        }
-        
-        let schema = Model.schema
-        self.schemas[schemaKey] = schema
-        
-        return schema
-    }
-    
     /// Persist a value from a database operation.
     func persist(key: String, tableName: String, data: [DatabaseOperationValue]) async throws {
         let id = CKRecord.ID(recordName: key)
@@ -198,7 +189,7 @@ extension AnyCloudKitAdaptor {
     func _loadAllBatched<Record: CryoModel>(of type: Record.Type,
                                             predicate: NSPredicate,
                                             receiveBatch: ([Record]) -> Bool) async throws {
-        let schema = self.schema(for: Record.self)
+        let schema = await CryoSchemaManager.shared.schema(for: Record.self)
         try await self.fetchAllBatched(tableName: Record.tableName, predicate: predicate) { records in
             var batch = [Record]()
             for record in records {
@@ -322,9 +313,6 @@ public final class CloudKitAdaptor {
     
     /// The unique iCloud record ID for the user.
     var iCloudRecordID: String?
-    
-    /// Cache of schema data.
-    var schemas: [ObjectIdentifier: CryoSchema] = [:]
     
     /// Default initializer.
     public init(config: CryoConfig, containerIdentifier: String, database: KeyPath<CKContainer, CKDatabase>) async {

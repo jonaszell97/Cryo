@@ -115,6 +115,32 @@ extension CryoAsset: Codable {
 
 // MARK: Model reflection
 
+internal final actor CryoSchemaManager {
+    /// The schemas mapped by object type.
+    var schemas: [ObjectIdentifier: CryoSchema]
+    
+    /// The shared instance.
+    static let shared = CryoSchemaManager()
+    
+    /// Create a schema manager.
+    init() {
+        self.schemas = [:]
+    }
+    
+    /// Find or create a schema.
+    func schema<Model: CryoModel>(for model: Model.Type) -> CryoSchema {
+        let schemaKey = ObjectIdentifier(Model.self)
+        if let schema = self.schemas[schemaKey] {
+            return schema
+        }
+        
+        let schema = Model.schema
+        self.schemas[schemaKey] = schema
+        
+        return schema
+    }
+}
+
 internal struct CryoSchemaColumn {
     /// The name of the column.
     let columnName: String

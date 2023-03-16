@@ -18,7 +18,7 @@ public struct DatabaseOperationValue: Codable, CryoColumnDataValue {
     let columnName: String
     
     /// The value.
-    let value: CodableCKRecordObjCValue
+    let value: CryoQueryValue
 }
 
 public struct DatabaseOperation {
@@ -126,21 +126,15 @@ internal extension CryoModel {
     }
 }
 
-internal enum CodableCKRecordObjCValue {
-    case string(value: String)
-    case number(value: Double)
-    case date(value: Date)
-    case data(value: Data)
-    case asset(value: URL)
-    
+internal extension CryoQueryValue {
     init (value: _AnyCryoColumnValue) throws {
         switch value {
         case let url as URL:
             self = .string(value: url.absoluteString)
         case let value as CryoColumnIntValue:
-            self = .number(value: Double(value.integerValue))
+            self = .integer(value: Int(value.integerValue))
         case let value as CryoColumnDoubleValue:
-            self = .number(value: value.doubleValue)
+            self = .double(value: value.doubleValue)
         case let value as CryoColumnStringValue:
             self = .string(value: value.stringValue)
         case let value as CryoColumnDateValue:
@@ -157,7 +151,7 @@ internal enum CodableCKRecordObjCValue {
         case let value as NSString:
             self = .string(value: value as String)
         case let value as NSNumber:
-            self = .number(value: value.doubleValue)
+            self = .double(value: value.doubleValue)
         case let value as NSDate:
             self = .date(value: value as Date)
         case let value as NSData:
@@ -178,7 +172,9 @@ internal enum CodableCKRecordObjCValue {
         switch self {
         case .string(let value):
             return value as NSString
-        case .number(let value):
+        case .integer(let value):
+            return value as NSNumber
+        case .double(let value):
             return value as NSNumber
         case .date(let value):
             return value as NSDate
@@ -186,66 +182,6 @@ internal enum CodableCKRecordObjCValue {
             return value as NSData
         case .asset(let value):
             return CKAsset(fileURL: value)
-        }
-    }
-}
-
-extension CodableCKRecordObjCValue: Codable {
-    enum CodingKeys: String, CodingKey {
-        case string, number, date, data, asset
-    }
-    
-    var codingKey: CodingKeys {
-        switch self {
-        case .string: return .string
-        case .number: return .number
-        case .date: return .date
-        case .data: return .data
-        case .asset: return .asset
-        }
-    }
-    
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        switch self {
-        case .string(let value):
-            try container.encode(value, forKey: .string)
-        case .number(let value):
-            try container.encode(value, forKey: .number)
-        case .date(let value):
-            try container.encode(value, forKey: .date)
-        case .data(let value):
-            try container.encode(value, forKey: .data)
-        case .asset(let value):
-            try container.encode(value, forKey: .asset)
-        }
-    }
-    
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        switch container.allKeys.first {
-        case .string:
-            let value = try container.decode(String.self, forKey: .string)
-            self = .string(value: value)
-        case .number:
-            let value = try container.decode(Double.self, forKey: .number)
-            self = .number(value: value)
-        case .date:
-            let value = try container.decode(Date.self, forKey: .date)
-            self = .date(value: value)
-        case .data:
-            let value = try container.decode(Data.self, forKey: .data)
-            self = .data(value: value)
-        case .asset:
-            let value = try container.decode(URL.self, forKey: .asset)
-            self = .asset(value: value)
-        default:
-            throw DecodingError.dataCorrupted(
-                DecodingError.Context(
-                    codingPath: container.codingPath,
-                    debugDescription: "Unabled to decode enum."
-                )
-            )
         }
     }
 }

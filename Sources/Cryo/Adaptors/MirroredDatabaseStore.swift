@@ -150,6 +150,10 @@ extension MirroredDatabaseStore {
 }
 
 extension MirroredDatabaseStore: CryoDatabaseAdaptor {
+    public func select<Model: CryoModel>(from: Model.Type) async throws -> any CryoSelectQuery<Model> {
+        fatalError("TODO")
+    }
+    
     public func execute(operation: DatabaseOperation) async throws {
         try await self.execute(operation: operation, enqueueIfFailed: true)
     }

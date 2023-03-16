@@ -291,6 +291,10 @@ fileprivate extension SynchronizedStore {
 }
 
 extension SynchronizedStore: CryoDatabaseAdaptor {
+    public func select<Model: CryoModel>(from: Model.Type) async throws -> any CryoSelectQuery<Model> {
+        fatalError("TODO")
+    }
+    
     public func execute(operation: DatabaseOperation) async throws {
         // FIXME: What to do when one of these fails?
         try await localStore.execute(operation: operation)

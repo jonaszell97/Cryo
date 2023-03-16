@@ -14,6 +14,9 @@ public enum CryoError: Error {
     /// The storage backend is not available.
     case backendNotAvailable
     
+    /// A finalized query was attempted to be modified.
+    case modifyingFinalizedQuery
+    
     // MARK: SQLite
     
     /// Failed to compile an SQL query.
