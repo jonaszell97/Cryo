@@ -89,7 +89,41 @@ extension CryoSynchronousAdaptor {
     }
 }
 
-public protocol CryoIndexingAdaptor {
+/// Provides a unified interface for heterogeneous database backends.
+///
+/// `CryoDatabaseAdaptor` implementations are responsible for persisting and loading data in `Cryo`.
+/// Data is persisted using the ``CryoDatabaseAdaptor/persist(_:for:)`` method, which receives a persistable value
+/// as well as a key. Keys must conform to the ``CryoKey`` protocol and uniquely identify a persistable resource.
+///
+/// All codable types can be persisted with `CryoAdaptor`, although there may be optimized implementations for some
+/// known types.
+///
+/// ```swift
+/// // Persist a value using an adaptor
+/// try await adaptor.persist("Hello, World", myKey)
+///
+/// // Retrieve the value
+/// print(try await adaptor.load(with: myKey)!)
+/// ```
+public protocol CryoDatabaseAdaptor {
+    /// Execute a database operation.
+    ///
+    /// - Parameter operation: The operation to execute.
+    func execute(operation: DatabaseOperation) async throws
+    
+    /// Check the availability of the database.
+    var isAvailable: Bool { get }
+    
+    /// Ensure that the database is available and throw an error if it is not.
+    ///
+    /// - Throws: ``CryoError/backendNotAvailable`` if the database is not available.
+    func ensureAvailability() async throws
+    
+    /// Register a listener for availability changes.
+    ///
+    /// - Parameter callback: The callback to invoke with the changed availability.
+    func observeAvailabilityChanges(_ callback: @escaping (Bool) -> Void)
+    
     /// Persist the given value for a key.
     ///
     /// - Parameters:
@@ -139,7 +173,11 @@ public protocol CryoIndexingAdaptor {
     func removeAll() async throws
 }
 
-extension CryoIndexingAdaptor {
+extension CryoDatabaseAdaptor {
+    public var isAvailable: Bool { true }
+    public func ensureAvailability() { }
+    public func observeAvailabilityChanges(_ callback: @escaping (Bool) -> Void) { }
+    
     public func loadAll<Record: CryoModel>(of type: Record.Type) async throws -> [Record]? {
         var values = [Record]()
         try await self.loadAllBatched(of: Record.self) { nextBatch in
@@ -154,25 +192,39 @@ extension CryoIndexingAdaptor {
         _ = receiveBatch(try await self.loadAll(of: type) ?? [])
     }
     
+    public func persist<Key: CryoKey>(_ value: Key.Value?, for key: Key) async throws
+        where Key.Value: CryoModel
+    {
+        guard let value else {
+            try await self.remove(with: key)
+            return
+        }
+        
+        let operation = DatabaseOperation.insert(tableName: Key.Value.tableName,
+                                                 id: key.id,
+                                                 data: try value.codableData)
+        
+        try await self.execute(operation: operation)
+    }
+    
     public func remove<Key: CryoKey>(with key: Key) async throws
         where Key.Value: CryoModel
     {
-        try await persist(nil, for: key)
+        let operation = DatabaseOperation.delete(tableName: Key.Value.tableName, id: key.id)
+        try await self.execute(operation: operation)
     }
-}
-
-public protocol CryoDatabaseAdaptor: CryoIndexingAdaptor {
-    /// Execute a database operation.
-    func execute(operation: DatabaseOperation) async throws
     
-    /// Check the availability of the database.
-    var isAvailable: Bool { get }
+    public func removeAll<Record>(of type: Record.Type) async throws
+        where Record: CryoModel
+    {
+        let operation = DatabaseOperation.delete(tableName: Record.tableName)
+        try await self.execute(operation: operation)
+    }
     
-    /// Ensure that the database is available and throw an error if it is not.
-    func ensureAvailability() async throws
-    
-    /// Register a listener for availability changes.
-    func observeAvailabilityChanges(_ callback: @escaping (Bool) -> Void)
+    public func removeAll() async throws {
+        let operation = DatabaseOperation.deleteAll()
+        try await self.execute(operation: operation)
+    }
 }
 
 public protocol CryoObservableAdaptor {

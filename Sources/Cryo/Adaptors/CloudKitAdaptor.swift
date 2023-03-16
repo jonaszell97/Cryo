@@ -2,7 +2,7 @@
 import CloudKit
 import Foundation
 
-internal protocol AnyCloudKitAdaptor: AnyObject, CryoIndexingAdaptor, CryoDatabaseAdaptor {
+internal protocol AnyCloudKitAdaptor: AnyObject, CryoDatabaseAdaptor {
     /// Delete a record with the given id.
     func delete(recordWithId id: CKRecord.ID) async throws
     
@@ -25,7 +25,7 @@ internal protocol AnyCloudKitAdaptor: AnyObject, CryoIndexingAdaptor, CryoDataba
     var schemas: [ObjectIdentifier: CryoSchema] { get set }
 }
 
-// MARK: CryoIndexingAdaptor implementation
+// MARK: CryoDatabaseAdaptor implementation
 
 extension AnyCloudKitAdaptor {
     public func removeAll<Record: CryoModel>(of type: Record.Type) async throws {
@@ -199,8 +199,6 @@ extension AnyCloudKitAdaptor {
         }
     }
 }
-
-// MARK: CryoDatabaseAdaptor implementation
 
 extension AnyCloudKitAdaptor {
     public func execute(operation: DatabaseOperation) async throws {

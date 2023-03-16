@@ -101,7 +101,7 @@ extension MirroredDatabaseStore {
     }
     
     /// Execute  a remote operation.
-    func execute(operation: DatabaseOperation, enqueueIfFailed: Bool = true) async throws {
+    func execute(operation: DatabaseOperation, enqueueIfFailed: Bool) async throws {
         do {
             try await mirrorAdaptor.execute(operation: operation)
             try await mainAdaptor.execute(operation: operation)
@@ -149,8 +149,12 @@ extension MirroredDatabaseStore {
     }
 }
 
-extension MirroredDatabaseStore: CryoIndexingAdaptor {
-   public func persist<Key: CryoKey>(_ value: Key.Value?, for key: Key) async throws
+extension MirroredDatabaseStore: CryoDatabaseAdaptor {
+    public func execute(operation: DatabaseOperation) async throws {
+        try await self.execute(operation: operation, enqueueIfFailed: true)
+    }
+    
+    public func persist<Key: CryoKey>(_ value: Key.Value?, for key: Key) async throws
         where Key.Value: CryoModel
     {
         guard let value else {

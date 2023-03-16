@@ -598,7 +598,7 @@ extension SQLiteAdaptor {
     }
 }
 
-extension SQLiteAdaptor: CryoIndexingAdaptor {
+extension SQLiteAdaptor: CryoDatabaseAdaptor {
     public func persist<Key: CryoKey>(_ value: Key.Value?, for key: Key) async throws {
         guard let model = value as? CryoModel else {
             throw CryoError.cannotPersistValue(valueType: Key.Value.self, adaptorType: SQLiteAdaptor.self)
@@ -681,7 +681,7 @@ extension SQLiteAdaptor: CryoIndexingAdaptor {
     }
 }
 
-extension SQLiteAdaptor: CryoDatabaseAdaptor {
+extension SQLiteAdaptor {
     public func execute(operation: DatabaseOperation) async throws {
         let query: SQLiteQuery
         switch operation.type {
