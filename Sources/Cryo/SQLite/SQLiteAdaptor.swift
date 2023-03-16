@@ -494,8 +494,8 @@ extension SQLiteAdaptor {
         return query
     }
     
-    public func insert<Model: CryoModel>(id: String, _ value: Model) async throws -> any CryoInsertQuery<Model> {
-        try SQLiteInsertQuery(id: id, value: value, connection: db.connection, config: config)
+    public func insert<Model: CryoModel>(id: String, _ value: Model, replace: Bool) async throws -> any CryoInsertQuery<Model> {
+        try SQLiteInsertQuery(id: id, value: value, replace: replace, connection: db.connection, config: config)
     }
     
     public func update<Model: CryoModel>(id: String?) async throws -> any CryoUpdateQuery<Model> {

@@ -96,43 +96,74 @@ CREATE TABLE IF NOT EXISTS TestModel(
     func testSelectQueries() async throws {
         let adaptor = try SQLiteAdaptor(databaseUrl: self.databaseUrl!, config: CryoConfig { print("[\($0)] \($1)") })
         try await adaptor.createTable(for: TestModel.self).execute()
-        
+
         do {
             let value = TestModel(x: 123, y: "Hello there", z: .a)
-            let key = AnyKey(id: "test-123", for: TestModel.self)
-            try await adaptor.persist(value, for: key)
-            
+
+            let inserted = try await adaptor.insert(id: "test-123", value).execute()
+            XCTAssertEqual(inserted, true)
+
             let result0 = try await adaptor
                 .select(from: TestModel.self)
                 .execute()
-            
+
             XCTAssertEqual(result0, [value])
-            
+
             let result1 = try await adaptor
                 .select(from: TestModel.self)
                 .where("x", equals: 123)
                 .execute()
-            
+
             XCTAssertEqual(result1, [value])
-            
+
             let result2 = try await adaptor
                 .select(from: TestModel.self)
                 .where("x", equals: 123)
                 .where("y", equals: "Hmmm")
                 .execute()
-            
+
             XCTAssertEqual(result2.count, 0)
-            
+
             let result3 = try await adaptor
                 .select(from: TestModel.self)
                 .where("x", isGreatherThan: 50)
                 .where("x", isLessThan: 200)
                 .execute()
-            
+
             XCTAssertEqual(result3, [value])
         }
         catch {
             XCTAssert(false, error.localizedDescription)
+        }
+    }
+    
+    func testInsertQueries() async throws {
+        let adaptor = try SQLiteAdaptor(databaseUrl: self.databaseUrl!, config: CryoConfig { print("[\($0)] \($1)") })
+        try await adaptor.createTable(for: TestModel.self).execute()
+        
+        do {
+            let value = TestModel(x: 123, y: "Hello there", z: .a)
+            
+            let inserted = try await adaptor.insert(id: "test-123", value, replace: true).execute()
+            XCTAssertEqual(inserted, true)
+
+            do {
+                _ = try await adaptor.insert(id: "test-123", value, replace: false).execute()
+                XCTFail("should not be reached")
+            }
+            catch let e as CryoError {
+                if case .duplicateId = e {
+                }
+                else {
+                    XCTFail("error should be duplicateId")
+                }
+            }
+            catch {
+                XCTFail("should not be reached")
+            }
+        }
+        catch {
+            XCTFail(error.localizedDescription)
         }
     }
 }
