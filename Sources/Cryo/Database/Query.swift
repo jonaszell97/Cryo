@@ -29,25 +29,6 @@ public protocol CryoQuery {
     func execute() async throws -> Result
 }
 
-public struct CryoQueryBinding {
-    /// The name of the column.
-    let columnName: String
-    
-    /// The value.
-    let value: CryoQueryValue
-}
-
-public protocol CryoBindableQuery: CryoQuery {
-    /// The model type of the query.
-    associatedtype Model: CryoModel
-    
-    /// The bound variables.
-    var boundVariables: [CryoQueryBinding] { get }
-    
-    /// Bind a value to this query..
-    @discardableResult func bind(_ value: CryoQueryBinding) async throws -> Self
-}
-
 public enum CryoComparisonOperator: String {
     /// Equality (==) comparison.
     case equals
@@ -138,101 +119,6 @@ extension CryoSelectQuery {
         isLessThanOrEquals value: Value
     ) async throws -> Self {
         try await self.where(columnName, operation: .isLessThanOrEquals, value: value)
-    }
-}
-
-extension CryoBindableQuery {
-    /// Bind an integer value.
-    @discardableResult public func bind(_ value: Int) async throws -> Self {
-        let schema = await CryoSchemaManager.shared.schema(for: Model.self)
-        let column = schema[self.boundVariables.count]
-        let columnName = column.columnName
-        
-        assert(column.type == .integer)
-        
-        try await self.bind(DatabaseOperationValue(columnName: columnName, value: .integer(value: value)))
-        return self
-    }
-    
-    /// Bind a double value.
-    @discardableResult public func bind(_ value: Double) async throws -> Self {
-        let schema = await CryoSchemaManager.shared.schema(for: Model.self)
-        let column = schema[self.boundVariables.count]
-        let columnName = column.columnName
-        
-        assert(column.type == .double)
-        
-        try await self.bind(DatabaseOperationValue(columnName: columnName, value: .double(value: value)))
-        return self
-    }
-    
-    /// Bind a string value.
-    @discardableResult public func bind(_ value: String) async throws -> Self {
-        let schema = await CryoSchemaManager.shared.schema(for: Model.self)
-        let column = schema[self.boundVariables.count]
-        let columnName = column.columnName
-        
-        assert(column.type == .text)
-        
-        try await self.bind(DatabaseOperationValue(columnName: columnName, value: .string(value: value)))
-        return self
-    }
-    
-    /// Bind a date value.
-    @discardableResult public func bind(_ value: Date) async throws -> Self {
-        let schema = await CryoSchemaManager.shared.schema(for: Model.self)
-        let column = schema[self.boundVariables.count]
-        let columnName = column.columnName
-        
-        assert(column.type == .date)
-        
-        try await self.bind(DatabaseOperationValue(columnName: columnName, value: .date(value: value)))
-        return self
-    }
-    
-    /// Bind a URL value.
-    @discardableResult public func bind(_ value: URL) async throws -> Self {
-        let schema = await CryoSchemaManager.shared.schema(for: Model.self)
-        let column = schema[self.boundVariables.count]
-        let columnName = column.columnName
-        
-        assert(column.type == .text)
-        
-        try await self.bind(DatabaseOperationValue(columnName: columnName, value: .string(value: value.absoluteString)))
-        return self
-    }
-    
-    /// Bind a data value.
-    @discardableResult public func bind(_ value: Data) async throws -> Self {
-        let schema = await CryoSchemaManager.shared.schema(for: Model.self)
-        let column = schema[self.boundVariables.count]
-        let columnName = column.columnName
-        
-        assert(column.type == .data)
-        
-        try await self.bind(DatabaseOperationValue(columnName: columnName, value: .data(value: value)))
-        return self
-    }
-    
-    /// Bind a codable value.
-    @discardableResult public func bind<T: Codable>(_ value: T) async throws -> Self {
-        let schema = await CryoSchemaManager.shared.schema(for: Model.self)
-        let column = schema[self.boundVariables.count]
-        let columnName = column.columnName
-        
-        assert(column.type == .data)
-        
-        try await self.bind(DatabaseOperationValue(columnName: columnName, value: .data(value: try JSONEncoder().encode(value))))
-        return self
-    }
-    
-    /// Bind an array of values.
-    @discardableResult public func bind(_ values: [DatabaseOperationValue]) async throws -> Self {
-        for value in values {
-            try await self.bind(value)
-        }
-        
-        return self
     }
 }
 
