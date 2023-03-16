@@ -9,6 +9,9 @@ public final class SQLiteInsertQuery<Model: CryoModel> {
     /// The model value to insert.
     let value: Model
     
+    /// Whether to replace an existing value with the same key
+    let replace: Bool
+    
     /// The creation date of this query.
     let created: Date
     
@@ -26,9 +29,10 @@ public final class SQLiteInsertQuery<Model: CryoModel> {
     #endif
     
     /// Create an INSERT query.
-    internal init(id: String, value: Model, connection: OpaquePointer, config: CryoConfig?) throws {
+    internal init(id: String, value: Model, replace: Bool, connection: OpaquePointer, config: CryoConfig?) throws {
         self.id = id
         self.value = value
+        self.replace = replace
         self.created = .now
         self.connection = connection
         
@@ -48,7 +52,7 @@ public final class SQLiteInsertQuery<Model: CryoModel> {
             let columns: [String] = schema.map { $0.columnName }
             
             let result = """
-INSERT OR REPLACE INTO \(Model.tableName)(_cryo_key,_cryo_created,_cryo_modified,\(columns.joined(separator: ",")))
+INSERT \(replace ? "OR REPLACE " : "")INTO \(Model.tableName)(_cryo_key,_cryo_created,_cryo_modified,\(columns.joined(separator: ",")))
     VALUES (?,?,?,\(columns.map { _ in "?" }.joined(separator: ",")));
 """
             
@@ -105,6 +109,16 @@ extension SQLiteInsertQuery: CryoInsertQuery {
         
         let executeStatus = sqlite3_step(queryStatement)
         guard executeStatus == SQLITE_DONE else {
+            // Check if UNIQUE constraint failed
+            if executeStatus == SQLITE_CONSTRAINT {
+                if let errorPointer = sqlite3_errmsg(connection) {
+                    let message = String(cString: errorPointer)
+                    if message.contains("UNIQUE") && message.contains("_cryo_key") {
+                        throw CryoError.duplicateId(id: self.id)
+                    }
+                }
+            }
+            
             var message: String? = nil
             if let errorPointer = sqlite3_errmsg(connection) {
                 message = String(cString: errorPointer)
@@ -115,6 +129,6 @@ extension SQLiteInsertQuery: CryoInsertQuery {
                                                  message: message)
         }
         
-        return true
+        return sqlite3_changes(connection) > 0
     }
 }

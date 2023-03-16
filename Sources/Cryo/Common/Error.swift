@@ -17,6 +17,9 @@ public enum CryoError: Error {
     /// A finalized query was attempted to be modified.
     case modifyingFinalizedQuery
     
+    /// A query failed because of a duplicate key.
+    case duplicateId(id: String)
+    
     // MARK: SQLite
     
     /// Failed to compile an SQL query.

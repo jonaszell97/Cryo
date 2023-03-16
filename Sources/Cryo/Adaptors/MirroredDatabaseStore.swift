@@ -160,7 +160,7 @@ extension MirroredDatabaseStore: CryoDatabaseAdaptor {
         fatalError()
     }
     
-    public func insert<Model: CryoModel>(id: String, _ value: Model) async throws -> any CryoInsertQuery<Model> {
+    public func insert<Model: CryoModel>(id: String, _ value: Model, replace: Bool) async throws -> any CryoInsertQuery<Model> {
         fatalError("TODO")
     }
     
