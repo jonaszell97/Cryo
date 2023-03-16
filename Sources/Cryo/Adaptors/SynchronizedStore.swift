@@ -295,16 +295,16 @@ extension SynchronizedStore: CryoDatabaseAdaptor {
         try await localStore.createTable(for: type)
     }
     
-    public func select<Model: CryoModel>(from: Model.Type) async throws -> any CryoSelectQuery<Model> {
-        fatalError("TODO")
-    }
-    
     /// Create a SELECT by ID query.
-    public func select<Model: CryoModel>(id: String, from: Model.Type) async throws -> any CryoSelectQuery<Model> {
+    public func select<Model: CryoModel>(id: String?, from: Model.Type) async throws -> any CryoSelectQuery<Model> {
         fatalError()
     }
     
     public func insert<Model: CryoModel>(id: String, _ value: Model) async throws -> any CryoInsertQuery<Model> {
+        fatalError("TODO")
+    }
+    
+    public func update<Model: CryoModel>(id: String?) async throws -> any CryoUpdateQuery<Model> {
         fatalError("TODO")
     }
     

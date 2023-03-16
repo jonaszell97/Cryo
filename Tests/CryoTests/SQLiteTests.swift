@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS TestModel(
     
     func testDatabasePersistence() async throws {
         let adaptor = try SQLiteAdaptor(databaseUrl: self.databaseUrl!, config: CryoConfig { print("[\($0)] \($1)") })
+        try await adaptor.createTable(for: TestModel.self).execute()
         
         let value = TestModel(x: 123, y: "Hello there", z: .a)
         let value2 = TestModel(x: 3291, y: "Hello therexxx", z: .c)
@@ -94,6 +95,7 @@ CREATE TABLE IF NOT EXISTS TestModel(
     
     func testSelectQueries() async throws {
         let adaptor = try SQLiteAdaptor(databaseUrl: self.databaseUrl!, config: CryoConfig { print("[\($0)] \($1)") })
+        try await adaptor.createTable(for: TestModel.self).execute()
         
         do {
             let value = TestModel(x: 123, y: "Hello there", z: .a)

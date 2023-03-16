@@ -418,29 +418,6 @@ extension SQLiteAdaptor {
         "DELETE FROM \(Model.tableName);"
     }
     
-    // MARK: Update
-    
-    /// Build the query string for an update query.
-    func createUpdateQuery<Model: CryoModel>(for value: Model) async throws -> String {
-        let schema = try await self.schema(for: type(of: value))
-        let columns: [String] = schema.map { $0.columnName }
-        
-        return "UPDATE \(Model.tableName) SET _cryo_modified = ?, \(columns.map { "\($0) = ?" }.joined(separator: ", ")) WHERE _cryo_key == ?;"
-    }
-    
-    /// Get the values for an update query.
-    func getUpdateBindings<Key: CryoKey, Model: CryoModel>(for key: Key, value: Model)
-        async throws -> [any _AnyCryoColumnValue]
-    {
-        let schema = try await self.schema(for: type(of: value))
-        
-        var bindings: [any _AnyCryoColumnValue] = [ISO8601DateFormatter().string(from: .now)]
-        bindings.append(contentsOf: schema.map { $0.getValue(value) })
-        bindings.append(key.id)
-        
-        return bindings
-    }
-    
     // MARK: Attach
     
     /// Build a query string to attach another database file.
@@ -508,18 +485,21 @@ extension SQLiteAdaptor {
         return try SQLiteCreateTableQuery(for: model, connection: db.connection, config: config)
     }
     
-    public func select<Model: CryoModel>(from: Model.Type) async throws -> any CryoSelectQuery<Model> {
-        try SQLiteSelectQuery(connection: db.connection, config: config)
-    }
-    
-    /// Create a SELECT by ID query.
-    public func select<Model: CryoModel>(id: String, from: Model.Type) async throws -> any CryoSelectQuery<Model> {
-        try await SQLiteSelectQuery(connection: db.connection, config: config)
-            .where("_cryo_key", operation: .equals, value: id)
+    public func select<Model: CryoModel>(id: String?, from: Model.Type) async throws -> any CryoSelectQuery<Model> {
+        var query: SQLiteSelectQuery<Model> = try SQLiteSelectQuery(connection: db.connection, config: config)
+        if let id {
+            query = try await query.where("_cryo_key", operation: .equals, value: id)
+        }
+        
+        return query
     }
     
     public func insert<Model: CryoModel>(id: String, _ value: Model) async throws -> any CryoInsertQuery<Model> {
         try SQLiteInsertQuery(id: id, value: value, connection: db.connection, config: config)
+    }
+    
+    public func update<Model: CryoModel>(id: String?) async throws -> any CryoUpdateQuery<Model> {
+        try SQLiteUpdateQuery(id: id, connection: db.connection, config: config)
     }
 }
 

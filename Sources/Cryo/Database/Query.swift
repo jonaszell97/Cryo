@@ -124,7 +124,7 @@ public protocol CryoWhereClauseQuery<Model>: CryoModelQuery {
 
 // MARK: Set clauses
 
-public struct CryoSetClause {
+public struct CryoQuerySetClause {
     /// The name of the column.
     let columnName: String
     
