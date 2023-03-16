@@ -145,7 +145,7 @@ CREATE TABLE IF NOT EXISTS TestModel(
             let value = TestModel(x: 123, y: "Hello there", z: .a)
             
             let inserted = try await adaptor.insert(id: "test-123", value, replace: true).execute()
-            XCTFail(inserted, true)
+            XCTAssertEqual(inserted, true)
 
             do {
                 _ = try await adaptor.insert(id: "test-123", value, replace: false).execute()
