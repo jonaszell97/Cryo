@@ -41,6 +41,10 @@ extension AnyCloudKitAdaptor {
     public func update<Model: CryoModel>(id: String?) async throws -> any CryoUpdateQuery<Model> {
         fatalError("TODO")
     }
+    
+    public func delete<Model: CryoModel>(id: String?) async throws -> any CryoDeleteQuery<Model> {
+        fatalError("TODO")
+    }
 }
 
 extension AnyCloudKitAdaptor {

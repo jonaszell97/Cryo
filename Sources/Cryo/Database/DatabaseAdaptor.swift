@@ -58,6 +58,9 @@ public protocol CryoDatabaseAdaptor {
     /// Create an UPDATE query.
     func update<Model: CryoModel>(id: String?) async throws -> any CryoUpdateQuery<Model>
     
+    /// Create a DELETE query.
+    func delete<Model: CryoModel>(id: String?) async throws -> any CryoDeleteQuery<Model>
+    
     // MARK: Availability
     
     /// Check the availability of the database.

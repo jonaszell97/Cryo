@@ -501,6 +501,10 @@ extension SQLiteAdaptor {
     public func update<Model: CryoModel>(id: String?) async throws -> any CryoUpdateQuery<Model> {
         try SQLiteUpdateQuery(id: id, connection: db.connection, config: config)
     }
+    
+    public func delete<Model: CryoModel>(id: String?) async throws -> any CryoDeleteQuery<Model> {
+        try SQLiteDeleteQuery(id: id, connection: db.connection, config: config)
+    }
 }
 
 extension SQLiteAdaptor: CryoDatabaseAdaptor {

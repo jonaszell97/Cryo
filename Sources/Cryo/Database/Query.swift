@@ -142,7 +142,9 @@ public protocol CryoSetClauseQuery<Model>: CryoModelQuery {
 
 // MARK: Select
 
-public protocol CryoSelectQuery<Model>: CryoWhereClauseQuery where Self.Result == [Model] {
+public protocol CryoSelectQuery<Model>: CryoWhereClauseQuery
+    where Self.Result == [Model]
+{
     
 }
 
@@ -157,6 +159,14 @@ public protocol CryoInsertQuery<Model>: CryoModelQuery
 // MARK: Update
 
 public protocol CryoUpdateQuery<Model>: CryoWhereClauseQuery, CryoSetClauseQuery
+    where Self.Result == Int
+{
+    
+}
+
+// MARK: Delete
+
+public protocol CryoDeleteQuery<Model>: CryoWhereClauseQuery
     where Self.Result == Int
 {
     

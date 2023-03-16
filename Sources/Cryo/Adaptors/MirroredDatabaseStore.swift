@@ -168,6 +168,10 @@ extension MirroredDatabaseStore: CryoDatabaseAdaptor {
         fatalError("TODO")
     }
     
+    public func delete<Model: CryoModel>(id: String?) async throws -> any CryoDeleteQuery<Model> {
+        fatalError("TODO")
+    }
+    
     public func execute(operation: DatabaseOperation) async throws {
         try await self.execute(operation: operation, enqueueIfFailed: true)
     }
