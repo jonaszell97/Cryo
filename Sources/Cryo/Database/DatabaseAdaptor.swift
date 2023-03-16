@@ -55,6 +55,9 @@ public protocol CryoDatabaseAdaptor {
     /// Create a SELECT by ID query.
     func select<Model: CryoModel>(id: String, from: Model.Type) async throws -> any CryoSelectQuery<Model>
     
+    /// Create an INSERT query.
+    func insert<Model: CryoModel>(id: String, _ value: Model) async throws -> any CryoInsertQuery<Model>
+    
     // MARK: Availability
     
     /// Check the availability of the database.
@@ -124,12 +127,8 @@ extension CryoDatabaseAdaptor {
             try await self.remove(with: key)
             return
         }
-        
-        let operation = DatabaseOperation.insert(tableName: Key.Value.tableName,
-                                                 id: key.id,
-                                                 data: try value.codableData)
-        
-        try await self.execute(operation: operation)
+
+        _ = try await self.insert(id: key.id, value).execute()
     }
     
     public func load<Key: CryoKey>(with key: Key) async throws -> Key.Value?

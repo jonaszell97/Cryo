@@ -291,6 +291,10 @@ fileprivate extension SynchronizedStore {
 }
 
 extension SynchronizedStore: CryoDatabaseAdaptor {
+    public func createTable<Model: CryoModel>(for type: Model.Type) async throws -> any CryoQuery<Void> {
+        try await localStore.createTable(for: type)
+    }
+    
     public func select<Model: CryoModel>(from: Model.Type) async throws -> any CryoSelectQuery<Model> {
         fatalError("TODO")
     }
@@ -300,8 +304,8 @@ extension SynchronizedStore: CryoDatabaseAdaptor {
         fatalError()
     }
     
-    public func createTable<Model: CryoModel>(for type: Model.Type) async throws -> any CryoQuery<Void> {
-        try await localStore.createTable(for: type)
+    public func insert<Model: CryoModel>(id: String, _ value: Model) async throws -> any CryoInsertQuery<Model> {
+        fatalError("TODO")
     }
     
     public func execute(operation: DatabaseOperation) async throws {

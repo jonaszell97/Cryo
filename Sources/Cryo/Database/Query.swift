@@ -98,10 +98,9 @@ public struct MultiQuery<Result1, Result2>: CryoQuery {
         
         return
     }
-    
 }
 
-// MARK: Select
+// MARK: WHERE clause
 
 public struct CryoQueryWhereClause {
     /// The name of the column.
@@ -114,7 +113,7 @@ public struct CryoQueryWhereClause {
     let value: CryoQueryValue
 }
 
-public protocol CryoSelectQuery<Model>: CryoModelQuery where Self.Result == [Model] {
+public protocol CryoWhereClauseQuery<Model>: CryoModelQuery {
     /// Attach a WHERE clause to this query.
     @discardableResult func `where`<Value: _AnyCryoColumnValue>(
         _ columnName: String,
@@ -123,7 +122,49 @@ public protocol CryoSelectQuery<Model>: CryoModelQuery where Self.Result == [Mod
     ) async throws -> Self
 }
 
-extension CryoSelectQuery {
+// MARK: Set clauses
+
+public struct CryoSetClause {
+    /// The name of the column.
+    let columnName: String
+    
+    /// The value.
+    let value: CryoQueryValue
+}
+
+public protocol CryoSetClauseQuery<Model>: CryoModelQuery {
+    /// Attach a WHERE clause to this query.
+    @discardableResult func set<Value: _AnyCryoColumnValue>(
+        _ columnName: String,
+        value: Value
+    ) async throws -> Self
+}
+
+// MARK: Select
+
+public protocol CryoSelectQuery<Model>: CryoWhereClauseQuery where Self.Result == [Model] {
+    
+}
+
+// MARK: Insert
+
+public protocol CryoInsertQuery<Model>: CryoModelQuery
+    where Self.Result == Bool
+{
+    
+}
+
+// MARK: Update
+
+public protocol CryoUpdateQuery<Model>: CryoWhereClauseQuery, CryoSetClauseQuery
+    where Self.Result == Int
+{
+    
+}
+
+// MARK: Utility extensions
+
+extension CryoWhereClauseQuery {
     /// Attach a WHERE clause to this query.
     @discardableResult func `where`<Value: _AnyCryoColumnValue>(
         _ columnName: String,

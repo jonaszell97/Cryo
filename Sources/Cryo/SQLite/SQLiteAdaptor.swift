@@ -401,29 +401,6 @@ extension SQLiteAdaptor {
         try db.query(queryString)
     }
     
-    // MARK: Insertion
-    
-    /// Build the query string for an insertion query.
-    func createInsertQuery<Model: CryoModel>(for value: Model) async throws -> String {
-        let schema = try await self.schema(for: type(of: value))
-        let columns: [String] = schema.map { $0.columnName }
-        
-        return """
-INSERT OR REPLACE INTO \(Model.tableName)(_cryo_key,_cryo_created,_cryo_modified,\(columns.joined(separator: ","))) VALUES (?,?,?,\(columns.map { _ in "?" }.joined(separator: ",")));
-"""
-    }
-    
-    /// Get the values for an insertion query.
-    func getInsertBindings<Key: CryoKey, Model: CryoModel>(for key: Key, value: Model) async throws -> [any _AnyCryoColumnValue] {
-        let schema = try await self.schema(for: type(of: value))
-        let now = ISO8601DateFormatter().string(from: .now)
-        
-        var bindings: [any _AnyCryoColumnValue] = [key.id, now, now]
-        bindings.append(contentsOf: schema.map { $0.getValue(value) })
-        
-        return bindings
-    }
-    
     // MARK: Deletion
     
     /// Build the query string for a deletion query.
@@ -541,20 +518,12 @@ extension SQLiteAdaptor {
             .where("_cryo_key", operation: .equals, value: id)
     }
     
+    public func insert<Model: CryoModel>(id: String, _ value: Model) async throws -> any CryoInsertQuery<Model> {
+        try SQLiteInsertQuery(id: id, value: value, connection: db.connection, config: config)
+    }
 }
 
 extension SQLiteAdaptor: CryoDatabaseAdaptor {
-    public func persist<Key: CryoKey>(_ value: Key.Value?, for key: Key) async throws {
-        guard let model = value as? CryoModel else {
-            throw CryoError.cannotPersistValue(valueType: Key.Value.self, adaptorType: SQLiteAdaptor.self)
-        }
-        
-        let query = try await createInsertQuery(for: model)
-        let bindings = try await getInsertBindings(for: key, value: model)
-        
-        try db.query(query, bindings: bindings)
-    }
-    
     public func remove<Key: CryoKey>(with key: Key) async throws {
         guard let model = Key.Value.self as? CryoModel.Type else {
             throw CryoError.cannotPersistValue(valueType: Key.Value.self, adaptorType: SQLiteAdaptor.self)
@@ -666,5 +635,83 @@ extension SQLiteAdaptor {
         }
     }
     
+    /// Bind a variable.
+    static func bind(_ queryStatement: OpaquePointer, value: CryoQueryValue, index: Int32) {
+        let stringValue: String
+        switch value {
+        case .integer(let value):
+            sqlite3_bind_int(queryStatement, index, Int32(value))
+            return
+        case .double(let value):
+            sqlite3_bind_double(queryStatement, index, value)
+            return
+        case .data(let value):
+            _ = value.withUnsafeBytes { (bytes: UnsafeRawBufferPointer) in
+                sqlite3_bind_blob(queryStatement, index, bytes.baseAddress, Int32(bytes.count), nil)
+            }
+            return
+        case .string(let value):
+            stringValue = value
+        case .date(let value):
+            stringValue = ISO8601DateFormatter().string(from: value)
+        case .asset(let value):
+            stringValue = value.absoluteString
+        }
+        
+        _ = stringValue.utf8CString.withUnsafeBufferPointer { buffer in
+            sqlite3_bind_text(queryStatement, index, buffer.baseAddress, -1, SQLiteAdaptor.SQLITE_TRANSIENT)
+        }
+    }
     
+    /// Get a result value from the given query.
+    static func columnValue(_ statement: OpaquePointer, connection: OpaquePointer, columnName: String,
+                            type: CryoColumnType, index: Int32) throws -> _AnyCryoColumnValue {
+        switch type {
+        case .integer:
+            return sqlite3_column_int(statement, index)
+        case .double:
+            return sqlite3_column_double(statement, index)
+        case .text:
+            guard let absoluteString = sqlite3_column_text(statement, index) else {
+                var message: String? = nil
+                if let errorPointer = sqlite3_errmsg(connection) {
+                    message = String(cString: errorPointer)
+                }
+                
+                throw CryoError.queryDecodeFailed(column: columnName, message: message)
+            }
+            
+            return String(cString: absoluteString)
+        case .date:
+            guard
+                let dateString = sqlite3_column_text(statement, index),
+                let date = ISO8601DateFormatter().date(from: String(cString: dateString))
+            else {
+                var message: String? = nil
+                if let errorPointer = sqlite3_errmsg(connection) {
+                    message = String(cString: errorPointer)
+                }
+                
+                throw CryoError.queryDecodeFailed(column: columnName, message: message)
+            }
+            
+            return date
+        case .data:
+            let byteCount = sqlite3_column_bytes(statement, index)
+            guard let blob = sqlite3_column_blob(statement, index) else {
+                var message: String? = nil
+                if let errorPointer = sqlite3_errmsg(connection) {
+                    message = String(cString: errorPointer)
+                }
+                
+                throw CryoError.queryDecodeFailed(column: columnName, message: message)
+            }
+            
+            return Data(bytes: blob, count: Int(byteCount))
+        case .bool:
+            return sqlite3_column_int(statement, index) != 0
+        case .asset:
+            fatalError("not supported in SQLiteAdaptor")
+        }
+    }
 }

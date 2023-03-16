@@ -26,17 +26,20 @@ internal protocol AnyCloudKitAdaptor: AnyObject, CryoDatabaseAdaptor {
 // MARK: CryoDatabaseAdaptor implementation
 
 extension AnyCloudKitAdaptor {
+    public func createTable<Model: CryoModel>(for type: Model.Type) async throws -> any CryoQuery<Void> {
+        NoOpQuery(queryString: "CREATE TABLE", for: type)
+    }
+    
     public func select<Model: CryoModel>(from: Model.Type) async throws -> any CryoSelectQuery<Model> {
         fatalError("TODO")
     }
     
-    /// Create a SELECT by ID query.
     public func select<Model: CryoModel>(id: String, from: Model.Type) async throws -> any CryoSelectQuery<Model> {
-        fatalError()
+        fatalError("TODO")
     }
     
-    public func createTable<Model: CryoModel>(for type: Model.Type) async throws -> any CryoQuery<Void> {
-        NoOpQuery(queryString: "CREATE TABLE", for: type)
+    public func insert<Model: CryoModel>(id: String, _ value: Model) async throws -> any CryoInsertQuery<Model> {
+        fatalError("TODO")
     }
 }
 

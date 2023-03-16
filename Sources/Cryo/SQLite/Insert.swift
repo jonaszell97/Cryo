@@ -2,7 +2,16 @@
 import Foundation
 import SQLite3
 
-public final class SQLiteCreateTableQuery<Model: CryoModel> {
+public final class SQLiteInsertQuery<Model: CryoModel> {
+    /// The ID to insert the value with.
+    let id: String
+    
+    /// The model value to insert.
+    let value: Model
+    
+    /// The creation date of this query.
+    let created: Date
+    
     /// The complete query string.
     var completeQueryString: String? = nil
     
@@ -16,8 +25,11 @@ public final class SQLiteCreateTableQuery<Model: CryoModel> {
     let config: CryoConfig?
     #endif
     
-    /// Create a CREATE TABLE query.
-    internal init(for: Model.Type, connection: OpaquePointer, config: CryoConfig?) throws {
+    /// Create an INSERT query.
+    internal init(id: String, value: Model, connection: OpaquePointer, config: CryoConfig?) throws {
+        self.id = id
+        self.value = value
+        self.created = .now
         self.connection = connection
         
         #if DEBUG
@@ -33,18 +45,11 @@ public final class SQLiteCreateTableQuery<Model: CryoModel> {
             }
             
             let schema = await CryoSchemaManager.shared.schema(for: Model.self)
-            var columns = ""
-            
-            for columnDetails in schema {
-                columns += ",\n    \(columnDetails.columnName) \(SQLiteAdaptor.sqliteTypeName(for: columnDetails.type))"
-            }
+            let columns: [String] = schema.map { $0.columnName }
             
             let result = """
-CREATE TABLE IF NOT EXISTS \(Model.tableName)(
-    _cryo_key TEXT NOT NULL UNIQUE,
-    _cryo_created TEXT NOT NULL,
-    _cryo_modified TEXT NOT NULL\(columns)
-);
+INSERT OR REPLACE INTO \(Model.tableName)(_cryo_key,_cryo_created,_cryo_modified,\(columns.joined(separator: ",")))
+    VALUES (?,?,?,\(columns.map { _ in "?" }.joined(separator: ",")));
 """
             
             self.completeQueryString = result
@@ -53,7 +58,7 @@ CREATE TABLE IF NOT EXISTS \(Model.tableName)(
     }
 }
 
-extension SQLiteCreateTableQuery {
+extension SQLiteInsertQuery {
     /// Get the compiled query statement.
     func compiledQuery() async throws -> OpaquePointer {
         if let queryStatement {
@@ -73,15 +78,22 @@ extension SQLiteCreateTableQuery {
             throw CryoError.queryCompilationFailed(query: queryString, status: prepareStatus, message: message)
         }
         
+        let schema = await CryoSchemaManager.shared.schema(for: Model.self)
+        
+        var bindings: [CryoQueryValue] = [.string(value: id), .date(value: created), .date(value: created)]
+        bindings.append(contentsOf: try schema.map { try .init(value: $0.getValue(value)) })
+        
+        for i in 0..<bindings.count {
+            SQLiteAdaptor.bind(queryStatement, value: bindings[i], index: Int32(i + 1))
+        }
+        
         self.queryStatement = queryStatement
         return queryStatement
     }
 }
 
-extension SQLiteCreateTableQuery: CryoQuery {
-    public typealias Result = Void
-    
-    public func execute() async throws {
+extension SQLiteInsertQuery: CryoInsertQuery {
+    public func execute() async throws -> Bool {
         let queryStatement = try await self.compiledQuery()
         defer {
             sqlite3_finalize(queryStatement)
@@ -102,5 +114,7 @@ extension SQLiteCreateTableQuery: CryoQuery {
                                                  status: executeStatus,
                                                  message: message)
         }
+        
+        return true
     }
 }

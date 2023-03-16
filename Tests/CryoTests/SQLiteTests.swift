@@ -61,17 +61,6 @@ CREATE TABLE IF NOT EXISTS TestModel(
 """);
     }
     
-    func testCreateInsertQuery() async throws {
-        let adaptor = try SQLiteAdaptor(databaseUrl: self.databaseUrl!)
-        let value = TestModel(x: 123, y: "Hello there", z: .a)
-        let query = try await adaptor.createInsertQuery(for: value)
-        
-        XCTAssertEqual(query, """
-INSERT OR REPLACE INTO TestModel(_cryo_key,_cryo_created,_cryo_modified,x,y,z) VALUES (?,?,?,?,?,?);
-""")
-    }
-    
-    
     func testDatabasePersistence() async throws {
         let adaptor = try SQLiteAdaptor(databaseUrl: self.databaseUrl!, config: CryoConfig { print("[\($0)] \($1)") })
         
