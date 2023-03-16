@@ -1,23 +1,59 @@
 
+import CloudKit
 import Foundation
 
-fileprivate struct SynchronizationMetadata {
-    /// The date of the last modification to the store.
-    let lastModificationDate: Date
+// MARK: SyncOperation
+
+fileprivate struct SyncOperation: CryoModel {
+    static var tableName: String { "CryoSyncOperation" }
     
-    /// The file name of this store's database file.
-    let databaseFilename: String
+    /// The ID of the store this operation was created by.
+    @CryoColumn var storeIdentifier: String
     
-    /// The current ubiquity token identifier.
-    let ubiquityIdentityToken: String?
+    /// The device ID of the store this operation was created by.
+    @CryoColumn var deviceIdentifier: String
+    
+    /// The date of the operation.
+    @CryoColumn var date: Date
+    
+    /// The name of the table this operation runs on.
+    @CryoColumn var tableName: String
+    
+    /// The ID of the affected row.
+    @CryoColumn var rowId: String
+    
+    /// The type of the operation.
+    @CryoColumn var type: DatabaseOperationType
+    
+    /// The data required for this operation.
+    @CryoColumn var data: [DatabaseOperationValue]
 }
+
+extension SyncOperation {
+    /// Create a database operation from this sync operation.
+    var databaseOperation: DatabaseOperation {
+        .init(type: type, date: date, tableName: tableName, rowId: rowId, data: data)
+    }
+    
+    /// Create a sync operation from a database operation.
+    static func create(from operation: DatabaseOperation, storeIdentifier: String, deviceIdentifier: String) -> SyncOperation {
+        .init(storeIdentifier: storeIdentifier, deviceIdentifier: deviceIdentifier,
+              date: operation.date, tableName: operation.tableName, rowId: operation.rowId,
+              type: operation.type, data: operation.data)
+    }
+}
+
+// MARK: SynchronizedStoreConfig
 
 public struct SynchronizedStoreConfig {
     /// The unique identifier of this store.
     public let storeIdentifier: String
     
     /// The database URL.
-    public let databaseUrl: URL
+    public let localDatabaseUrl: URL
+    
+    /// The CloudKit container identifier.
+    public let containerIdentifier: String
     
     /// The models that are managed by this store.
     public let managedModels: [CryoModel.Type]
@@ -27,31 +63,38 @@ public struct SynchronizedStoreConfig {
     
     /// Create a synchronized store config.
     public init(storeIdentifier: String,
-                databaseUrl: URL,
+                localDatabaseUrl: URL,
+                containerIdentifier: String,
                 managedModels: [CryoModel.Type],
                 cryoConfig: CryoConfig) {
         self.storeIdentifier = storeIdentifier
-        self.databaseUrl = databaseUrl
+        self.localDatabaseUrl = localDatabaseUrl
+        self.containerIdentifier = containerIdentifier
         self.managedModels = managedModels
         self.cryoConfig = cryoConfig
     }
 }
 
+// MARK: SynchronizedStore
+
 public final class SynchronizedStore {
     /// The configuration for this store.
     let config: SynchronizedStoreConfig
     
-    /// The adaptor responsible for storing the iCloud version of the database.
-    let cloudStore: DocumentAdaptor?
-    
     /// The SQLite adaptor that accesses the local version of the database.
-    let sqliteStore: SQLiteAdaptor
+    let localStore: SQLiteAdaptor
+    
+    /// The adaptor responsible for fetching and persisting database operations.
+    let operationsStore: CloudKitAdaptor
     
     /// The adaptor for metadata.
     let metadataStore: UbiquitousKeyValueStoreAdaptor
     
     /// The date of the last modification to the store.
-    var lastModificationDate: Date
+    @CryoKeyValue var lastModificationDate: Date
+    
+    /// The date of the last synchronization with the cloud store.
+    @CryoUbiquitousKeyValue var lastSynchronizationDate: Date
     
     /// The device identifier for this device.
     let deviceIdentifier: String
@@ -62,16 +105,28 @@ public final class SynchronizedStore {
     /// The metadata change observer ID.
     var changeObserverId: ObjectIdentifier?
     
+    /// The key for this device's metadata.
+    let modificationDateKey: String
+    
+    /// The key for this device's metadata.
+    let synchronizationDateKey: String
+    
     /// Create a cloud-backed SQLite adaptor.
     public init(config: SynchronizedStoreConfig, cloudAdaptor: DocumentAdaptor) async throws {
         self.config = config
-        self.sqliteStore = try SQLiteAdaptor(databaseUrl: config.databaseUrl)
-        self.cloudStore = await DocumentAdaptor.cloud(fileManager: .default)
+        self.localStore = try SQLiteAdaptor(databaseUrl: config.localDatabaseUrl)
+        self.operationsStore = await CloudKitAdaptor(config: config.cryoConfig,
+                                                     containerIdentifier: config.containerIdentifier,
+                                                     database: \.privateCloudDatabase)
         self.metadataStore = .shared
         self.deviceIdentifier = Self.deviceIdentifier()
         self.ubiquityIdentityToken = nil
-        self.lastModificationDate = .distantPast
         self.changeObserverId = nil
+        self.modificationDateKey = "_csslm_\(config.storeIdentifier)~\(deviceIdentifier)"
+        self.synchronizationDateKey = "_cssls_\(config.storeIdentifier)~\(deviceIdentifier)"
+        
+        self._lastModificationDate = .init(wrappedValue: .distantPast, self.modificationDateKey)
+        self._lastSynchronizationDate = .init(wrappedValue: .distantPast, self.synchronizationDateKey)
         
         try await self.initialize()
     }
@@ -100,6 +155,11 @@ fileprivate extension SynchronizedStore {
         return identifier
     }
     
+    /// Whether a given key represents a sync metadata key for this store.
+    func isSynchronizationMetadataKey(_ key: String) -> Bool {
+        key.starts(with: "_csslm_\(config.storeIdentifier)~")
+    }
+    
     /// Update the ubiquity token.
     func updateUbiquityToken() throws {
         guard let token = FileManager.default.ubiquityIdentityToken as? Encodable else {
@@ -114,18 +174,15 @@ fileprivate extension SynchronizedStore {
         let string = String(data: data, encoding: .utf8)
         
         self.ubiquityIdentityToken = string
-        
         config.cryoConfig.log?(.debug, "[SynchronizedStore \(config.storeIdentifier)] ubiquity token is \(string.debugDescription)")
     }
     
     /// Initialize the store.
     func initialize() async throws {
         // Update token
-        
         try self.updateUbiquityToken()
-        
+
         // Register change observer
-        
         self.changeObserverId = metadataStore.observeChanges { change in
             self.config.cryoConfig.log?(.debug, "[SynchronizedStore \(self.config.storeIdentifier)] external change: \(change.reason.rawValue))")
             
@@ -156,16 +213,6 @@ fileprivate extension SynchronizedStore {
             }
         }
         
-        // Load metadata
-        
-        let metadataKey = SynchronizationMetadataKey(storeIdentifier: config.storeIdentifier,
-                                                     deviceIdentifier: deviceIdentifier)
-        guard let metadata = try await metadataStore.load(with: metadataKey) else {
-            try await self.findChanges()
-            return
-        }
-        
-        self.lastModificationDate = metadata.lastModificationDate
         try await self.findChanges()
     }
     
@@ -173,161 +220,90 @@ fileprivate extension SynchronizedStore {
     func findChanges(changedKeys: [String]? = nil) async throws {
         config.cryoConfig.log?(.debug, "[SynchronizedStore \(config.storeIdentifier)] changed keys: \(changedKeys.debugDescription)")
         
-        var modified = [SynchronizationMetadata]()
         let allKeys = changedKeys ?? self.metadataStore.store.dictionaryRepresentation.keys.map { $0 }
         
-        var newestModificationDate: Date = self.lastModificationDate
+        // Check the shared store for metadata changes
+        
+        var newestModificationDate: Date = .distantPast
         for stringKey in allKeys {
-            guard SynchronizationMetadataKey.isSynchronizationMetadataKey(stringKey) else {
+            guard isSynchronizationMetadataKey(stringKey) else {
                 continue
             }
             
-            let key = SynchronizationMetadataKey(id: stringKey)
-            guard let metadata = try await self.metadataStore.load(with: key) else {
+            let key = CryoNamedKey(id: stringKey, for: Date.self)
+            guard let lastModificationDate = try await self.metadataStore.load(with: key) else {
                 fatalError("found missing key \(stringKey)")
             }
-            guard metadata.databaseFilename != self.cloudDatabaseFilename else {
-                continue
-            }
-            guard metadata.lastModificationDate > self.lastModificationDate else {
+            guard lastModificationDate > self.lastSynchronizationDate else {
                 continue
             }
             
-            modified.append(metadata)
-            newestModificationDate = max(newestModificationDate, metadata.lastModificationDate)
+            newestModificationDate = max(newestModificationDate, lastModificationDate)
         }
         
-        guard !modified.isEmpty else {
+        guard newestModificationDate > self.lastSynchronizationDate else {
             return
         }
         
-        try await self.synchronizeExternalChanges(changes: modified, newestModificationDate: newestModificationDate)
+        try await self.synchronizeExternalChanges()
     }
     
     /// Update the local database representation based on external changes.
-    func synchronizeExternalChanges(changes: [SynchronizationMetadata], newestModificationDate: Date) async throws {
-        for change in changes {
-            do {
-                try await self.synchronizeChange(change: change)
-            }
-            catch {
-                config.cryoConfig.log?(.error, "[SynchronizedStore \(config.storeIdentifier)] failed to synchronize change: \(error.localizedDescription)")
-            }
+    func synchronizeExternalChanges() async throws {
+        // Fetch the changed records
+        let predicate = NSPredicate(
+            format: "date > %@ AND storeIdentifier == %@ AND deviceIdentifier != %@",
+            NSDate(timeIntervalSinceReferenceDate: lastSynchronizationDate.timeIntervalSinceReferenceDate),
+            config.storeIdentifier, deviceIdentifier)
+        
+        guard let newChanges = try await operationsStore.loadAll(of: SyncOperation.self, predicate: predicate) else {
+            config.cryoConfig.log?(.debug, "[SynchronizedStore \(config.storeIdentifier)] failed to load new operations")
+            return
+        }
+        
+        for change in (newChanges.sorted { $0.date < $1.date }) {
+            try await self.synchronizeChange(change: change)
+            self.lastSynchronizationDate = change.date
         }
         
         config.cryoConfig.log?(.debug, "[SynchronizedStore \(config.storeIdentifier)] finished synchronising changes")
-        
-        // Persist changes
-        try await self.publishChanges()
     }
     
     /// Handle a single external change.
-    func synchronizeChange(change: SynchronizationMetadata) async throws {
-        guard let cloudStore else {
-            return
-        }
+    func synchronizeChange(change: SyncOperation) async throws {
+        config.cryoConfig.log?(
+            .debug,
+            "[SynchronizedStore \(config.storeIdentifier)] synchronizing change of type \(change.type.rawValue) on table \(change.tableName)")
         
-        config.cryoConfig.log?(.debug, "[SynchronizedStore \(config.storeIdentifier)] synchronizing change \(change.databaseFilename)")
-        
-        let key = CryoNamedKey(id: change.databaseFilename, for: Data.self)
-        guard let data = try await cloudStore.load(with: key) else {
-            config.cryoConfig.log?(.error, "[SynchronizedStore \(config.storeIdentifier)] failed to load file")
-            return
-        }
-        
-        // Copy to a local file
-        
-        let tmpFile = DocumentAdaptor.sharedLocal.url.appendingPathComponent("\(UUID().uuidString).db")
-        defer {
-            do {
-                try FileManager.default.removeItem(at: tmpFile)
-            }
-            catch {
-                config.cryoConfig.log?(.error, "[SynchronizedStore \(config.storeIdentifier)] failed to delete tmp file: \(error.localizedDescription)")
-            }
-        }
-        
-        try data.write(to: tmpFile)
-        
-        let lastModificationDate = ISO8601DateFormatter().string(from: self.lastModificationDate)
-        try await sqliteStore.withAttachedDatabase(databaseUrl: tmpFile) { databaseName in
-            for modelType in config.managedModels {
-                // Add new model instances
-                try await sqliteStore
-                    .query("""
-INSERT OR IGNORE INTO \(modelType.tableName)
-    SELECT * FROM \(databaseName).\(modelType.tableName);
-""")
-                    .execute()
-                
-                // Update modified instances
-                try await sqliteStore
-                    .query("""
-INSERT OR REPLACE INTO \(modelType.tableName)
-    SELECT * FROM \(databaseName).\(modelType.tableName) AS row
-        WHERE row._cryo_modified > ?;
-""")
-                    .bind(lastModificationDate)
-                    .execute()
-            }
-        }
-    }
-    
-    /// The name of the database cloud document for this device.
-    var cloudDatabaseFilename: String {
-        "_csyncdb~\(config.storeIdentifier)-\(deviceIdentifier).db"
+        let operation = change.databaseOperation
+        try await localStore.execute(operation: operation)
     }
     
     /// Publish changes to this store.
-    func publishChanges() async throws {
-        guard let cloudStore else {
-            return
-        }
+    func publishChange(operation: DatabaseOperation) async throws {
+        let key = CryoNamedKey(id: UUID().uuidString, for: SyncOperation.self)
+        let change = SyncOperation.create(from: operation,
+                                          storeIdentifier: config.storeIdentifier,
+                                          deviceIdentifier: deviceIdentifier)
         
-        config.cryoConfig.log?(.debug, "[SynchronizedStore \(config.storeIdentifier)] publishing local changes")
-        
-        let date = Date.now
-        let fileName = self.cloudDatabaseFilename
-        
-        // Copy file
-        
-        let data = try Data(contentsOf: config.databaseUrl)
-        let key = CryoNamedKey(id: fileName, for: Data.self)
-        
-        try await cloudStore.persist(data, for: key)
-        
-        // Update metadata
-        
-        let metadataKey = SynchronizationMetadataKey(storeIdentifier: config.storeIdentifier,
-                                                     deviceIdentifier: deviceIdentifier)
-        let metadata = SynchronizationMetadata(lastModificationDate: date, databaseFilename: fileName,
-                                               ubiquityIdentityToken: ubiquityIdentityToken)
-        
-        try await metadataStore.persist(metadata, for: metadataKey)
+        try await operationsStore.persist(change, for: key)
     }
 }
 
-// MARK: Keys
-
-fileprivate struct SynchronizationMetadataKey: CryoKey {
-    typealias Value = SynchronizationMetadata
-    
-    let id: String
-    
-    init(storeIdentifier: String, deviceIdentifier: String) {
-        self.id = "_csyncmd~\(storeIdentifier)-\(deviceIdentifier)"
+extension SynchronizedStore: CryoDatabaseAdaptor {
+    public func execute(operation: DatabaseOperation) async throws {
+        // FIXME: What to do when one of these fails?
+        try await localStore.execute(operation: operation)
+        try await publishChange(operation: operation)
     }
     
-    init(id: String) {
-        assert(Self.isSynchronizationMetadataKey(id))
-        self.id = id
+    public func load<Key: CryoKey>(with key: Key) async throws -> Key.Value?
+        where Key.Value: CryoModel
+    {
+        try await localStore.load(with: key)
     }
     
-    static func isSynchronizationMetadataKey(_ key: String) -> Bool {
-        key.starts(with: "_csyncmd~")
+    public func loadAll<Record: CryoModel>(of type: Record.Type) async throws -> [Record]? {
+        try await localStore.loadAll(of: type)
     }
 }
-
-// MARK: Conformances
-
-extension SynchronizationMetadata: Codable { }

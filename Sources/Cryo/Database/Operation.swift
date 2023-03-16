@@ -72,7 +72,7 @@ public struct DatabaseOperation {
         .init(type: .delete, date: .now, tableName: "", rowId: "", data: [])
     }
     
-    private init(type: DatabaseOperationType, date: Date, tableName: String, rowId: String, data: [DatabaseOperationValue]) {
+    internal init(type: DatabaseOperationType, date: Date, tableName: String, rowId: String, data: [DatabaseOperationValue]) {
         self.type = type
         self.date = date
         self.tableName = tableName

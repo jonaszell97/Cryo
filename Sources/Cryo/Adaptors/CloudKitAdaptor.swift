@@ -90,6 +90,19 @@ extension AnyCloudKitAdaptor {
         return values
     }
     
+    
+    public func loadAll<Record>(of type: Record.Type, predicate: NSPredicate) async throws -> [Record]?
+        where Record: CryoModel
+    {
+        var values = [Record]()
+        try await self.loadAllBatched(of: type, predicate: predicate) { nextBatch in
+            values.append(contentsOf: nextBatch)
+            return true
+        }
+        
+        return values
+    }
+    
     /// Load all values of the given `Record` type in batches. Not all adaptors support this operation.
     ///
     /// - Parameters:
@@ -171,7 +184,7 @@ extension AnyCloudKitAdaptor {
     }
     
     /// Fetch all records of a given table that satisfy a predicate.
-    func fetchAll(tableName: String, predicate: NSPredicate, limit: Int) async throws -> [CKRecord]? {
+    func fetchAll(tableName: String, predicate: NSPredicate, limit: Int = 0) async throws -> [CKRecord]? {
         var records = [CKRecord]()
         try await self.fetchAllBatched(tableName: tableName, predicate: predicate) {
             records.append(contentsOf: $0)
