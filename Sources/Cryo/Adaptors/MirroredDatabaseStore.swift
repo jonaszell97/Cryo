@@ -29,12 +29,40 @@ public final class MirroredDatabaseStore<MainAdaptor: CryoDatabaseAdaptor> {
     /// The adaptor used to store operations.
     let operationsAdaptor: DocumentAdaptor
     
+    /// IDs of records that were modified locally.
+    var locallyModifiedRecordIds: Set<String> {
+        didSet {
+            Task {
+                do {
+                    try await operationsAdaptor.persist(self.locallyModifiedRecordIds, for: self.locallyModifiedRecordIdsKey)
+                } catch {
+                    config.config.log?(.error, "failed to persist locally modified IDs: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+    
+    /// Key for locally modified IDs.
+    let locallyModifiedRecordIdsKey: CryoNamedKey<Set<String>>
+    
     /// Create a locally mirrored database adaptor.
     public init(config: MirroredDatabaseStoreConfig, mainAdaptor: MainAdaptor) throws {
         self.config = config
         self.mainAdaptor = mainAdaptor
         self.operationsAdaptor = DocumentAdaptor.local(subdirectory: "_crlst_\(config.identifier)")
         self.mirrorAdaptor = try .init(databaseUrl: operationsAdaptor.url.appendingPathComponent("mirror.db"), config: config.config)
+        self.locallyModifiedRecordIdsKey = CryoNamedKey(id: "_modified_keys", for: Set<String>.self)
+        self.locallyModifiedRecordIds = try operationsAdaptor.loadSynchronously(with: self.locallyModifiedRecordIdsKey) ?? []
+        
+        self.mainAdaptor.observeAvailabilityChanges { available in
+            guard available else {
+                return
+            }
+            
+            Task {
+                try await self.executeQueuedOperations()
+            }
+        }
     }
 }
 
@@ -51,8 +79,10 @@ extension MirroredDatabaseStore {
         config.config.log?(.debug, "[MirroredDatabaseStore][\(config.identifier)] flushing local stores")
         
         let urls = try operationsAdaptor.fileManager.contentsOfDirectory(at: operationsAdaptor.url, includingPropertiesForKeys: nil)
+            .filter { $0.lastPathComponent.starts(with: "_op") }
             .sorted { $0.lastPathComponent < $1.lastPathComponent}
         
+        var remainingIds = Set<String>()
         for url in urls {
             let id = url.lastPathComponent
             
@@ -61,8 +91,13 @@ extension MirroredDatabaseStore {
                 continue
             }
             
-            try await self.dequeue(operation: operation, id: id)
+            let didExecute = try await self.dequeue(operation: operation, id: id)
+            if !didExecute {
+                remainingIds.insert(operation.rowId)
+            }
         }
+        
+        self.locallyModifiedRecordIds = remainingIds
     }
     
     /// Execute  a remote operation.
@@ -89,23 +124,28 @@ extension MirroredDatabaseStore {
     
     /// Locally queue an operation to be executed once CloudKit is available.
     func enqueue(operation: DatabaseOperation) async throws {
-        let id = ISO8601DateFormatter().string(from: operation.date) + UUID().uuidString
+        let id = "_op_\(ISO8601DateFormatter().string(from: operation.date))_\(UUID().uuidString)"
         let key = CryoNamedKey(id: id, for: DatabaseOperation.self)
         
         try await operationsAdaptor.persist(operation, for: key)
+        self.locallyModifiedRecordIds.insert(operation.rowId)
     }
     
     /// Try to execute an operation and dequeue it if successful.
-    func dequeue(operation: DatabaseOperation, id: String) async throws {
+    func dequeue(operation: DatabaseOperation, id: String) async throws -> Bool {
         do {
             try await mainAdaptor.execute(operation: operation)
         }
-        catch {
-            return
+        catch let e as CryoError {
+            guard case .backendNotAvailable = e else {
+                throw e
+            }
         }
         
         let key = CryoNamedKey(id: id, for: DatabaseOperation.self)
         try await operationsAdaptor.remove(with: key)
+        
+        return true
     }
 }
 
@@ -117,6 +157,8 @@ extension MirroredDatabaseStore: CryoIndexingAdaptor {
             try await self.remove(with: key)
             return
         }
+     
+        try await self.executeQueuedOperations()
         
         let operation = DatabaseOperation.insert(tableName: Key.Value.tableName,
                                                  id: key.id,
@@ -128,6 +170,8 @@ extension MirroredDatabaseStore: CryoIndexingAdaptor {
     public func remove<Key: CryoKey>(with key: Key) async throws
         where Key.Value: CryoModel
     {
+        try await self.executeQueuedOperations()
+        
         let operation = DatabaseOperation.delete(tableName: Key.Value.tableName, id: key.id)
         try await self.execute(operation: operation)
     }
@@ -135,37 +179,47 @@ extension MirroredDatabaseStore: CryoIndexingAdaptor {
     public func load<Key: CryoKey>(with key: Key) async throws -> Key.Value?
         where Key.Value: CryoModel
     {
-        do {
-            try await mainAdaptor.ensureAvailability()
-        }
-        catch {
-            return try await mirrorAdaptor.load(with: key)
+        try await self.executeQueuedOperations()
+        
+        if !locallyModifiedRecordIds.contains(key.id) {
+            do {
+                try await mainAdaptor.ensureAvailability()
+                return try await mainAdaptor.load(with: key)
+            }
+            catch {
+            }
         }
         
-        return try await mainAdaptor.load(with: key)
+        return try await mirrorAdaptor.load(with: key)
     }
     
     public func loadAll<Record>(of type: Record.Type) async throws -> [Record]?
         where Record: CryoModel
     {
+        try await self.executeQueuedOperations()
+        
         do {
             try await mainAdaptor.ensureAvailability()
+            return try await mainAdaptor.loadAll(of: type)
         }
         catch {
-            return try await mirrorAdaptor.loadAll(of: type)
         }
         
-        return try await mainAdaptor.loadAll(of: type)
+        return try await mirrorAdaptor.loadAll(of: type)
     }
     
     public func removeAll<Record>(of type: Record.Type) async throws
         where Record: CryoModel
     {
+        try await self.executeQueuedOperations()
+        
         let operation = DatabaseOperation.delete(tableName: Record.tableName)
         try await self.execute(operation: operation)
     }
     
     public func removeAll() async throws {
+        try await self.executeQueuedOperations()
+        
         let operation = DatabaseOperation.deleteAll()
         try await self.execute(operation: operation)
     }

@@ -9,9 +9,13 @@ final class MockCloudKitAdaptor {
     /// Cache of schema data.
     var schemas: [ObjectIdentifier: CryoSchema] = [:]
     
+    /// Whether CloudKit is available.
+    var isAvailable: Bool
+    
     /// Default initializer.
     init() {
         self.database = [:]
+        self.isAvailable = true
     }
 }
 
@@ -64,5 +68,19 @@ extension MockCloudKitAdaptor: AnyCloudKitAdaptor {
     
     func removeAll() async throws {
         database.removeAll()
+    }
+}
+
+extension MockCloudKitAdaptor {
+    public func ensureAvailability() async throws {
+        guard !isAvailable else {
+            return
+        }
+        
+        throw CryoError.backendNotAvailable
+    }
+    
+    public func observeAvailabilityChanges(_ callback: @escaping (Bool) -> Void) {
+        
     }
 }

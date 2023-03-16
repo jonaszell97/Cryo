@@ -17,11 +17,11 @@ public enum CryoError: Error {
     // MARK: SQLite
     
     /// Failed to compile an SQL query.
-    case queryCompilationFailed(query: String, status: Int32)
+    case queryCompilationFailed(query: String, status: Int32, message: String?)
     
     /// Failed to execute an SQL query.
-    case queryExecutionFailed(query: String, status: Int32)
+    case queryExecutionFailed(query: String, status: Int32, message: String?)
     
     /// Failed to read a column value.
-    case queryDecodeFailed(column: String)
+    case queryDecodeFailed(column: String, message: String?)
 }

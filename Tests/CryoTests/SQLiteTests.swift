@@ -73,7 +73,7 @@ INSERT OR REPLACE INTO TestModel(_cryo_key,_cryo_created,_cryo_modified,x,y,z) V
     
     
     func testDatabasePersistence() async throws {
-        let adaptor = try SQLiteAdaptor(databaseUrl: self.databaseUrl!)
+        let adaptor = try SQLiteAdaptor(databaseUrl: self.databaseUrl!, config: CryoConfig { print("[\($0)] \($1)") })
         
         let value = TestModel(x: 123, y: "Hello there", z: .a)
         let value2 = TestModel(x: 3291, y: "Hello therexxx", z: .c)

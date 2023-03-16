@@ -2,7 +2,7 @@
 import CloudKit
 import Foundation
 
-internal protocol AnyCloudKitAdaptor: AnyObject, CryoIndexingAdaptor {
+internal protocol AnyCloudKitAdaptor: AnyObject, CryoIndexingAdaptor, CryoDatabaseAdaptor {
     /// Delete a record with the given id.
     func delete(recordWithId id: CKRecord.ID) async throws
     
@@ -24,6 +24,8 @@ internal protocol AnyCloudKitAdaptor: AnyObject, CryoIndexingAdaptor {
     /// Cache for schemas.
     var schemas: [ObjectIdentifier: CryoSchema] { get set }
 }
+
+// MARK: CryoIndexingAdaptor implementation
 
 extension AnyCloudKitAdaptor {
     public func removeAll<Record: CryoModel>(of type: Record.Type) async throws {
@@ -194,6 +196,32 @@ extension AnyCloudKitAdaptor {
         
         default:
             return (try JSONEncoder().encode(value)) as NSData
+        }
+    }
+}
+
+// MARK: CryoDatabaseAdaptor implementation
+
+extension AnyCloudKitAdaptor {
+    public func execute(operation: DatabaseOperation) async throws {
+        try await ensureAvailability()
+        
+        switch operation.type {
+        case .insert:
+            fallthrough
+        case .update:
+            try await self.persist(key: operation.rowId, tableName: operation.tableName, data: operation.data)
+        case .delete:
+            if operation.tableName.isEmpty {
+                try await self.removeAll()
+                return
+            }
+            else if operation.rowId.isEmpty {
+                try await self.delete(tableName: operation.tableName)
+            }
+            else {
+                try await self.delete(recordWithId: .init(recordName: operation.rowId))
+            }
         }
     }
 }
@@ -389,26 +417,6 @@ public extension CloudKitAdaptor {
 }
 
 extension CloudKitAdaptor: CryoDatabaseAdaptor {
-    public func execute(operation: DatabaseOperation) async throws {
-        switch operation.type {
-        case .insert:
-            fallthrough
-        case .update:
-            try await self.persist(key: operation.rowId, tableName: operation.tableName, data: operation.data)
-        case .delete:
-            if operation.tableName.isEmpty {
-                try await self.removeAll()
-                return
-            }
-            else if operation.rowId.isEmpty {
-                try await self.delete(tableName: operation.tableName)
-            }
-            else {
-                try await self.delete(recordWithId: .init(recordName: operation.rowId))
-            }
-        }
-    }
-    
     /// Check for availability of the database.
     public func ensureAvailability() async throws {
         guard self.iCloudRecordID == nil else {
@@ -434,4 +442,8 @@ extension CloudKitAdaptor: CryoDatabaseAdaptor {
     
     /// Whether CloudKit is available.
     public var isAvailable: Bool { iCloudRecordID != nil }
+    
+    public func observeAvailabilityChanges(_ callback: @escaping (Bool) -> Void) {
+        // TODO: implement this
+    }
 }

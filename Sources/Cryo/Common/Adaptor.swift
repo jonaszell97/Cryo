@@ -170,6 +170,9 @@ public protocol CryoDatabaseAdaptor: CryoIndexingAdaptor {
     
     /// Ensure that the database is available and throw an error if it is not.
     func ensureAvailability() async throws
+    
+    /// Register a listener for availability changes.
+    func observeAvailabilityChanges(_ callback: @escaping (Bool) -> Void)
 }
 
 public protocol CryoObservableAdaptor {
