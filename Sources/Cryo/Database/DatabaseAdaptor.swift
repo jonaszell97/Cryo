@@ -46,8 +46,14 @@ public protocol CryoDatabaseAdaptor {
     
     // MARK: Queries
     
+    /// Create a CREATE TABLE query.
+    func createTable<Model: CryoModel>(for: Model.Type) async throws -> any CryoQuery<Void>
+    
     /// Create a SELECT query.
     func select<Model: CryoModel>(from: Model.Type) async throws -> any CryoSelectQuery<Model>
+    
+    /// Create a SELECT by ID query.
+    func select<Model: CryoModel>(id: String, from: Model.Type) async throws -> any CryoSelectQuery<Model>
     
     // MARK: Availability
     
@@ -72,14 +78,14 @@ public protocol CryoDatabaseAdaptor {
     ///   - value: The value to persist. If this parameter is `nil`, the value for the given key is removed.
     ///   - key: The key that uniquely identifies the persisted value.
     func persist<Key: CryoKey>(_ value: Key.Value?, for key: Key) async throws
-    where Key.Value: CryoModel
+        where Key.Value: CryoModel
     
     /// Load a persisted value for a key.
     ///
     /// - Parameter key: The key that uniquely identifies the persisted value.
     /// - Returns: The value previously persisted for `key`, or nil if none exists.
     func load<Key: CryoKey>(with key: Key) async throws -> Key.Value?
-    where Key.Value: CryoModel
+        where Key.Value: CryoModel
     
     /// Load all values of the given `Key` type. Not all adaptors support this operation.
     ///
@@ -91,7 +97,7 @@ public protocol CryoDatabaseAdaptor {
     ///
     /// - Parameter key: The key that uniquely identifies the value to remove.
     func remove<Key: CryoKey>(with key: Key) async throws
-    where Key.Value: CryoModel
+        where Key.Value: CryoModel
     
     /// Remove the values for all keys associated with this adaptor.
     ///
@@ -112,7 +118,7 @@ extension CryoDatabaseAdaptor {
     public func observeAvailabilityChanges(_ callback: @escaping (Bool) -> Void) { }
     
     public func persist<Key: CryoKey>(_ value: Key.Value?, for key: Key) async throws
-    where Key.Value: CryoModel
+        where Key.Value: CryoModel
     {
         guard let value else {
             try await self.remove(with: key)
@@ -126,15 +132,25 @@ extension CryoDatabaseAdaptor {
         try await self.execute(operation: operation)
     }
     
+    public func load<Key: CryoKey>(with key: Key) async throws -> Key.Value?
+        where Key.Value: CryoModel
+    {
+        try await self.select(id: key.id, from: Key.Value.self).execute().first
+    }
+    
+    public func loadAll<Record: CryoModel>(of type: Record.Type) async throws -> [Record]? {
+        try await self.select(from: Record.self).execute()
+    }
+    
     public func remove<Key: CryoKey>(with key: Key) async throws
-    where Key.Value: CryoModel
+        where Key.Value: CryoModel
     {
         let operation = DatabaseOperation.delete(tableName: Key.Value.tableName, id: key.id)
         try await self.execute(operation: operation)
     }
     
     public func removeAll<Record>(of type: Record.Type) async throws
-    where Record: CryoModel
+        where Record: CryoModel
     {
         let operation = DatabaseOperation.delete(tableName: Record.tableName)
         try await self.execute(operation: operation)

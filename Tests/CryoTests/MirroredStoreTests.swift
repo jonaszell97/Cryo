@@ -53,8 +53,8 @@ final class MirroredDatabaseStoreTests: XCTestCase {
         let config = MirroredDatabaseStoreConfig(identifier: "Test", config: cryoConfig)
         
         let store = try MirroredDatabaseStore(config: config, mainAdaptor: databaseAdaptor)
-        try await store.mirrorAdaptor.createTable(for: TestModel.self)
-        try await store.mirrorAdaptor.createTable(for: TestModel2.self)
+        try await store.mirrorAdaptor.createTable(for: TestModel.self).execute()
+        try await store.mirrorAdaptor.createTable(for: TestModel2.self).execute()
         
         try await store.executeQueuedOperations()
         

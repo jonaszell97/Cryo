@@ -18,7 +18,7 @@ public enum CryoQueryValue {
     case asset(value: URL)
 }
 
-public protocol CryoQuery {
+public protocol CryoQuery<Result> {
     /// The result type of this query.
     associatedtype Result
     
@@ -49,6 +49,60 @@ public enum CryoComparisonOperator: String {
     case isLessThanOrEquals
 }
 
+// MARK: Model query
+
+public protocol CryoModelQuery<Model>: CryoQuery {
+    /// The model type of the query.
+    associatedtype Model: CryoModel
+}
+
+// MARK: No-op query
+
+public struct NoOpQuery<Model: CryoModel>: CryoQuery {
+    public typealias Result = Void
+    
+    public let queryString: String
+    public func execute() async throws { }
+    
+    public init(queryString: String, for: Model.Type) {
+        self.queryString = queryString
+    }
+}
+
+// MARK: Multi-Query
+
+public struct MultiQuery<Result1, Result2>: CryoQuery {
+    /// The first query.
+    let first: any CryoQuery<Result1>
+    
+    /// The second query.
+    let second: any CryoQuery<Result2>
+    
+    public typealias Result = Void
+    
+    /// Create a multi query.
+    public init(first: any CryoQuery<Result1>, second: any CryoQuery<Result2>) {
+        self.first = first
+        self.second = second
+    }
+    
+    public var queryString: String {
+        get async {
+            "MultiQuery(\(await first.queryString), \(await second.queryString))"
+        }
+    }
+    
+    public func execute() async throws {
+        _ = try await self.first.execute()
+        _ = try await self.second.execute()
+        
+        return
+    }
+    
+}
+
+// MARK: Select
+
 public struct CryoQueryWhereClause {
     /// The name of the column.
     let columnName: String
@@ -60,10 +114,7 @@ public struct CryoQueryWhereClause {
     let value: CryoQueryValue
 }
 
-public protocol CryoSelectQuery<Model>: CryoQuery where Self.Result == [Model] {
-    /// The model type of the query.
-    associatedtype Model: CryoModel
-    
+public protocol CryoSelectQuery<Model>: CryoModelQuery where Self.Result == [Model] {
     /// Attach a WHERE clause to this query.
     @discardableResult func `where`<Value: _AnyCryoColumnValue>(
         _ columnName: String,

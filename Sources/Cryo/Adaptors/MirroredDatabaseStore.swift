@@ -154,6 +154,16 @@ extension MirroredDatabaseStore: CryoDatabaseAdaptor {
         fatalError("TODO")
     }
     
+    /// Create a SELECT by ID query.
+    public func select<Model: CryoModel>(id: String, from: Model.Type) async throws -> any CryoSelectQuery<Model> {
+        fatalError()
+    }
+    
+    public func createTable<Model: CryoModel>(for type: Model.Type) async throws -> any CryoQuery<Void> {
+        MultiQuery(first: try await mirrorAdaptor.createTable(for: type),
+                   second: try await mainAdaptor.createTable(for: type))
+    }
+    
     public func execute(operation: DatabaseOperation) async throws {
         try await self.execute(operation: operation, enqueueIfFailed: true)
     }

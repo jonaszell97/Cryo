@@ -2,276 +2,6 @@
 import Foundation
 import SQLite3
 
-fileprivate let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
-fileprivate let metadataColumnCount: Int = 3
-
-fileprivate func formatOperator(_ queryOperator: CryoComparisonOperator) -> String {
-    switch queryOperator {
-    case .equals:
-        return "=="
-    case .doesNotEqual:
-        return "!="
-    case .isGreatherThan:
-        return ">"
-    case .isGreatherThanOrEquals:
-        return ">="
-    case .isLessThan:
-        return "<"
-    case .isLessThanOrEquals:
-        return "<="
-    }
-}
-
-public final class SQLiteSelectQuery<Model: CryoModel> {
-    /// The columns to select.
-    let columns: [String]?
-    
-    /// The where clauses.
-    var whereClauses: [CryoQueryWhereClause]
-    
-    /// The compiled query statement.
-    var queryStatement: OpaquePointer? = nil
-    
-    /// The complete query string.
-    var completeQueryString: String? = nil
-    
-    /// The SQLite connection.
-    let connection: OpaquePointer
-    
-    #if DEBUG
-    let config: CryoConfig?
-    #endif
-    
-    /// Create a SELECT query.
-    fileprivate init(columns: [String]? = nil, connection: OpaquePointer, config: CryoConfig?) throws {
-        self.connection = connection
-        self.columns = columns
-        self.whereClauses = []
-        
-        #if DEBUG
-        self.config = config
-        #endif
-    }
-    
-    /// The complete query string.
-    public var queryString: String {
-        get async {
-            if let completeQueryString {
-                return completeQueryString
-            }
-            
-            let columnsString: String
-            if let columns {
-                columnsString = columns.joined(separator: ",")
-            }
-            else {
-                let schema = await CryoSchemaManager.shared.schema(for: Model.self)
-                columnsString = schema.map { $0.columnName }.joined(separator: ",")
-            }
-            
-            var result = "SELECT \(columnsString) FROM \(Model.tableName)"
-            for i in 0..<whereClauses.count {
-                if i == 0 {
-                    result += " WHERE "
-                }
-                else {
-                    result += " AND "
-                }
-                
-                result += "\(whereClauses[i].columnName) \(formatOperator(whereClauses[i].operation)) ?"
-            }
-            
-            self.completeQueryString = result
-            return result
-        }
-    }
-}
-
-extension SQLiteSelectQuery {
-    /// Get the compiled query statement.
-    func compiledQuery() async throws -> OpaquePointer {
-        if let queryStatement {
-            return queryStatement
-        }
-        
-        let queryString = await self.queryString
-        var queryStatement: OpaquePointer?
-        
-        let prepareStatus = sqlite3_prepare_v3(connection, queryString, -1, 0, &queryStatement, nil)
-        guard prepareStatus == SQLITE_OK, let queryStatement else {
-            var message: String? = nil
-            if let errorPointer = sqlite3_errmsg(connection) {
-                message = String(cString: errorPointer)
-            }
-            
-            throw CryoError.queryCompilationFailed(query: queryString, status: prepareStatus, message: message)
-        }
-        
-        for i in 0..<whereClauses.count {
-            self.bind(queryStatement, value: whereClauses[i].value, index: Int32(i + 1))
-        }
-        
-        self.queryStatement = queryStatement
-        return queryStatement
-    }
-    
-    /// Bind a variable.
-    func bind(_ queryStatement: OpaquePointer, value: CryoQueryValue, index: Int32) {
-        let stringValue: String
-        switch value {
-        case .integer(let value):
-            sqlite3_bind_int(queryStatement, index, Int32(value))
-            return
-        case .double(let value):
-            sqlite3_bind_double(queryStatement, index, value)
-            return
-        case .data(let value):
-            _ = value.withUnsafeBytes { (bytes: UnsafeRawBufferPointer) in
-                sqlite3_bind_blob(queryStatement, index, bytes.baseAddress, Int32(bytes.count), nil)
-            }
-            return
-        case .string(let value):
-            stringValue = value
-        case .date(let value):
-            stringValue = ISO8601DateFormatter().string(from: value)
-        case .asset(let value):
-            stringValue = value.absoluteString
-        }
-        
-        _ = stringValue.utf8CString.withUnsafeBufferPointer { buffer in
-            sqlite3_bind_text(queryStatement, index, buffer.baseAddress, -1, SQLITE_TRANSIENT)
-        }
-    }
-    
-    /// Get a result value from the given query.
-    private func columnValue(_ statement: OpaquePointer, columnName: String,
-                             type: CryoColumnType, index: Int32) throws -> _AnyCryoColumnValue {
-        switch type {
-        case .integer:
-            return sqlite3_column_int(statement, index)
-        case .double:
-            return sqlite3_column_double(statement, index)
-        case .text:
-            guard let absoluteString = sqlite3_column_text(statement, index) else {
-                var message: String? = nil
-                if let errorPointer = sqlite3_errmsg(connection) {
-                    message = String(cString: errorPointer)
-                }
-                
-                throw CryoError.queryDecodeFailed(column: columnName, message: message)
-            }
-            
-            return String(cString: absoluteString)
-        case .date:
-            guard
-                let dateString = sqlite3_column_text(statement, index),
-                let date = ISO8601DateFormatter().date(from: String(cString: dateString))
-            else {
-                var message: String? = nil
-                if let errorPointer = sqlite3_errmsg(connection) {
-                    message = String(cString: errorPointer)
-                }
-                
-                throw CryoError.queryDecodeFailed(column: columnName, message: message)
-            }
-            
-            return date
-        case .data:
-            let byteCount = sqlite3_column_bytes(statement, index)
-            guard let blob = sqlite3_column_blob(statement, index) else {
-                var message: String? = nil
-                if let errorPointer = sqlite3_errmsg(connection) {
-                    message = String(cString: errorPointer)
-                }
-                
-                throw CryoError.queryDecodeFailed(column: columnName, message: message)
-            }
-            
-            return Data(bytes: blob, count: Int(byteCount))
-        case .bool:
-            return sqlite3_column_int(statement, index) != 0
-        case .asset:
-            fatalError("not supported in SQLiteAdaptor")
-        }
-    }
-    
-}
-
-extension SQLiteSelectQuery: CryoSelectQuery {
-    public func execute() async throws -> [Model] {
-        let queryStatement = try await self.compiledQuery()
-        defer {
-            sqlite3_finalize(queryStatement)
-        }
-        
-        #if DEBUG
-        config?.log?(.debug, "[SQLite3Connection] query \(await queryString), bindings \(whereClauses.map { "\($0.value)" })")
-        #endif
-        
-        let schema = await CryoSchemaManager.shared.schema(for: Model.self)
-        
-        var executeStatus = sqlite3_step(queryStatement)
-        var rows = [[any _AnyCryoColumnValue]]()
-        
-        while executeStatus == SQLITE_ROW {
-            var row = [any _AnyCryoColumnValue]()
-            
-            for i in 0..<schema.count {
-                let value = try self.columnValue(queryStatement,
-                                                 columnName: schema[i].columnName,
-                                                 type: schema[i].type,
-                                                 index: Int32(i))
-                
-                row.append(value)
-            }
-            
-            rows.append(row)
-            executeStatus = sqlite3_step(queryStatement)
-        }
-        
-        guard executeStatus == SQLITE_DONE else {
-            var message: String? = nil
-            if let errorPointer = sqlite3_errmsg(connection) {
-                message = String(cString: errorPointer)
-            }
-            
-            throw CryoError.queryExecutionFailed(query: await queryString,
-                                                 status: executeStatus,
-                                                 message: message)
-        }
-        
-        var values = [Model]()
-        for row in rows {
-            var data = [String: _AnyCryoColumnValue]()
-            for i in 0..<schema.count {
-                data[schema[i].columnName] = row[i]
-            }
-            
-            values.append(try .init(from: CryoModelDecoder(data: data)))
-        }
-        
-        return values
-    }
-    
-    /// Attach a WHERE clause to this query.
-    @discardableResult public func `where`<Value: _AnyCryoColumnValue>(
-        _ columnName: String,
-        operation: CryoComparisonOperator,
-        value: Value
-    ) async throws -> Self {
-        guard self.queryStatement == nil else {
-            throw CryoError.modifyingFinalizedQuery
-        }
-        
-        self.whereClauses.append(.init(columnName: columnName,
-                                       operation: operation,
-                                       value: try .init(value: value)))
-        return self
-    }
-    
-    public typealias Result = [Model]
-}
-
 /// A convenience wrapper for SQLite3 query that does not produce a result.
 ///
 /// - Note: You do not initialize instances of this type directly. Instead, use ``SQLiteAdaptor/query(_:)`` to
@@ -358,7 +88,7 @@ extension SQLiteQuery {
     /// Bind a string value.
     @discardableResult public func bind(_ value: String) -> Self {
         _ = value.utf8CString.withUnsafeBufferPointer { buffer in
-            sqlite3_bind_text(queryStatement, Int32(boundVariables.count + 1), buffer.baseAddress, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(queryStatement, Int32(boundVariables.count + 1), buffer.baseAddress, -1, SQLiteAdaptor.SQLITE_TRANSIENT)
         }
         
         self.boundVariables.append(value)
@@ -369,7 +99,7 @@ extension SQLiteQuery {
     @discardableResult public func bind(_ value: Date) -> Self {
         let dateString = ISO8601DateFormatter().string(from: value.dateValue)
         _ = dateString.utf8CString.withUnsafeBufferPointer { buffer in
-            sqlite3_bind_text(queryStatement, Int32(boundVariables.count + 1), buffer.baseAddress, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(queryStatement, Int32(boundVariables.count + 1), buffer.baseAddress, -1, SQLiteAdaptor.SQLITE_TRANSIENT)
         }
         
         self.boundVariables.append(value)
@@ -380,7 +110,7 @@ extension SQLiteQuery {
     @discardableResult public func bind(_ value: URL) -> Self {
         let string = value.absoluteString
         _ = string.utf8CString.withUnsafeBufferPointer { buffer in
-            sqlite3_bind_text(queryStatement, Int32(boundVariables.count + 1), buffer.baseAddress, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(queryStatement, Int32(boundVariables.count + 1), buffer.baseAddress, -1, SQLiteAdaptor.SQLITE_TRANSIENT)
         }
         
         self.boundVariables.append(value)
@@ -505,16 +235,16 @@ fileprivate final class SQLite3Connection {
             sqlite3_bind_double(statement, index, value.doubleValue)
         case let url as URL:
             _ = url.absoluteString.utf8CString.withUnsafeBufferPointer { buffer in
-                sqlite3_bind_text(statement, index, buffer.baseAddress, -1, SQLITE_TRANSIENT)
+                sqlite3_bind_text(statement, index, buffer.baseAddress, -1, SQLiteAdaptor.SQLITE_TRANSIENT)
             }
         case let value as CryoColumnStringValue:
             _ = value.stringValue.utf8CString.withUnsafeBufferPointer { buffer in
-                sqlite3_bind_text(statement, index, buffer.baseAddress, -1, SQLITE_TRANSIENT)
+                sqlite3_bind_text(statement, index, buffer.baseAddress, -1, SQLiteAdaptor.SQLITE_TRANSIENT)
             }
         case let value as CryoColumnDateValue:
             let dateString = ISO8601DateFormatter().string(from: value.dateValue)
             _ = dateString.utf8CString.withUnsafeBufferPointer { buffer in
-                sqlite3_bind_text(statement, index, buffer.baseAddress, -1, SQLITE_TRANSIENT)
+                sqlite3_bind_text(statement, index, buffer.baseAddress, -1, SQLiteAdaptor.SQLITE_TRANSIENT)
             }
         case let value as CryoColumnDataValue:
             let data = try value.dataValue
@@ -658,67 +388,17 @@ public final actor SQLiteAdaptor {
 }
 
 extension SQLiteAdaptor {
-    /// The SQLite type name for a Swift type.
-    static func sqliteTypeName(for type: CryoColumnType) -> String {
-        switch type {
-        case .integer:
-            return "INTEGER"
-        case .double:
-            return "DOUBLE"
-        case .text:
-            return "REAL"
-        case .date:
-            return "STRING"
-        case .bool:
-            return "INTEGER"
-        case .data:
-            return "BLOB"
-        case .asset:
-            return "BLOB"
-        }
-    }
-    
     /// Find or create a schema.
     func schema<Model: CryoModel>(for model: Model.Type) async throws -> CryoSchema {
         let schema = await CryoSchemaManager.shared.schema(for: model)
-        try await self.createTable(for: model)
+        try await self.createTable(for: model).execute()
         
         return schema
-    }
-    
-    /// Create a table if it does not exist yet.
-    public func createTable<Model: CryoModel>(for model: Model.Type) async throws {
-        guard createdTables.insert(Model.tableName).inserted else {
-            return
-        }
-        
-        let query = try await self.createTableQuery(for: model)
-        try db.query(query, bindings: [])
     }
     
     /// Create a generic query.
     public func query(_ queryString: String) throws -> SQLiteQuery {
         try db.query(queryString)
-    }
-    
-    // MARK: Create table
-    
-    /// Build the query for creating a table for a given model.
-    func createTableQuery<Model: CryoModel>(for modelType: Model.Type) async throws -> String {
-        let schema = try await self.schema(for: modelType)
-        var columns = ""
-        
-        for columnDetails in schema {
-            columns += ",\n    \(columnDetails.columnName) \(Self.sqliteTypeName(for: columnDetails.type))"
-        }
-        
-        return """
-CREATE TABLE IF NOT EXISTS \(Model.tableName)(
-    _cryo_key TEXT NOT NULL UNIQUE,
-    _cryo_created TEXT NOT NULL,
-    _cryo_modified TEXT NOT NULL\(columns)
-);
-"""
     }
     
     // MARK: Insertion
@@ -784,29 +464,6 @@ INSERT OR REPLACE INTO \(Model.tableName)(_cryo_key,_cryo_created,_cryo_modified
         return bindings
     }
     
-    // MARK: Select
-    
-    /// Build a selection query string.
-    func createSelectAllQuery<Model: CryoModel>(for value: Model.Type) async throws -> String {
-        let schema = try await self.schema(for: value)
-        let columns: [String] = schema.map { $0.columnName }
-        
-        return "SELECT \(columns.joined(separator: ",")) FROM \(Model.tableName);"
-    }
-    
-    /// Build a selection query string.
-    func createSelectByIdQuery<Model: CryoModel>(for value: Model.Type) async throws -> String {
-        let schema = try await self.schema(for: value)
-        let columns: [String] = schema.map { $0.columnName }
-        
-        return "SELECT \(columns.joined(separator: ",")) FROM \(Model.tableName) WHERE _cryo_key == ? LIMIT 1;"
-    }
-    
-    /// Get the values for a selection query.
-    func getSelectByIdBindings<Key: CryoKey>(for key: Key) throws -> [any _AnyCryoColumnValue] {
-        [key.id]
-    }
-    
     // MARK: Attach
     
     /// Build a query string to attach another database file.
@@ -865,9 +522,25 @@ extension SQLiteAdaptor {
 // MARK: Queries
 
 extension SQLiteAdaptor {
+    /// Create a table if it does not exist yet.
+    public func createTable<Model: CryoModel>(for model: Model.Type) async throws -> any CryoQuery<Void> {
+        guard createdTables.insert(Model.tableName).inserted else {
+            return NoOpQuery(queryString: "", for: model)
+        }
+        
+        return try SQLiteCreateTableQuery(for: model, connection: db.connection, config: config)
+    }
+    
     public func select<Model: CryoModel>(from: Model.Type) async throws -> any CryoSelectQuery<Model> {
         try SQLiteSelectQuery(connection: db.connection, config: config)
     }
+    
+    /// Create a SELECT by ID query.
+    public func select<Model: CryoModel>(id: String, from: Model.Type) async throws -> any CryoSelectQuery<Model> {
+        try await SQLiteSelectQuery(connection: db.connection, config: config)
+            .where("_cryo_key", operation: .equals, value: id)
+    }
+    
 }
 
 extension SQLiteAdaptor: CryoDatabaseAdaptor {
@@ -880,52 +553,6 @@ extension SQLiteAdaptor: CryoDatabaseAdaptor {
         let bindings = try await getInsertBindings(for: key, value: model)
         
         try db.query(query, bindings: bindings)
-    }
-    
-    public func load<Key: CryoKey>(with key: Key) async throws -> Key.Value? {
-        guard let model = Key.Value.self as? CryoModel.Type else {
-            throw CryoError.cannotPersistValue(valueType: Key.Value.self, adaptorType: SQLiteAdaptor.self)
-        }
-        
-        let schema = try await self.schema(for: model)
-        let query = try await self.createSelectByIdQuery(for: model)
-        let bindings = try self.getSelectByIdBindings(for: key)
-        
-        let rows = try db.query(query, bindings: bindings, columns: schema.map { ($0.columnName, $0.type) })
-        guard let firstRow = rows.first else {
-            return nil
-        }
-        
-        var data = [String: _AnyCryoColumnValue]()
-        for i in 0..<schema.count {
-            data[schema[i].columnName] = firstRow[i]
-        }
-        
-        return try model.init(from: CryoModelDecoder(data: data)) as? Key.Value
-    }
-    
-    public func loadAll<Record: CryoModel>(of type: Record.Type) async throws -> [Record]? {
-        let model = Record.self
-        let schema = try await self.schema(for: model)
-        let query = try await self.createSelectAllQuery(for: model)
-        
-        var values = [Record]()
-        
-        let rows = try db.query(query, bindings: [], columns: schema.map { ($0.columnName, $0.type) })
-        for row in rows {
-            var data = [String: _AnyCryoColumnValue]()
-            for i in 0..<schema.count {
-                data[schema[i].columnName] = row[i]
-            }
-            
-            values.append(try .init(from: CryoModelDecoder(data: data)))
-        }
-        
-        return values
-    }
-    
-    public func loadAllBatched<Record: CryoModel>(of type: Record.Type, receiveBatch: ([Record]) -> Bool) async throws {
-        _ = receiveBatch(try await self.loadAll(of: type) ?? [])
     }
     
     public func remove<Key: CryoKey>(with key: Key) async throws {
@@ -996,4 +623,48 @@ UPDATE \(operation.tableName) SET _cryo_modified = ?, \(columnNames.map { "\($0)
     public nonisolated func observeAvailabilityChanges(_ callback: @escaping (Bool) -> Void) {
         
     }
+}
+
+extension SQLiteAdaptor {
+    static let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+    static let metadataColumnCount: Int = 3
+    
+    static func formatOperator(_ queryOperator: CryoComparisonOperator) -> String {
+        switch queryOperator {
+        case .equals:
+            return "=="
+        case .doesNotEqual:
+            return "!="
+        case .isGreatherThan:
+            return ">"
+        case .isGreatherThanOrEquals:
+            return ">="
+        case .isLessThan:
+            return "<"
+        case .isLessThanOrEquals:
+            return "<="
+        }
+    }
+
+    /// The SQLite type name for a Swift type.
+    static func sqliteTypeName(for type: CryoColumnType) -> String {
+        switch type {
+        case .integer:
+            return "INTEGER"
+        case .double:
+            return "DOUBLE"
+        case .text:
+            return "REAL"
+        case .date:
+            return "STRING"
+        case .bool:
+            return "INTEGER"
+        case .data:
+            return "BLOB"
+        case .asset:
+            return "BLOB"
+        }
+    }
+    
+    
 }

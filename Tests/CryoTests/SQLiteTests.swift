@@ -47,7 +47,7 @@ final class CryoSQLiteTests: XCTestCase {
     
     func testCreateTableQuery() async throws {
         let adaptor = try SQLiteAdaptor(databaseUrl: self.databaseUrl!)
-        let query = try await adaptor.createTableQuery(for: TestModel.self)
+        let query = try await adaptor.createTable(for: TestModel.self).queryString
         
         XCTAssertEqual(query, """
 CREATE TABLE IF NOT EXISTS TestModel(
