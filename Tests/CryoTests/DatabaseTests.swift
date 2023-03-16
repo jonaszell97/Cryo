@@ -11,12 +11,20 @@ fileprivate struct TestModel: CryoModel {
     @CryoColumn var x: Int16 = 0
     @CryoColumn var y: String = ""
     @CryoColumn var z: TestEnum = .c
+    
     @CryoAsset var w: URL
+    
+    @CryoColumn var a: [TestEnum] = [.a, .b, .c]
+    @CryoColumn var b: Int? = nil
+    @CryoColumn var c: [String: Int] = ["A": 1, "B": 2]
 }
 
 extension TestModel: Hashable {
     static func ==(lhs: TestModel, rhs: TestModel) -> Bool {
         guard lhs.x == rhs.x && lhs.y == rhs.y && lhs.z == rhs.z else {
+            return false
+        }
+        guard lhs.a == rhs.a && lhs.b == rhs.b && lhs.c == rhs.c else {
             return false
         }
         
@@ -31,6 +39,9 @@ extension TestModel: Hashable {
         hasher.combine(x)
         hasher.combine(y)
         hasher.combine(z)
+        hasher.combine(a)
+        hasher.combine(b)
+        hasher.combine(c)
         
         if let data = try? Data(contentsOf: w) {
             hasher.combine(data)
@@ -62,7 +73,7 @@ final class CryoDatabaseTests: XCTestCase {
         let value = TestModel(x: 123, y: "Hello there", z: .a, w: assetUrl)
         let value2 = TestModel(x: 3291, y: "Hello therexxx", z: .c, w: assetUrl)
         
-        XCTAssertEqual(TestModel.schema.map { $0.columnName }, ["x", "y", "z", "w"])
+        XCTAssertEqual(TestModel.schema.map { $0.columnName }, ["x", "y", "z", "w", "a", "b", "c"])
         
         do {
             let key = AnyKey(id: "test-123", for: TestModel.self)

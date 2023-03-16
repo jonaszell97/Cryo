@@ -5,6 +5,10 @@ import SQLite3
 fileprivate let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 fileprivate let metadataColumnCount: Int = 3
 
+/// A convenience wrapper for SQLite3 query that does not produce a result.
+///
+/// - Note: You do not initialize instances of this type directly. Instead, use ``SQLiteAdaptor/query(_:)`` to
+/// create a query.
 public final class SQLiteQuery {
     /// The original query string.
     public let queryString: String
@@ -16,7 +20,7 @@ public final class SQLiteQuery {
     let connection: OpaquePointer
 
     /// The number of bound variables.
-    var boundVariables: [any _AnyCryoColumnValue]
+    public private(set) var boundVariables: [any _AnyCryoColumnValue]
     
     #if DEBUG
     let config: CryoConfig?
@@ -362,6 +366,7 @@ fileprivate final class SQLite3Connection {
     }
 }
 
+/// Implementation of ``CryoDatabaseAdaptor`` using a local SQLite database.
 public final actor SQLiteAdaptor {
     /// The database connection object.
     fileprivate let db: SQLite3Connection

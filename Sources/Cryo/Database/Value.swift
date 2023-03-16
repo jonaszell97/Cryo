@@ -243,3 +243,39 @@ extension Decodable {
         self = try JSONDecoder().decode(Self.self, from: dataValue)
     }
 }
+
+extension Optional: _AnyCryoColumnValue, CryoColumnDataValue where Wrapped: _AnyCryoColumnValue {
+    /// Initialize from a data value.
+    public init (dataValue: Data) throws {
+        guard !dataValue.isEmpty else {
+            self = nil
+            return
+        }
+        
+        self = try JSONDecoder().decode(Self.self, from: dataValue)
+    }
+}
+
+extension Array: _AnyCryoColumnValue, CryoColumnDataValue where Element: _AnyCryoColumnValue {
+    /// Initialize from a data value.
+    public init (dataValue: Data) throws {
+        guard !dataValue.isEmpty else {
+            self = []
+            return
+        }
+        
+        self = try JSONDecoder().decode(Self.self, from: dataValue)
+    }
+}
+
+extension Dictionary: _AnyCryoColumnValue, CryoColumnDataValue where Key: _AnyCryoColumnValue, Value: _AnyCryoColumnValue {
+    /// Initialize from a data value.
+    public init (dataValue: Data) throws {
+        guard !dataValue.isEmpty else {
+            self = [:]
+            return
+        }
+        
+        self = try JSONDecoder().decode(Self.self, from: dataValue)
+    }
+}

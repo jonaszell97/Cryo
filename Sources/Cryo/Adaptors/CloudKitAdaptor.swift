@@ -52,17 +52,6 @@ extension AnyCloudKitAdaptor {
         try await self.save(record: record)
     }
     
-    func persist(key: String, tableName: String, data: [DatabaseOperationValue]) async throws {
-        let id = CKRecord.ID(recordName: key)
-        
-        let record = CKRecord(recordType: tableName, recordID: id)
-        for item in data {
-            record[item.columnName] = item.value.objcValue
-        }
-        
-        try await self.save(record: record)
-    }
-    
     public func load<Key: CryoKey>(with key: Key) async throws -> Key.Value?
         where Key.Value: CryoModel
     {
@@ -89,23 +78,73 @@ extension AnyCloudKitAdaptor {
         return try Key.Value(from: CryoModelDecoder(data: data))
     }
     
-    public func loadAllBatched<Record: CryoModel>(of type: Record.Type,
-                                                  receiveBatch: ([Record]) -> Bool) async throws {
-        try await self._loadAllBatched(of: Record.self,
+    public func loadAll<Record>(of type: Record.Type) async throws -> [Record]?
+        where Record: CryoModel
+    {
+        var values = [Record]()
+        try await self.loadAllBatched(of: type) { nextBatch in
+            values.append(contentsOf: nextBatch)
+            return true
+        }
+        
+        return values
+    }
+    
+    /// Load all values of the given `Record` type in batches. Not all adaptors support this operation.
+    ///
+    /// - Parameters:
+    ///   - type: The record type of which all values should be loaded.
+    ///   - receiveBatch: Closure that is invoked whenever a new batch of values is fetched. If this closure
+    ///   returns `false`, no more batches will be fetched.
+    /// - Returns: `true` if batched loading is supported.
+    public func loadAllBatched<Record: CryoModel>(of type: Record.Type, receiveBatch: ([Record]) -> Bool) async throws {
+        try await self._loadAllBatched(of: type,
                                        predicate: NSPredicate(value: true),
                                        receiveBatch: receiveBatch)
     }
     
-    func fetchAll(tableName: String, predicate: NSPredicate, limit: Int) async throws -> [CKRecord]? {
-        var records = [CKRecord]()
-        try await self.fetchAllBatched(tableName: tableName, predicate: predicate) {
-            records.append(contentsOf: $0)
-            return limit == 0 || records.count < limit
-        }
-        
-        return records
+    /// Load all values of the given `Key` type in batches. Not all adaptors support this operation.
+    ///
+    /// - Parameters:
+    ///   - key: The Key type of which all values should be loaded.
+    ///   - predicate: The predicate that loaded values must fulfill.
+    ///   - receiveBatch: Closure that is invoked whenever a new batch of values is fetched. If this closure returns `false`, no more batches will be fetched.
+    /// - Returns: `true` if batched loading is supported.
+    public func loadAllBatched<Record: CryoModel>(of type: Record.Type,
+                                                  predicate: NSPredicate,
+                                                  receiveBatch: ([Record]) -> Bool) async throws {
+        try await self._loadAllBatched(of: type, predicate: predicate,
+                                       receiveBatch: receiveBatch)
     }
-    
+}
+
+extension AnyCloudKitAdaptor {
+    public func execute(operation: DatabaseOperation) async throws {
+        try await ensureAvailability()
+        
+        switch operation.type {
+        case .insert:
+            fallthrough
+        case .update:
+            try await self.persist(key: operation.rowId, tableName: operation.tableName, data: operation.data)
+        case .delete:
+            if operation.tableName.isEmpty {
+                try await self.removeAll()
+                return
+            }
+            else if operation.rowId.isEmpty {
+                try await self.delete(tableName: operation.tableName)
+            }
+            else {
+                try await self.delete(recordWithId: .init(recordName: operation.rowId))
+            }
+        }
+    }
+}
+
+// MARK: Utility functions
+
+extension AnyCloudKitAdaptor {
     /// Find or create a schema.
     func schema<Model: CryoModel>(for model: Model.Type) -> CryoSchema {
         let schemaKey = ObjectIdentifier(Model.self)
@@ -117,6 +156,29 @@ extension AnyCloudKitAdaptor {
         self.schemas[schemaKey] = schema
         
         return schema
+    }
+    
+    /// Persist a value from a database operation.
+    func persist(key: String, tableName: String, data: [DatabaseOperationValue]) async throws {
+        let id = CKRecord.ID(recordName: key)
+        
+        let record = CKRecord(recordType: tableName, recordID: id)
+        for item in data {
+            record[item.columnName] = item.value.objcValue
+        }
+        
+        try await self.save(record: record)
+    }
+    
+    /// Fetch all records of a given table that satisfy a predicate.
+    func fetchAll(tableName: String, predicate: NSPredicate, limit: Int) async throws -> [CKRecord]? {
+        var records = [CKRecord]()
+        try await self.fetchAllBatched(tableName: tableName, predicate: predicate) {
+            records.append(contentsOf: $0)
+            return limit == 0 || records.count < limit
+        }
+        
+        return records
     }
     
     /// Load all values of the given Key type. Not all adaptors support this operation.
@@ -193,38 +255,14 @@ extension AnyCloudKitAdaptor {
             return value.dateValue as NSDate
         case let value as CryoColumnDataValue:
             return try value.dataValue as NSData
-        
+            
         default:
             return (try JSONEncoder().encode(value)) as NSData
         }
     }
 }
 
-extension AnyCloudKitAdaptor {
-    public func execute(operation: DatabaseOperation) async throws {
-        try await ensureAvailability()
-        
-        switch operation.type {
-        case .insert:
-            fallthrough
-        case .update:
-            try await self.persist(key: operation.rowId, tableName: operation.tableName, data: operation.data)
-        case .delete:
-            if operation.tableName.isEmpty {
-                try await self.removeAll()
-                return
-            }
-            else if operation.rowId.isEmpty {
-                try await self.delete(tableName: operation.tableName)
-            }
-            else {
-                try await self.delete(recordWithId: .init(recordName: operation.rowId))
-            }
-        }
-    }
-}
-
-/// Implementation of ``CryoAdaptor`` that persists values in a CloudKit database.
+/// Implementation of ``CryoDatabaseAdaptor`` that persists values in a CloudKit database.
 ///
 /// Values stored by this adaptor must conform to the ``CryoModel`` protocol. For every such type,
 /// this adaptor creates a CloudKit table whose name is given by the ``CryoModel/tableName-3pg2z`` property.
@@ -294,6 +332,48 @@ public final class CloudKitAdaptor {
         }
     }
 }
+
+// MARK: CryoDatabaseAdaptor implementation
+
+extension CloudKitAdaptor {
+    public func removeAll() async throws {
+        for zone in try await database.allRecordZones() {
+            try await database.deleteRecordZone(withID: zone.zoneID)
+        }
+    }
+
+    /// Check for availability of the database.
+    public func ensureAvailability() async throws {
+        guard self.iCloudRecordID == nil else {
+            return
+        }
+        
+        self.iCloudRecordID = await withCheckedContinuation { continuation in
+            container.fetchUserRecordID(completionHandler: { (recordID, error) in
+                if let error {
+                    self.config.log?(.fault, "error fetching user record id: \(error.localizedDescription)")
+                }
+                
+                continuation.resume(returning: recordID?.recordName)
+            })
+        }
+        
+        guard self.iCloudRecordID == nil else {
+            return
+        }
+        
+        throw CryoError.backendNotAvailable
+    }
+    
+    /// Whether CloudKit is available.
+    public var isAvailable: Bool { iCloudRecordID != nil }
+    
+    public func observeAvailabilityChanges(_ callback: @escaping (Bool) -> Void) {
+        // TODO: implement this
+    }
+}
+
+// MARK: AnyCloudKitAdaptor implementation
 
 extension CloudKitAdaptor: AnyCloudKitAdaptor {
     /// Delete a record with the given id.
@@ -396,52 +476,5 @@ extension CloudKitAdaptor: AnyCloudKitAdaptor {
                 break
             }
         }
-    }
-}
-
-public extension CloudKitAdaptor {
-    func loadAllBatched<Record: CryoModel>(of type: Record.Type,
-                                           predicate: NSPredicate,
-                                           receiveBatch: ([Record]) -> Bool) async throws {
-        try await self._loadAllBatched(of: type, predicate: predicate,
-                                       receiveBatch: receiveBatch)
-    }
-    
-    func removeAll() async throws {
-        for zone in try await database.allRecordZones() {
-            try await database.deleteRecordZone(withID: zone.zoneID)
-        }
-    }
-}
-
-extension CloudKitAdaptor: CryoDatabaseAdaptor {
-    /// Check for availability of the database.
-    public func ensureAvailability() async throws {
-        guard self.iCloudRecordID == nil else {
-            return
-        }
-        
-        self.iCloudRecordID = await withCheckedContinuation { continuation in
-            container.fetchUserRecordID(completionHandler: { (recordID, error) in
-                if let error {
-                    self.config.log?(.fault, "error fetching user record id: \(error.localizedDescription)")
-                }
-                
-                continuation.resume(returning: recordID?.recordName)
-            })
-        }
-        
-        guard self.iCloudRecordID == nil else {
-            return
-        }
-        
-        throw CryoError.backendNotAvailable
-    }
-    
-    /// Whether CloudKit is available.
-    public var isAvailable: Bool { iCloudRecordID != nil }
-    
-    public func observeAvailabilityChanges(_ callback: @escaping (Bool) -> Void) {
-        // TODO: implement this
     }
 }

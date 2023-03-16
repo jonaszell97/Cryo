@@ -91,20 +91,39 @@ extension CryoSynchronousAdaptor {
 
 /// Provides a unified interface for heterogeneous database backends.
 ///
-/// `CryoDatabaseAdaptor` implementations are responsible for persisting and loading data in `Cryo`.
-/// Data is persisted using the ``CryoDatabaseAdaptor/persist(_:for:)`` method, which receives a persistable value
-/// as well as a key. Keys must conform to the ``CryoKey`` protocol and uniquely identify a persistable resource.
+/// Values stored by database adaptors must conform to the ``CryoModel`` protocol. For every such type,
+/// this adaptor creates a CloudKit table whose name is given by the ``CryoModel/tableName-1tzy7`` property.
 ///
-/// All codable types can be persisted with `CryoAdaptor`, although there may be optimized implementations for some
-/// known types.
+/// A column is created for every model property that is annotated with either ``CryoColumn`` or ``CryoAsset``.
+///
+/// - Note: This adaptor does not support synchronous loading via ``CryoSyncronousAdaptor/loadSynchronously(with:)``.
+///
+/// Take the following model definition as an example:
 ///
 /// ```swift
-/// // Persist a value using an adaptor
-/// try await adaptor.persist("Hello, World", myKey)
+/// struct Message: CryoModel {
+///     @CryoColumn var content: String
+///     @CryoColumn var created: Date
+///     @CryoAsset var attachment
+/// }
 ///
-/// // Retrieve the value
-/// print(try await adaptor.load(with: myKey)!)
+/// try await adaptor.persist(Message(content: "Hello", created: Date.now, attachment: /*...*/),
+///                           with: CryoNamedKey(id: "1", for: Message.self))
+/// try await adaptor.persist(Message(content: "Hi", created: Date.now, attachment: /*...*/),
+///                           with: CryoNamedKey(id: "2", for: Message.self))
+/// try await adaptor.persist(Message(content: "How are you?", created: Date.now, attachment: /*...*/),
+///                           with: CryoNamedKey(id: "3", for: Message.self))
+///
 /// ```
+///
+/// Based on this definition, `CloudKitAdaptor` will create a table in CloudKIt named `Message`
+/// with the following structure:
+///
+/// | ID  | content: `NSString` | created: `NSDate` | attachment: `NSURL` |
+/// | ---- | ---------- | ---------- | -------------- |
+/// | 1   | "Hello"  | YYYY-MM-DD | /... |
+/// | 2   | "Hi"  | YYYY-MM-DD | /... |
+/// | 3   | "How are you?"  | YYYY-MM-DD | /... |
 public protocol CryoDatabaseAdaptor {
     /// Execute a database operation.
     ///
@@ -139,26 +158,17 @@ public protocol CryoDatabaseAdaptor {
     func load<Key: CryoKey>(with key: Key) async throws -> Key.Value?
         where Key.Value: CryoModel
     
-    /// Remove the given value for a key.
-    ///
-    /// - Parameter key: The key that uniquely identifies the value to remove.
-    func remove<Key: CryoKey>(with key: Key) async throws
-        where Key.Value: CryoModel
-    
     /// Load all values of the given `Key` type. Not all adaptors support this operation.
     ///
     /// - Parameter key: The Key type of which all values should be loaded.
     /// - Returns: All values of the given key, or `nil` if the adaptor does not support this operation.
     func loadAll<Record: CryoModel>(of type: Record.Type) async throws -> [Record]?
     
-    /// Load all values of the given `Key` type in batches. Not all adaptors support this operation.
+    /// Remove the given value for a key.
     ///
-    /// - Parameters:
-    ///   - key: The Key type of which all values should be loaded.
-    ///   - receiveBatch: Closure that is invoked whenever a new batch of values is fetched. If this closure
-    ///   returns `false`, no more batches will be fetched.
-    /// - Returns: `true` if batched loading is supported.
-    func loadAllBatched<Record: CryoModel>(of type: Record.Type, receiveBatch: ([Record]) -> Bool) async throws
+    /// - Parameter key: The key that uniquely identifies the value to remove.
+    func remove<Key: CryoKey>(with key: Key) async throws
+        where Key.Value: CryoModel
     
     /// Remove the values for all keys associated with this adaptor.
     ///
@@ -177,20 +187,6 @@ extension CryoDatabaseAdaptor {
     public var isAvailable: Bool { true }
     public func ensureAvailability() { }
     public func observeAvailabilityChanges(_ callback: @escaping (Bool) -> Void) { }
-    
-    public func loadAll<Record: CryoModel>(of type: Record.Type) async throws -> [Record]? {
-        var values = [Record]()
-        try await self.loadAllBatched(of: Record.self) { nextBatch in
-            values.append(contentsOf: nextBatch)
-            return true
-        }
-        
-        return values
-    }
-    
-    public func loadAllBatched<Record: CryoModel>(of type: Record.Type, receiveBatch: ([Record]) -> Bool) async throws {
-        _ = receiveBatch(try await self.loadAll(of: type) ?? [])
-    }
     
     public func persist<Key: CryoKey>(_ value: Key.Value?, for key: Key) async throws
         where Key.Value: CryoModel

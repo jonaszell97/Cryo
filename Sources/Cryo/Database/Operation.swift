@@ -2,7 +2,7 @@
 import CloudKit
 import Foundation
 
-public enum DatabaseOperationType: String, Codable {
+public enum DatabaseOperationType: String, Codable, CryoColumnStringValue {
     /// An insert operation.
     case insert
     
@@ -13,7 +13,7 @@ public enum DatabaseOperationType: String, Codable {
     case delete
 }
 
-public struct DatabaseOperationValue: Codable {
+public struct DatabaseOperationValue: Codable, CryoColumnDataValue {
     /// The name of the column.
     let columnName: String
     

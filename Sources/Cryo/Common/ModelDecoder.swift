@@ -233,6 +233,14 @@ fileprivate struct CryoModelSingleValueDecodingContainer: SingleValueDecodingCon
 
         return T(value.integerValue)
     }
+    
+    func decode<T: _AnyCryoColumnValue>(_ type: [T].Type) throws -> [T] {
+        guard let value = value as? CryoColumnDataValue else {
+            throw DecodingError.typeMismatch(T.self, .init(codingPath: codingPath, debugDescription: "unexpected CryoPersistable: \(value)"))
+        }
+
+        return try [T](dataValue: value.dataValue)
+    }
 
     func decode(_ type: Int.Type) throws -> Int { try decodeInt(Int.self) }
     func decode(_ type: Int8.Type) throws -> Int8 { try decodeInt(Int8.self) }
@@ -249,6 +257,14 @@ fileprivate struct CryoModelSingleValueDecodingContainer: SingleValueDecodingCon
         if T.self == URL.self { return try self.decode(URL.self) as! T }
         if T.self == Data.self { return try self.decode(Data.self) as! T }
         if T.self == Date.self { return try self.decode(Date.self) as! T }
+        
+        if let dataType = T.self as? CryoColumnDataValue.Type {
+            guard let value = value as? CryoColumnDataValue else {
+                throw DecodingError.typeMismatch(T.self, .init(codingPath: codingPath, debugDescription: "unexpected CryoPersistable: \(value)"))
+            }
+            
+            return try dataType.init(dataValue: value.dataValue) as! T
+        }
         
         return try T(from: CryoModelValueDecoder(value: value))
     }
