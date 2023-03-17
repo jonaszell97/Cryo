@@ -163,8 +163,6 @@ extension CloudKitUpdateQuery {
 extension CloudKitUpdateQuery: CryoUpdateQuery {
     public func execute() async throws -> Int {
         let records = try await self.fetch()
-        let schema = await CryoSchemaManager.shared.schema(for: Model.self)
-        
         for record in records {
             for clause in setClauses {
                 record[clause.columnName] = clause.value.recordValue
@@ -172,14 +170,25 @@ extension CloudKitUpdateQuery: CryoUpdateQuery {
         }
         
         return try await withCheckedThrowingContinuation { continuation in
-            let saveRecordsOperation = CKModifyRecordsOperation()
-            saveRecordsOperation.recordsToSave = records
-            saveRecordsOperation.savePolicy = .allKeys
-            saveRecordsOperation.completionBlock = {
-                continuation.resume(returning: records.count)
+            let operation = CKModifyRecordsOperation()
+            operation.recordsToSave = records
+            operation.savePolicy = .allKeys
+            
+            var savedRecordCount = 0
+            operation.perRecordSaveBlock = { id, result in
+                guard case .success = result else {
+                    return
+                }
+                
+                savedRecordCount += 1
             }
             
-            database.add(saveRecordsOperation)
+            
+            operation.completionBlock = {
+                continuation.resume(returning: savedRecordCount)
+            }
+            
+            database.add(operation)
         }
     }
     

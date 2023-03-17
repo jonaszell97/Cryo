@@ -200,6 +200,70 @@ final class MockUpdateQuery<Model: CryoModel>: CryoUpdateQuery {
     }
 }
 
+final class MockDeleteQuery<Model: CryoModel>: CryoDeleteQuery {
+    let id: String?
+    var whereClauses: [CryoQueryWhereClause]
+    let allRecords: [CKRecord]
+    let deleteRecord: (CKRecord.ID) -> Void
+    
+    init(id: String?, allRecords: [CKRecord], deleteRecord: @escaping (CKRecord.ID) -> Void) {
+        self.id = id
+        self.allRecords = allRecords
+        self.deleteRecord = deleteRecord
+        self.whereClauses = []
+    }
+    
+    var queryString: String { "" }
+    
+    @discardableResult func `where`<Value: _AnyCryoColumnValue>(_ columnName: String,
+                                                                operation: Cryo.CryoComparisonOperator,
+                                                                value: Value) async throws -> Self
+    {
+        self.whereClauses.append(.init(columnName: columnName, operation: operation,
+                                       value: try .init(value: value)))
+        return self
+    }
+    
+    func execute() async throws -> Int {
+        let schema = await CryoSchemaManager.shared.schema(for: Model.self)
+        
+        var deletedCount = 0
+        for record in allRecords {
+            if let id {
+                guard record.recordID.recordName == id else {
+                    continue
+                }
+            }
+            
+            var matches = true
+            for columnDetails in schema {
+                guard
+                    let object = record[columnDetails.columnName],
+                    let value = CloudKitAdaptor.decodeValue(from: object, as: columnDetails.type)
+                else {
+                    continue
+                }
+                
+                for clause in (whereClauses.filter { $0.columnName == columnDetails.columnName }) {
+                    guard try CloudKitAdaptor.check(clause: clause, object: value) else {
+                        matches = false
+                        break
+                    }
+                }
+            }
+            
+            guard matches else {
+                continue
+            }
+            
+            deleteRecord(record.recordID)
+            deletedCount += 1
+        }
+        
+        return deletedCount
+    }
+}
+
 extension MockCloudKitAdaptor: AnyCloudKitAdaptor {
     public func createTable<Model: CryoModel>(for model: Model.Type) async throws -> NoOpQuery<Model> {
         NoOpQuery(queryString: "", for: model)
@@ -218,6 +282,12 @@ extension MockCloudKitAdaptor: AnyCloudKitAdaptor {
     public func update<Model: CryoModel>(id: String? = nil) async throws -> MockUpdateQuery<Model> {
         MockUpdateQuery(id: id, allRecords: self.database.values.map { $0 }) { id, record in
             self.database[id] = record
+        }
+    }
+    
+    public func delete<Model: CryoModel>(id: String? = nil, from: Model.Type) async throws -> MockDeleteQuery<Model> {
+        MockDeleteQuery(id: id, allRecords: self.database.values.map { $0 }) { id in
+            self.database[id] = nil
         }
     }
     

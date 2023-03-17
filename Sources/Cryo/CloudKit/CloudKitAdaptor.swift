@@ -126,6 +126,10 @@ extension CloudKitAdaptor: CryoDatabaseAdaptor {
     public func update<Model: CryoModel>(id: String? = nil, from: Model.Type) async throws -> CloudKitUpdateQuery<Model> {
         try CloudKitUpdateQuery(for: Model.self, id: id, database: database, config: config)
     }
+    
+    public func delete<Model: CryoModel>(id: String? = nil, from: Model.Type) async throws -> CloudKitDeleteQuery<Model> {
+        try CloudKitDeleteQuery(for: Model.self, id: id, database: database, config: config)
+    }
 }
 
 // MARK: AnyCloudKitAdaptor implementation

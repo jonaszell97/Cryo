@@ -49,7 +49,7 @@ public final class CloudKitSelectQuery<Model: CryoModel> {
 }
 
 extension CloudKitSelectQuery {
-    func fetch() async throws -> [CKRecord] {
+    static func fetch(id: String?, whereClauses: [CryoQueryWhereClause], database: CKDatabase) async throws -> [CKRecord] {
         if let id {
             // Fetch single record
             
@@ -118,7 +118,7 @@ extension CloudKitSelectQuery {
                     }
                 }
                 
-                self.database.add(nextOperation)
+                database.add(nextOperation)
             }
             
             if let cursor = cursor {
@@ -135,7 +135,7 @@ extension CloudKitSelectQuery {
 
 extension CloudKitSelectQuery: CryoSelectQuery {
     public func execute() async throws -> [Model] {
-        let records = try await self.fetch()
+        let records = try await Self.fetch(id: id, whereClauses: whereClauses, database: database)
         let schema = await CryoSchemaManager.shared.schema(for: Model.self)
         
         var results = [Model]()
