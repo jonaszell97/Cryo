@@ -41,11 +41,18 @@ public final class SQLiteDeleteQuery<Model: CryoModel> {
             }
             
             var result = "DELETE FROM \(Model.tableName)"
+            let hasId = id != nil
+            
+            if hasId || !whereClauses.isEmpty {
+                result += " WHERE "
+            }
+            
+            if hasId {
+                result += "_cryo_key = ?"
+            }
+            
             for i in 0..<whereClauses.count {
-                if i == 0 {
-                    result += " WHERE "
-                }
-                else {
+                if i > 0 || hasId {
                     result += " AND "
                 }
                 
@@ -78,8 +85,14 @@ extension SQLiteDeleteQuery {
             throw CryoError.queryCompilationFailed(query: queryString, status: prepareStatus, message: message)
         }
         
+        var indexOffset = 0
+        if let id {
+            SQLiteAdaptor.bind(queryStatement, value: .string(value: id), index: Int32(1))
+            indexOffset += 1
+        }
+        
         for i in 0..<whereClauses.count {
-            SQLiteAdaptor.bind(queryStatement, value: whereClauses[i].value, index: Int32(i + 1))
+            SQLiteAdaptor.bind(queryStatement, value: whereClauses[i].value, index: Int32(i + 1 + indexOffset))
         }
         
         self.queryStatement = queryStatement

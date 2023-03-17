@@ -83,6 +83,10 @@ CREATE TABLE IF NOT EXISTS TestModel(
             XCTAssertNotNil(allValues)
             XCTAssertEqual(Set(allValues), Set([value, value2]))
             
+            _ = try await adaptor.delete(id: "test-1234", from: TestModel.self).execute()
+            let count = try await adaptor.select(from: TestModel.self).execute().count
+            XCTAssertEqual(count, 1)
+            
             _ = try await adaptor.delete(from: TestModel.self).execute()
             
             let allValues2 = try await adaptor.select(from: TestModel.self).execute()
