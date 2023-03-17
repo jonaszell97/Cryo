@@ -119,12 +119,16 @@ internal final actor CryoSchemaManager {
     /// The schemas mapped by object type.
     var schemas: [ObjectIdentifier: CryoSchema]
     
+    /// The schemas mapped by table name.
+    var schemasByName: [String: CryoSchema]
+    
     /// The shared instance.
     static let shared = CryoSchemaManager()
     
     /// Create a schema manager.
     init() {
         self.schemas = [:]
+        self.schemasByName = [:]
     }
     
     /// Find or create a schema.
@@ -136,6 +140,7 @@ internal final actor CryoSchemaManager {
         
         let schema = Model.schema
         self.schemas[schemaKey] = schema
+        self.schemasByName[Model.tableName] = schema
         
         return schema
     }
@@ -149,8 +154,14 @@ internal final actor CryoSchemaManager {
         
         let schema = modelType.schema
         self.schemas[schemaKey] = schema
+        self.schemasByName[modelType.tableName] = schema
         
         return schema
+    }
+    
+    /// Find or create a schema.
+    func schema(tableName: String) -> CryoSchema? {
+        schemasByName[tableName]
     }
 }
 

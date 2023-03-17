@@ -16,12 +16,12 @@
 //    }
 //}
 //
-//public final class MirroredDatabaseStore<MainAdaptor: CryoDatabaseAdaptor> {
+//public final class MirroredDatabaseStore {
 //    /// The configuration for this adaptor.
 //    let config: MirroredDatabaseStoreConfig
 //    
 //    /// The CloudKit adaptor.
-//    let mainAdaptor: MainAdaptor
+//    let mainAdaptor: CloudKitAdaptor
 //    
 //    /// The mirror adaptor.
 //    let mirrorAdaptor: SQLiteAdaptor
@@ -46,7 +46,7 @@
 //    let locallyModifiedRecordIdsKey: CryoNamedKey<Set<String>>
 //    
 //    /// Create a locally mirrored database adaptor.
-//    public init(config: MirroredDatabaseStoreConfig, mainAdaptor: MainAdaptor) throws {
+//    public init(config: MirroredDatabaseStoreConfig, mainAdaptor: CloudKitAdaptor) throws {
 //        self.config = config
 //        self.mainAdaptor = mainAdaptor
 //        self.operationsAdaptor = DocumentAdaptor.local(subdirectory: "_crlst_\(config.identifier)")

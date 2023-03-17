@@ -3,11 +3,47 @@ import Foundation
 import SQLite3
 
 public final class SQLiteInsertQuery<Model: CryoModel> {
+    /// The untyped query.
+    let untypedQuery: UntypedSQLiteInsertQuery
+    
+    /// Create an INSERT query.
+    internal init(id: String, value: Model, replace: Bool, connection: OpaquePointer, config: CryoConfig?) throws {
+        self.untypedQuery = try .init(id: id, value: value, replace: replace, connection: connection, config: config)
+    }
+    
+    /// The database operation for this query.
+    var operation: DatabaseOperation {
+        get async throws {
+            var data = [DatabaseOperationValue]()
+            let schema = await CryoSchemaManager.shared.schema(for: Model.self)
+            
+            for column in schema.columns {
+                data.append(.init(columnName: column.columnName, value: try .init(value: column.getValue(untypedQuery.value))))
+            }
+            
+            return .insert(tableName: Model.tableName, id: untypedQuery.id, data: data)
+        }
+    }
+}
+
+extension SQLiteInsertQuery: CryoInsertQuery {
+    public var queryString: String {
+        get async {
+            await untypedQuery.queryString
+        }
+    }
+    
+    @discardableResult public func execute() async throws -> Bool {
+        try await untypedQuery.execute()
+    }
+}
+
+internal class UntypedSQLiteInsertQuery {
     /// The ID to insert the value with.
     let id: String
     
     /// The model value to insert.
-    let value: Model
+    let value: any CryoModel
     
     /// Whether to replace an existing value with the same key
     let replace: Bool
@@ -29,7 +65,7 @@ public final class SQLiteInsertQuery<Model: CryoModel> {
     #endif
     
     /// Create an INSERT query.
-    internal init(id: String, value: Model, replace: Bool, connection: OpaquePointer, config: CryoConfig?) throws {
+    internal init(id: String, value: any CryoModel, replace: Bool, connection: OpaquePointer, config: CryoConfig?) throws {
         self.id = id
         self.value = value
         self.replace = replace
@@ -48,11 +84,12 @@ public final class SQLiteInsertQuery<Model: CryoModel> {
                 return completeQueryString
             }
             
-            let schema = await CryoSchemaManager.shared.schema(for: Model.self)
-            let columns: [String] = schema.map { $0.columnName }
+            let modelType = type(of: value)
+            let schema = await CryoSchemaManager.shared.schema(for: modelType)
+            let columns: [String] = schema.columns.map { $0.columnName }
             
             let result = """
-INSERT \(replace ? "OR REPLACE " : "")INTO \(Model.tableName)(_cryo_key,_cryo_created,_cryo_modified,\(columns.joined(separator: ",")))
+INSERT \(replace ? "OR REPLACE " : "")INTO \(modelType.tableName)(_cryo_key,_cryo_created,_cryo_modified,\(columns.joined(separator: ",")))
     VALUES (?,?,?,\(columns.map { _ in "?" }.joined(separator: ",")));
 """
             
@@ -62,7 +99,7 @@ INSERT \(replace ? "OR REPLACE " : "")INTO \(Model.tableName)(_cryo_key,_cryo_cr
     }
 }
 
-extension SQLiteInsertQuery {
+extension UntypedSQLiteInsertQuery {
     /// Get the compiled query statement.
     func compiledQuery() async throws -> OpaquePointer {
         if let queryStatement {
@@ -82,10 +119,10 @@ extension SQLiteInsertQuery {
             throw CryoError.queryCompilationFailed(query: queryString, status: prepareStatus, message: message)
         }
         
-        let schema = await CryoSchemaManager.shared.schema(for: Model.self)
+        let schema = await CryoSchemaManager.shared.schema(for: type(of: value))
         
         var bindings: [CryoQueryValue] = [.string(value: id), .date(value: created), .date(value: created)]
-        bindings.append(contentsOf: try schema.map { try .init(value: $0.getValue(value)) })
+        bindings.append(contentsOf: try schema.columns.map { try .init(value: $0.getValue(value)) })
         
         for i in 0..<bindings.count {
             SQLiteAdaptor.bind(queryStatement, value: bindings[i], index: Int32(i + 1))
@@ -96,7 +133,7 @@ extension SQLiteInsertQuery {
     }
 }
 
-extension SQLiteInsertQuery: CryoInsertQuery {
+extension UntypedSQLiteInsertQuery {
     @discardableResult public func execute() async throws -> Bool {
         let queryStatement = try await self.compiledQuery()
         defer {

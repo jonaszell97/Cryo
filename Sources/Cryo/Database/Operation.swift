@@ -81,6 +81,17 @@ internal struct DatabaseOperation {
     }
 }
 
+extension DatabaseOperation {
+    var modelData: [String: _AnyCryoColumnValue] {
+        var result = [String: _AnyCryoColumnValue]()
+        for item in self.data {
+            result[item.columnName] = item.value.columnValue
+        }
+        
+        return result
+    }
+}
+
 // MARK: Conformances
 
 extension DatabaseOperation: Codable {

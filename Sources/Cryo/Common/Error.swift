@@ -20,6 +20,9 @@ public enum CryoError: Error {
     /// A query failed because of a duplicate key.
     case duplicateId(id: String)
     
+    /// A schema for a table was not initialized.
+    case schemaNotInitialized(tableName: String)
+    
     // MARK: SQLite
     
     /// Failed to compile an SQL query.

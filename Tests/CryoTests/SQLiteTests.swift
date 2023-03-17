@@ -82,6 +82,23 @@ CREATE TABLE IF NOT EXISTS TestModel(
         XCTAssertEqual(loadedValue.count, 0)
     }
     
+    private func persistAndLoadOperationTest(_ value: TestModel, to store: SQLiteAdaptor) async throws {
+        let id = UUID().uuidString
+        
+        let operation = try await store.insert(id: id, value).operation
+        try await store.execute(operation: operation)
+        
+        var loadedValue = try await store.select(id: id, from: TestModel.self).execute()
+        XCTAssertEqual(loadedValue.first, value)
+        
+        try await store.delete(from: TestModel.self)
+            .where("x", equals: value.x)
+            .execute()
+        
+        loadedValue = try await store.select(id: id, from: TestModel.self).execute()
+        XCTAssertEqual(loadedValue.count, 0)
+    }
+    
     func testDatabasePersistence() async throws {
         let adaptor = try SQLiteAdaptor(databaseUrl: self.databaseUrl!, config: CryoConfig { print("[\($0)] \($1)") })
         try await adaptor.createTable(for: TestModel.self).execute()
@@ -116,6 +133,7 @@ CREATE TABLE IF NOT EXISTS TestModel(
             for _ in 0..<100 {
                 let model = TestModel.random()
                 try await self.persistAndLoadTest(model, to: adaptor)
+                try await self.persistAndLoadOperationTest(model, to: adaptor)
             }
         }
         catch {

@@ -102,5 +102,8 @@ extension SQLiteCreateTableQuery: CryoQuery {
                                                  status: executeStatus,
                                                  message: message)
         }
+        
+        // Initialize the CryoSchema
+        _ = await CryoSchemaManager.shared.schema(for: Model.self)
     }
 }

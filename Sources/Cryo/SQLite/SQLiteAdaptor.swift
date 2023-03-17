@@ -96,8 +96,13 @@ extension SQLiteAdaptor {
     func execute(operation: DatabaseOperation) async throws {
         switch operation.type {
         case .insert:
-            break
-//            try await self.insert(id: operation.rowId, operation., replace: <#T##Bool#>)
+            guard let schema = await CryoSchemaManager.shared.schema(tableName: operation.tableName) else {
+                throw CryoError.schemaNotInitialized(tableName: operation.tableName)
+            }
+            
+            let model = try schema.create(operation.modelData)
+            _ = try await UntypedSQLiteInsertQuery(id: operation.rowId, value: model, replace: false, connection: db.connection, config: config)
+                .execute()
         case .update:
             break
         case .delete:
