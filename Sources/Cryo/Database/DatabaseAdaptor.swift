@@ -46,6 +46,8 @@ public protocol CryoDatabaseAdaptor {
     
     // MARK: Queries
     
+    #if false
+    
     /// Create a CREATE TABLE query.
     func createTable<Model: CryoModel>(for: Model.Type) async throws -> any CryoQuery<Void>
     
@@ -59,7 +61,9 @@ public protocol CryoDatabaseAdaptor {
     func update<Model: CryoModel>(id: String?) async throws -> any CryoUpdateQuery<Model>
     
     /// Create a DELETE query.
-    func delete<Model: CryoModel>(id: String?) async throws -> any CryoDeleteQuery<Model>
+    func delete<Model: CryoModel>(id: String?, from: Model.Type) async throws -> any CryoDeleteQuery<Model>
+    
+    #endif
     
     // MARK: Availability
     
@@ -75,53 +79,14 @@ public protocol CryoDatabaseAdaptor {
     ///
     /// - Parameter callback: The callback to invoke with the changed availability.
     func observeAvailabilityChanges(_ callback: @escaping (Bool) -> Void)
-    
-    // MARK: Utility
-    
-    /// Persist the given value for a key.
-    ///
-    /// - Parameters:
-    ///   - value: The value to persist. If this parameter is `nil`, the value for the given key is removed.
-    ///   - key: The key that uniquely identifies the persisted value.
-    func persist<Key: CryoKey>(_ value: Key.Value?, for key: Key) async throws
-        where Key.Value: CryoModel
-    
-    /// Load a persisted value for a key.
-    ///
-    /// - Parameter key: The key that uniquely identifies the persisted value.
-    /// - Returns: The value previously persisted for `key`, or nil if none exists.
-    func load<Key: CryoKey>(with key: Key) async throws -> Key.Value?
-        where Key.Value: CryoModel
-    
-    /// Load all values of the given `Key` type. Not all adaptors support this operation.
-    ///
-    /// - Parameter key: The Key type of which all values should be loaded.
-    /// - Returns: All values of the given key, or `nil` if the adaptor does not support this operation.
-    func loadAll<Record: CryoModel>(of type: Record.Type) async throws -> [Record]?
-    
-    /// Remove the given value for a key.
-    ///
-    /// - Parameter key: The key that uniquely identifies the value to remove.
-    func remove<Key: CryoKey>(with key: Key) async throws
-        where Key.Value: CryoModel
-    
-    /// Remove the values for all keys associated with this adaptor.
-    ///
-    /// - Warning: This is a destructive operation. Be sure to check whether you really want
-    /// to delete all data before calling it.
-    func removeAll<Record: CryoModel>(of type: Record.Type) async throws
-    
-    /// Remove the values for all keys associated with this adaptor.
-    ///
-    /// - Warning: This is a destructive operation. Be sure to check whether you really want
-    /// to delete all data before calling it.
-    func removeAll() async throws
 }
 
 extension CryoDatabaseAdaptor {
     public var isAvailable: Bool { true }
     public func ensureAvailability() { }
     public func observeAvailabilityChanges(_ callback: @escaping (Bool) -> Void) { }
+    
+    #if false
     
     /// Create an INSERT query.
     public func insert<Model: CryoModel>(id: String, _ value: Model) async throws -> any CryoInsertQuery<Model> {
@@ -138,43 +103,5 @@ extension CryoDatabaseAdaptor {
         try await self.select(id: nil, from: model)
     }
     
-    public func persist<Key: CryoKey>(_ value: Key.Value?, for key: Key) async throws
-        where Key.Value: CryoModel
-    {
-        guard let value else {
-            try await self.remove(with: key)
-            return
-        }
-
-        _ = try await self.insert(id: key.id, value).execute()
-    }
-    
-    public func load<Key: CryoKey>(with key: Key) async throws -> Key.Value?
-        where Key.Value: CryoModel
-    {
-        try await self.select(id: key.id, from: Key.Value.self).execute().first
-    }
-    
-    public func loadAll<Record: CryoModel>(of type: Record.Type) async throws -> [Record]? {
-        try await self.select(from: Record.self).execute()
-    }
-    
-    public func remove<Key: CryoKey>(with key: Key) async throws
-        where Key.Value: CryoModel
-    {
-        let operation = DatabaseOperation.delete(tableName: Key.Value.tableName, id: key.id)
-        try await self.execute(operation: operation)
-    }
-    
-    public func removeAll<Record>(of type: Record.Type) async throws
-        where Record: CryoModel
-    {
-        let operation = DatabaseOperation.delete(tableName: Record.tableName)
-        try await self.execute(operation: operation)
-    }
-    
-    public func removeAll() async throws {
-        let operation = DatabaseOperation.deleteAll()
-        try await self.execute(operation: operation)
-    }
+    #endif
 }

@@ -71,22 +71,22 @@ CREATE TABLE IF NOT EXISTS TestModel(
         XCTAssertEqual(TestModel.schema.map { $0.columnName }, ["x", "y", "z"])
         
         do {
-            let key = AnyKey(id: "test-123", for: TestModel.self)
-            try await adaptor.persist(value, for: key)
+            let key = "test-123"
+            _ = try await adaptor.insert(id: key, value).execute()
             
-            let loadedValue = try await adaptor.load(with: key)
+            let loadedValue = try await adaptor.select(id: key, from: TestModel.self).execute().first
             XCTAssertEqual(value, loadedValue)
             
-            try await adaptor.persist(value2, for: AnyKey(id: "test-1234", for: TestModel.self))
+            _ = try await adaptor.insert(id: "test-1234", value2).execute()
             
-            let allValues = try await adaptor.loadAll(of: TestModel.self)
+            let allValues = try await adaptor.select(from: TestModel.self).execute()
             XCTAssertNotNil(allValues)
-            XCTAssertEqual(Set(allValues!), Set([value, value2]))
+            XCTAssertEqual(Set(allValues), Set([value, value2]))
             
-            try await adaptor.removeAll(of: TestModel.self)
+            _ = try await adaptor.delete(from: TestModel.self).execute()
             
-            let allValues2 = try await adaptor.loadAll(of: TestModel.self)
-            XCTAssertEqual(allValues2?.count, 0)
+            let allValues2 = try await adaptor.select(from: TestModel.self).execute()
+            XCTAssertEqual(allValues2.count, 0)
         }
         catch {
             XCTAssert(false, error.localizedDescription)

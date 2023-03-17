@@ -291,6 +291,11 @@ fileprivate extension SynchronizedStore {
 }
 
 extension SynchronizedStore: CryoDatabaseAdaptor {
+    public func execute(operation: DatabaseOperation) async throws {
+        
+    }
+    
+    #if false
     public func createTable<Model: CryoModel>(for type: Model.Type) async throws -> any CryoQuery<Void> {
         try await localStore.createTable(for: type)
     }
@@ -327,4 +332,5 @@ extension SynchronizedStore: CryoDatabaseAdaptor {
     public func loadAll<Record: CryoModel>(of type: Record.Type) async throws -> [Record]? {
         try await localStore.loadAll(of: type)
     }
+    #endif
 }

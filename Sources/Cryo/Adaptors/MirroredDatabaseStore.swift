@@ -150,6 +150,12 @@ extension MirroredDatabaseStore {
 }
 
 extension MirroredDatabaseStore: CryoDatabaseAdaptor {
+    public func execute(operation: DatabaseOperation) async throws {
+        
+    }
+    
+    #if false
+    
     public func createTable<Model: CryoModel>(for type: Model.Type) async throws -> any CryoQuery<Void> {
         MultiQuery(first: try await mirrorAdaptor.createTable(for: type),
                    second: try await mainAdaptor.createTable(for: type))
@@ -249,4 +255,6 @@ extension MirroredDatabaseStore: CryoDatabaseAdaptor {
         let operation = DatabaseOperation.deleteAll()
         try await self.execute(operation: operation)
     }
+    
+    #endif
 }

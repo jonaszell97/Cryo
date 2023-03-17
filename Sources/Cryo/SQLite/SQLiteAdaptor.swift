@@ -477,15 +477,11 @@ extension SQLiteAdaptor {
 
 extension SQLiteAdaptor {
     /// Create a table if it does not exist yet.
-    public func createTable<Model: CryoModel>(for model: Model.Type) async throws -> any CryoQuery<Void> {
-        guard createdTables.insert(Model.tableName).inserted else {
-            return NoOpQuery(queryString: "", for: model)
-        }
-        
-        return try SQLiteCreateTableQuery(for: model, connection: db.connection, config: config)
+    public func createTable<Model: CryoModel>(for model: Model.Type) async throws -> SQLiteCreateTableQuery<Model> {
+        try SQLiteCreateTableQuery(for: model, connection: db.connection, config: config)
     }
     
-    public func select<Model: CryoModel>(id: String?, from: Model.Type) async throws -> any CryoSelectQuery<Model> {
+    public func select<Model: CryoModel>(id: String? = nil, from: Model.Type) async throws -> SQLiteSelectQuery<Model> {
         var query: SQLiteSelectQuery<Model> = try SQLiteSelectQuery(connection: db.connection, config: config)
         if let id {
             query = try await query.where("_cryo_key", operation: .equals, value: id)
@@ -494,15 +490,15 @@ extension SQLiteAdaptor {
         return query
     }
     
-    public func insert<Model: CryoModel>(id: String, _ value: Model, replace: Bool) async throws -> any CryoInsertQuery<Model> {
+    public func insert<Model: CryoModel>(id: String, _ value: Model, replace: Bool = true) async throws -> SQLiteInsertQuery<Model> {
         try SQLiteInsertQuery(id: id, value: value, replace: replace, connection: db.connection, config: config)
     }
     
-    public func update<Model: CryoModel>(id: String?) async throws -> any CryoUpdateQuery<Model> {
+    public func update<Model: CryoModel>(id: String? = nil) async throws -> SQLiteUpdateQuery<Model> {
         try SQLiteUpdateQuery(id: id, connection: db.connection, config: config)
     }
     
-    public func delete<Model: CryoModel>(id: String?) async throws -> any CryoDeleteQuery<Model> {
+    public func delete<Model: CryoModel>(id: String? = nil, from: Model.Type) async throws -> SQLiteDeleteQuery<Model> {
         try SQLiteDeleteQuery(id: id, connection: db.connection, config: config)
     }
 }

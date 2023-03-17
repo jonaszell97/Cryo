@@ -26,25 +26,25 @@ internal protocol AnyCloudKitAdaptor: AnyObject, CryoDatabaseAdaptor {
 // MARK: CryoDatabaseAdaptor implementation
 
 extension AnyCloudKitAdaptor {
-    public func createTable<Model: CryoModel>(for type: Model.Type) async throws -> any CryoQuery<Void> {
-        NoOpQuery(queryString: "CREATE TABLE", for: type)
-    }
-    
-    public func select<Model: CryoModel>(id: String?, from: Model.Type) async throws -> any CryoSelectQuery<Model> {
-        fatalError("TODO")
-    }
-    
-    public func insert<Model: CryoModel>(id: String, _ value: Model, replace: Bool) async throws -> any CryoInsertQuery<Model> {
-        fatalError("TODO")
-    }
-    
-    public func update<Model: CryoModel>(id: String?) async throws -> any CryoUpdateQuery<Model> {
-        fatalError("TODO")
-    }
-    
-    public func delete<Model: CryoModel>(id: String?) async throws -> any CryoDeleteQuery<Model> {
-        fatalError("TODO")
-    }
+//    public func createTable<Model: CryoModel>(for type: Model.Type) async throws -> any CryoQuery<Void> {
+//        NoOpQuery(queryString: "CREATE TABLE", for: type)
+//    }
+//    
+//    public func select<Model: CryoModel>(id: String?, from: Model.Type) async throws -> any CryoSelectQuery<Model> {
+//        fatalError("TODO")
+//    }
+//    
+//    public func insert<Model: CryoModel>(id: String, _ value: Model, replace: Bool) async throws -> any CryoInsertQuery<Model> {
+//        fatalError("TODO")
+//    }
+//    
+//    public func update<Model: CryoModel>(id: String?) async throws -> any CryoUpdateQuery<Model> {
+//        fatalError("TODO")
+//    }
+//    
+//    public func delete<Model: CryoModel>(id: String?) async throws -> any CryoDeleteQuery<Model> {
+//        fatalError("TODO")
+//    }
 }
 
 extension AnyCloudKitAdaptor {
@@ -162,7 +162,7 @@ extension AnyCloudKitAdaptor {
             try await self.persist(key: operation.rowId, tableName: operation.tableName, data: operation.data)
         case .delete:
             if operation.tableName.isEmpty {
-                try await self.removeAll()
+//                try await self.removeAll()
                 return
             }
             else if operation.rowId.isEmpty {
