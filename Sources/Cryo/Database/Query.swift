@@ -115,7 +115,7 @@ public struct CryoQueryWhereClause {
 
 public protocol CryoWhereClauseQuery<Model>: CryoModelQuery {
     /// Attach a WHERE clause to this query.
-    @discardableResult func `where`<Value: _AnyCryoColumnValue>(
+    func `where`<Value: _AnyCryoColumnValue>(
         _ columnName: String,
         operation: CryoComparisonOperator,
         value: Value
@@ -134,7 +134,7 @@ public struct CryoQuerySetClause {
 
 public protocol CryoSetClauseQuery<Model>: CryoModelQuery {
     /// Attach a WHERE clause to this query.
-    @discardableResult func set<Value: _AnyCryoColumnValue>(
+    func set<Value: _AnyCryoColumnValue>(
         _ columnName: String,
         value: Value
     ) async throws -> Self
@@ -153,7 +153,8 @@ public protocol CryoSelectQuery<Model>: CryoWhereClauseQuery
 public protocol CryoInsertQuery<Model>: CryoModelQuery
     where Self.Result == Bool
 {
-    
+    /// Execute the query and return the result.
+    @discardableResult func execute() async throws -> Result
 }
 
 // MARK: Update
@@ -161,7 +162,8 @@ public protocol CryoInsertQuery<Model>: CryoModelQuery
 public protocol CryoUpdateQuery<Model>: CryoWhereClauseQuery, CryoSetClauseQuery
     where Self.Result == Int
 {
-    
+    /// Execute the query and return the result.
+    @discardableResult func execute() async throws -> Result
 }
 
 // MARK: Delete
@@ -169,14 +171,15 @@ public protocol CryoUpdateQuery<Model>: CryoWhereClauseQuery, CryoSetClauseQuery
 public protocol CryoDeleteQuery<Model>: CryoWhereClauseQuery
     where Self.Result == Int
 {
-    
+    /// Execute the query and return the result.
+    @discardableResult func execute() async throws -> Result
 }
 
 // MARK: Utility extensions
 
 extension CryoWhereClauseQuery {
     /// Attach an AND clause to this query.
-    @discardableResult public func and<Value: _AnyCryoColumnValue>(
+    public func and<Value: _AnyCryoColumnValue>(
         _ columnName: String,
         operation: CryoComparisonOperator,
         value: Value
@@ -185,7 +188,7 @@ extension CryoWhereClauseQuery {
     }
     
     /// Attach a WHERE clause to this query.
-    @discardableResult public func `where`<Value: _AnyCryoColumnValue>(
+    public func `where`<Value: _AnyCryoColumnValue>(
         _ columnName: String,
         equals value: Value
     ) async throws -> Self {
@@ -193,7 +196,7 @@ extension CryoWhereClauseQuery {
     }
     
     /// Attach a WHERE clause to this query.
-    @discardableResult public func `where`<Value: _AnyCryoColumnValue>(
+    public func `where`<Value: _AnyCryoColumnValue>(
         _ columnName: String,
         doesNotEqual value: Value
     ) async throws -> Self {
@@ -201,7 +204,7 @@ extension CryoWhereClauseQuery {
     }
     
     /// Attach a WHERE clause to this query.
-    @discardableResult public func `where`<Value: _AnyCryoColumnValue>(
+    public func `where`<Value: _AnyCryoColumnValue>(
         _ columnName: String,
         isGreatherThan value: Value
     ) async throws -> Self {
@@ -209,7 +212,7 @@ extension CryoWhereClauseQuery {
     }
     
     /// Attach a WHERE clause to this query.
-    @discardableResult public func `where`<Value: _AnyCryoColumnValue>(
+    public func `where`<Value: _AnyCryoColumnValue>(
         _ columnName: String,
         isGreatherThanOrEquals value: Value
     ) async throws -> Self {
@@ -217,7 +220,7 @@ extension CryoWhereClauseQuery {
     }
     
     /// Attach a WHERE clause to this query.
-    @discardableResult public func `where`<Value: _AnyCryoColumnValue>(
+    public func `where`<Value: _AnyCryoColumnValue>(
         _ columnName: String,
         isLessThan value: Value
     ) async throws -> Self {
@@ -225,7 +228,7 @@ extension CryoWhereClauseQuery {
     }
     
     /// Attach a WHERE clause to this query.
-    @discardableResult public func `where`<Value: _AnyCryoColumnValue>(
+    public func `where`<Value: _AnyCryoColumnValue>(
         _ columnName: String,
         isLessThanOrEquals value: Value
     ) async throws -> Self {

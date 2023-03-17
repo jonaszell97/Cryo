@@ -2,7 +2,7 @@
 import XCTest
 @testable import Cryo
 
-fileprivate enum TestEnum: Int, CryoColumnIntValue, Hashable {
+fileprivate enum TestEnum: Int, CryoColumnIntValue, Hashable, CaseIterable {
     case zero = 0
     case a = 300, b = 400, c = 500
 }
@@ -11,6 +11,12 @@ fileprivate struct TestModel: CryoModel {
     @CryoColumn var x: Int16 = 0
     @CryoColumn var y: String = ""
     @CryoColumn var z: TestEnum = .c
+    
+    static func random() -> Self {
+        .init(x: .random(in: Int16.min...Int16.max), y: String((0..<10).map { _ in
+            "abcdefghijklmnopqrstuvwxyz0123456789".randomElement()!
+        }), z: .allCases.randomElement()!)
+    }
 }
 
 extension TestModel: Hashable {
@@ -61,6 +67,21 @@ CREATE TABLE IF NOT EXISTS TestModel(
 """);
     }
     
+    private func persistAndLoadTest(_ value: TestModel, to store: SQLiteAdaptor) async throws {
+        let id = UUID().uuidString
+        try await store.insert(id: id, value).execute()
+        
+        var loadedValue = try await store.select(id: id, from: TestModel.self).execute()
+        XCTAssertEqual(loadedValue.first, value)
+        
+        try await store.delete(from: TestModel.self)
+            .where("x", equals: value.x)
+            .execute()
+        
+        loadedValue = try await store.select(id: id, from: TestModel.self).execute()
+        XCTAssertEqual(loadedValue.count, 0)
+    }
+    
     func testDatabasePersistence() async throws {
         let adaptor = try SQLiteAdaptor(databaseUrl: self.databaseUrl!, config: CryoConfig { print("[\($0)] \($1)") })
         try await adaptor.createTable(for: TestModel.self).execute()
@@ -91,6 +112,11 @@ CREATE TABLE IF NOT EXISTS TestModel(
             
             let allValues2 = try await adaptor.select(from: TestModel.self).execute()
             XCTAssertEqual(allValues2.count, 0)
+            
+            for _ in 0..<100 {
+                let model = TestModel.random()
+                try await self.persistAndLoadTest(model, to: adaptor)
+            }
         }
         catch {
             XCTAssert(false, error.localizedDescription)
@@ -168,6 +194,40 @@ CREATE TABLE IF NOT EXISTS TestModel(
         }
         catch {
             XCTFail(error.localizedDescription)
+        }
+    }
+    
+    func testDeleteQueries() async throws {
+        let adaptor = try SQLiteAdaptor(databaseUrl: self.databaseUrl!, config: CryoConfig { print("[\($0)] \($1)") })
+        try await adaptor.createTable(for: TestModel.self).execute()
+        
+        var models = [TestModel]()
+        
+        for i in 0..<100 {
+            let id = "id\(i)"
+            let model = TestModel.random()
+            models.append(model)
+            
+            _ = try await adaptor.insert(id: id, model).execute()
+        }
+        
+        let idsToDelete = Set((0..<10).map { _ in (0..<100).randomElement()! })
+        for i in idsToDelete {
+            let id = "id\(i)"
+            _ = try await adaptor.delete(id: id, from: TestModel.self).execute()
+        }
+        
+        for i in 0..<100 {
+            let id = "id\(i)"
+            let value = try await adaptor.select(id: id, from: TestModel.self).execute()
+            
+            if idsToDelete.contains(i) {
+                XCTAssertEqual(value.count, 0)
+            }
+            else {
+                XCTAssertEqual(value.count, 1)
+                XCTAssertEqual(value.first, models[i])
+            }
         }
     }
 }

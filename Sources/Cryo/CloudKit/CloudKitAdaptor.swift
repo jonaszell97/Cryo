@@ -73,12 +73,6 @@ public final class CloudKitAdaptor {
 // MARK: CryoDatabaseAdaptor implementation
 
 extension CloudKitAdaptor {
-    public func removeAll() async throws {
-        for zone in try await database.allRecordZones() {
-            try await database.deleteRecordZone(withID: zone.zoneID)
-        }
-    }
-
     /// Check for availability of the database.
     public func ensureAvailability() async throws {
         guard self.iCloudRecordID == nil else {
@@ -129,112 +123,6 @@ extension CloudKitAdaptor: CryoDatabaseAdaptor {
     
     public func delete<Model: CryoModel>(id: String? = nil, from: Model.Type) async throws -> CloudKitDeleteQuery<Model> {
         try CloudKitDeleteQuery(for: Model.self, id: id, database: database, config: config)
-    }
-}
-
-// MARK: AnyCloudKitAdaptor implementation
-
-extension CloudKitAdaptor: AnyCloudKitAdaptor {
-    /// Delete a record with the given id.
-    func delete(recordWithId id: CKRecord.ID) async throws {
-        try await ensureAvailability()
-        return try await withCheckedThrowingContinuation { continuation in
-            database.delete(withRecordID: id) { _, error in
-                if let error {
-                    continuation.resume(throwing: error)
-                    return
-                }
-                
-                continuation.resume()
-            }
-        }
-    }
-    
-    func delete(tableName: String) async throws {
-        try await ensureAvailability()
-        
-        var recordIDs = [CKRecord.ID]()
-        try await self.fetchAllBatched(tableName: tableName, predicate: NSPredicate(value: true)) { records in
-            recordIDs.append(contentsOf: records.map { $0.recordID })
-            return true
-        }
-        
-        return try await withCheckedThrowingContinuation { continuation in
-            database.modifyRecords(saving: [], deleting: recordIDs) { _ in
-                continuation.resume()
-            }
-        }
-    }
-    
-    /// Save the given record.
-    func save(record: CKRecord) async throws {
-        try await ensureAvailability()
-        return try await withCheckedThrowingContinuation { continuation in
-            database.save(record) { _, error in
-                if let error {
-                    continuation.resume(throwing: error)
-                    return
-                }
-                
-                continuation.resume()
-            }
-        }
-    }
-    
-    /// Fetch a record with the given id.
-    func fetch(recordWithId id: CKRecord.ID) async throws -> CKRecord? {
-        try await ensureAvailability()
-        return try await withCheckedThrowingContinuation { continuation in
-            database.fetch(withRecordID: id) { record, error in
-                if let error {
-                    continuation.resume(throwing: error)
-                    return
-                }
-                
-                continuation.resume(returning: record)
-            }
-        }
-    }
-    
-    /// Fetch a record with the given id.
-    func fetchAllBatched(tableName: String, predicate: NSPredicate, receiveBatch: ([CKRecord]) throws -> Bool) async throws {
-        try await ensureAvailability()
-        
-        let query = CKQuery(recordType: tableName, predicate: predicate)
-        
-        var operation: CKQueryOperation? = CKQueryOperation(query: query)
-        operation?.resultsLimit = CKQueryOperation.maximumResults
-        
-        while let nextOperation = operation {
-            var data = [CKRecord]()
-            var encounteredError = false
-            
-            let cursor: CKQueryOperation.Cursor? = try await withCheckedThrowingContinuation { continuation in
-                nextOperation.queryResultBlock =  {
-                    guard !encounteredError else { return }
-                    continuation.resume(with: $0)
-                }
-                nextOperation.recordMatchedBlock = { _, result in
-                    switch result {
-                    case .success(let record):
-                        data.append(record)
-                    case .failure(let error):
-                        encounteredError = true
-                        continuation.resume(throwing: error)
-                    }
-                }
-                
-                self.database.add(nextOperation)
-            }
-            
-            let shouldContinue = try receiveBatch(data)
-            if let cursor = cursor, shouldContinue {
-                operation = CKQueryOperation(cursor: cursor)
-            }
-            else {
-                break
-            }
-        }
     }
 }
 

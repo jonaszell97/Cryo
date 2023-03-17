@@ -97,7 +97,7 @@ extension SQLiteInsertQuery {
 }
 
 extension SQLiteInsertQuery: CryoInsertQuery {
-    public func execute() async throws -> Bool {
+    @discardableResult public func execute() async throws -> Bool {
         let queryStatement = try await self.compiledQuery()
         defer {
             sqlite3_finalize(queryStatement)

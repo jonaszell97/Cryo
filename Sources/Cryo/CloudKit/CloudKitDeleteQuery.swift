@@ -49,7 +49,7 @@ public final class CloudKitDeleteQuery<Model: CryoModel> {
 }
 
 extension CloudKitDeleteQuery: CryoDeleteQuery {
-    public func execute() async throws -> Int {
+    @discardableResult public func execute() async throws -> Int {
         let records = try await CloudKitSelectQuery<Model>.fetch(id: id, whereClauses: whereClauses, database: database)
         return try await withCheckedThrowingContinuation { continuation in
             let operation = CKModifyRecordsOperation()
@@ -73,7 +73,7 @@ extension CloudKitDeleteQuery: CryoDeleteQuery {
     }
     
     /// Attach a WHERE clause to this query.
-    @discardableResult public func `where`<Value: _AnyCryoColumnValue>(
+    public func `where`<Value: _AnyCryoColumnValue>(
         _ columnName: String,
         operation: CryoComparisonOperator,
         value: Value

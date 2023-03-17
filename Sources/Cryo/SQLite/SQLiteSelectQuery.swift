@@ -154,7 +154,7 @@ extension SQLiteSelectQuery: CryoSelectQuery {
     }
     
     /// Attach a WHERE clause to this query.
-    @discardableResult public func `where`<Value: _AnyCryoColumnValue>(
+    public func `where`<Value: _AnyCryoColumnValue>(
         _ columnName: String,
         operation: CryoComparisonOperator,
         value: Value

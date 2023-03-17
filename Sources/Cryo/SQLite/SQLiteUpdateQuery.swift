@@ -119,7 +119,7 @@ extension SQLiteUpdateQuery {
 }
 
 extension SQLiteUpdateQuery: CryoUpdateQuery {
-    public func execute() async throws -> Int {
+    @discardableResult public func execute() async throws -> Int {
         let queryStatement = try await self.compiledQuery()
         defer {
             sqlite3_finalize(queryStatement)
@@ -144,7 +144,7 @@ extension SQLiteUpdateQuery: CryoUpdateQuery {
         return Int(sqlite3_changes(connection))
     }
     
-    @discardableResult public func set<Value: _AnyCryoColumnValue>(
+    public func set<Value: _AnyCryoColumnValue>(
         _ columnName: String,
         value: Value
     ) async throws -> Self {
@@ -156,7 +156,7 @@ extension SQLiteUpdateQuery: CryoUpdateQuery {
         return self
     }
     
-    @discardableResult public func `where`<Value: _AnyCryoColumnValue>(
+    public func `where`<Value: _AnyCryoColumnValue>(
         _ columnName: String,
         operation: CryoComparisonOperator,
         value: Value

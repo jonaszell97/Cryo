@@ -161,7 +161,7 @@ extension CloudKitUpdateQuery {
 }
 
 extension CloudKitUpdateQuery: CryoUpdateQuery {
-    public func execute() async throws -> Int {
+    @discardableResult public func execute() async throws -> Int {
         let records = try await self.fetch()
         for record in records {
             for clause in setClauses {
@@ -192,7 +192,7 @@ extension CloudKitUpdateQuery: CryoUpdateQuery {
         }
     }
     
-    @discardableResult public func set<Value: _AnyCryoColumnValue>(
+    public func set<Value: _AnyCryoColumnValue>(
         _ columnName: String,
         value: Value
     ) async throws -> Self {
@@ -200,7 +200,7 @@ extension CloudKitUpdateQuery: CryoUpdateQuery {
         return self
     }
     
-    @discardableResult public func `where`<Value: _AnyCryoColumnValue>(
+    public func `where`<Value: _AnyCryoColumnValue>(
         _ columnName: String,
         operation: CryoComparisonOperator,
         value: Value

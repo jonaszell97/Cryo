@@ -52,7 +52,7 @@ INSERT \(replace ? "OR REPLACE " : "")INTO \(Model.tableName)(\(columns.joined(s
 }
 
 extension CloudKitInsertQuery: CryoInsertQuery {
-    public func execute() async throws -> Bool {
+    @discardableResult public func execute() async throws -> Bool {
         let modelType = Model.self
         let record = CKRecord(recordType: modelType.tableName, recordID: CKRecord.ID(recordName: id))
         let schema = await CryoSchemaManager.shared.schema(for: modelType)

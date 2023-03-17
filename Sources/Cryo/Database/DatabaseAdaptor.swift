@@ -37,13 +37,6 @@ import Foundation
 /// | 2   | "Hi"  | YYYY-MM-DD | /... |
 /// | 3   | "How are you?"  | YYYY-MM-DD | /... |
 public protocol CryoDatabaseAdaptor {
-    // MARK: Operations
-    
-    /// Execute a database operation.
-    ///
-    /// - Parameter operation: The operation to execute.
-    func execute(operation: DatabaseOperation) async throws
-    
     // MARK: Queries
     
     #if false

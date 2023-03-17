@@ -32,9 +32,9 @@ final class MockSelectQuery<Model: CryoModel>: CryoSelectQuery {
     
     var queryString: String { "" }
     
-    @discardableResult func `where`<Value: _AnyCryoColumnValue>(_ columnName: String,
-                                                                operation: Cryo.CryoComparisonOperator,
-                                                                value: Value) async throws
+    func `where`<Value: _AnyCryoColumnValue>(_ columnName: String,
+                                             operation: Cryo.CryoComparisonOperator,
+                                             value: Value) async throws
         -> MockSelectQuery<Model>
     {
         self.whereClauses.append(.init(columnName: columnName, operation: operation,
@@ -98,7 +98,7 @@ final class MockInsertQuery<Model: CryoModel>: CryoInsertQuery {
     
     var queryString: String { "" }
     
-    func execute() async throws -> Bool {
+    @discardableResult func execute() async throws -> Bool {
         let id = CKRecord.ID(recordName: id)
         
         let modelType = Model.self
@@ -134,7 +134,7 @@ final class MockUpdateQuery<Model: CryoModel>: CryoUpdateQuery {
     
     var queryString: String { "" }
     
-    @discardableResult func set<Value: _AnyCryoColumnValue>(
+    func set<Value: _AnyCryoColumnValue>(
         _ columnName: String,
         value: Value
     ) async throws -> Self {
@@ -142,9 +142,9 @@ final class MockUpdateQuery<Model: CryoModel>: CryoUpdateQuery {
         return self
     }
     
-    @discardableResult func `where`<Value: _AnyCryoColumnValue>(_ columnName: String,
-                                                                operation: Cryo.CryoComparisonOperator,
-                                                                value: Value) async throws
+    func `where`<Value: _AnyCryoColumnValue>(_ columnName: String,
+                                             operation: Cryo.CryoComparisonOperator,
+                                             value: Value) async throws
         -> MockUpdateQuery<Model>
     {
         self.whereClauses.append(.init(columnName: columnName, operation: operation,
@@ -152,7 +152,7 @@ final class MockUpdateQuery<Model: CryoModel>: CryoUpdateQuery {
         return self
     }
     
-    func execute() async throws -> Int {
+    @discardableResult func execute() async throws -> Int {
         let modelType = Model.self
         let schema = await CryoSchemaManager.shared.schema(for: modelType)
         
@@ -215,16 +215,16 @@ final class MockDeleteQuery<Model: CryoModel>: CryoDeleteQuery {
     
     var queryString: String { "" }
     
-    @discardableResult func `where`<Value: _AnyCryoColumnValue>(_ columnName: String,
-                                                                operation: Cryo.CryoComparisonOperator,
-                                                                value: Value) async throws -> Self
+    func `where`<Value: _AnyCryoColumnValue>(_ columnName: String,
+                                             operation: Cryo.CryoComparisonOperator,
+                                             value: Value) async throws -> Self
     {
         self.whereClauses.append(.init(columnName: columnName, operation: operation,
                                        value: try .init(value: value)))
         return self
     }
     
-    func execute() async throws -> Int {
+    @discardableResult func execute() async throws -> Int {
         let schema = await CryoSchemaManager.shared.schema(for: Model.self)
         
         var deletedCount = 0
@@ -264,7 +264,7 @@ final class MockDeleteQuery<Model: CryoModel>: CryoDeleteQuery {
     }
 }
 
-extension MockCloudKitAdaptor: AnyCloudKitAdaptor {
+extension MockCloudKitAdaptor: CryoDatabaseAdaptor {
     public func createTable<Model: CryoModel>(for model: Model.Type) async throws -> NoOpQuery<Model> {
         NoOpQuery(queryString: "", for: model)
     }
@@ -289,56 +289,6 @@ extension MockCloudKitAdaptor: AnyCloudKitAdaptor {
         MockDeleteQuery(id: id, allRecords: self.database.values.map { $0 }) { id in
             self.database[id] = nil
         }
-    }
-    
-    /// Delete a record with the given id.
-    func delete(recordWithId id: CKRecord.ID) async throws {
-        database[id] = nil
-    }
-    
-    func delete(tableName: String) async throws {
-    }
-    
-    /// Save the given record.
-    func save(record: CKRecord) async throws {
-        database[record.recordID] = record
-    }
-    
-    /// Fetch a record with the given id.
-    func fetch(recordWithId id: CKRecord.ID) async throws -> CKRecord? {
-        guard let record = database[id] else {
-            return nil
-        }
-        
-        // Replace asset URLs with random new ones
-        for key in record.allKeys() {
-            guard let asset = record[key] as? CKAsset, let url = asset.fileURL else {
-                continue
-            }
-            
-            guard let data = try? Data(contentsOf: url) else {
-                continue
-            }
-            
-            let newUrl = DocumentAdaptor.sharedLocal.url.appendingPathComponent("\(UUID()).txt")
-            do {
-                try data.write(to: newUrl)
-                record[key] = CKAsset(fileURL: newUrl)
-            }
-            catch {
-            }
-        }
-        
-        return record
-    }
-    
-    /// Fetch a record with the given id.
-    func fetchAllBatched(tableName: String, predicate: NSPredicate, receiveBatch: ([CKRecord]) throws -> Bool) async throws {
-        _ = try receiveBatch(database.values.filter { $0.recordType == tableName })
-    }
-    
-    func removeAll() async throws {
-        database.removeAll()
     }
 }
 

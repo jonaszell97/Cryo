@@ -101,7 +101,7 @@ extension SQLiteDeleteQuery {
 }
 
 extension SQLiteDeleteQuery: CryoDeleteQuery {
-    public func execute() async throws -> Int {
+    @discardableResult public func execute() async throws -> Int {
         let queryStatement = try await self.compiledQuery()
         defer {
             sqlite3_finalize(queryStatement)
@@ -127,7 +127,7 @@ extension SQLiteDeleteQuery: CryoDeleteQuery {
     }
     
     /// Attach a WHERE clause to this query.
-    @discardableResult public func `where`<Value: _AnyCryoColumnValue>(
+    public func `where`<Value: _AnyCryoColumnValue>(
         _ columnName: String,
         operation: CryoComparisonOperator,
         value: Value
