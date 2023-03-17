@@ -76,16 +76,13 @@ final class CryoDatabaseTests: XCTestCase {
         XCTAssertEqual(TestModel.schema.map { $0.columnName }, ["x", "y", "z", "w", "a", "b", "c"])
         
         do {
-            let key = AnyKey(id: "test-123", for: TestModel.self)
-            try await adaptor.persist(value, for: key)
+            let key = "test-123"
+            _ = try await adaptor.insert(id: key, value).execute()
             
-//            let key = "test-123"
-//            try await adaptor.insert(id: key, value).execute()
-            
-            let loadedValue = try await adaptor.select(id: key.id, from: TestModel.self).execute().first
+            let loadedValue = try await adaptor.select(id: key, from: TestModel.self).execute().first
             XCTAssertEqual(value, loadedValue)
             
-            try await adaptor.persist(value2, for: AnyKey(id: "test-1234", for: TestModel.self))
+            _ = try await adaptor.insert(id: "test-1234", value2).execute()
             
             let allValues = try await adaptor.select(from: TestModel.self).execute()
             XCTAssertNotNil(allValues)

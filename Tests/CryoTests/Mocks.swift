@@ -85,6 +85,36 @@ final class MockSelectQuery<Model: CryoModel>: CryoSelectQuery {
     }
 }
 
+final class MockInsertQuery<Model: CryoModel>: CryoInsertQuery {
+    let id: String
+    let value: Model
+    let saveValue: (CKRecord.ID, CKRecord) -> Void
+    
+    init(id: String, value: Model, saveValue: @escaping (CKRecord.ID, CKRecord) -> Void) {
+        self.id = id
+        self.value = value
+        self.saveValue = saveValue
+    }
+    
+    var queryString: String { "" }
+    
+    func execute() async throws -> Bool {
+        let id = CKRecord.ID(recordName: id)
+        
+        let modelType = Model.self
+        let record = CKRecord(recordType: modelType.tableName, recordID: id)
+        let schema = await CryoSchemaManager.shared.schema(for: modelType)
+        
+        for columnDetails in schema {
+            record[columnDetails.columnName] = try CloudKitAdaptor.nsObject(from: columnDetails.getValue(value),
+                                                                            valueType: columnDetails.type)
+        }
+        
+        saveValue(id, record)
+        return true
+    }
+}
+
 extension MockCloudKitAdaptor: AnyCloudKitAdaptor {
     public func createTable<Model: CryoModel>(for model: Model.Type) async throws -> NoOpQuery<Model> {
         NoOpQuery(queryString: "", for: model)
@@ -92,6 +122,12 @@ extension MockCloudKitAdaptor: AnyCloudKitAdaptor {
     
     public func select<Model: CryoModel>(id: String? = nil, from: Model.Type) async throws -> MockSelectQuery<Model> {
         MockSelectQuery(id: id, allRecords: self.database.values.map { $0 })
+    }
+    
+    public func insert<Model: CryoModel>(id: String, _ value: Model, replace: Bool = true) async throws -> MockInsertQuery<Model> {
+        MockInsertQuery(id: id, value: value) { id, record in
+            self.database[id] = record
+        }
     }
     
     /// Delete a record with the given id.

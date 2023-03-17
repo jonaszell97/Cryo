@@ -118,6 +118,10 @@ extension CloudKitAdaptor: CryoDatabaseAdaptor {
     public func select<Model: CryoModel>(id: String? = nil, from: Model.Type) async throws -> CloudKitSelectQuery<Model> {
         try CloudKitSelectQuery(for: Model.self, id: id, database: database, config: config)
     }
+    
+    public func insert<Model: CryoModel>(id: String, _ value: Model, replace: Bool = true) async throws -> CloudKitInsertQuery<Model> {
+        try CloudKitInsertQuery(id: id, value: value, replace: replace, database: database, config: config)
+    }
 }
 
 // MARK: AnyCloudKitAdaptor implementation
