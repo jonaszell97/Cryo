@@ -351,3 +351,44 @@ extension CloudKitAdaptor {
         }
     }
 }
+
+internal extension CryoQueryValue {
+    init?(value: __CKRecordObjCValue) {
+        switch value {
+        case let value as NSString:
+            self = .string(value: value as String)
+        case let value as NSNumber:
+            self = .double(value: value.doubleValue)
+        case let value as NSDate:
+            self = .date(value: value as Date)
+        case let value as NSData:
+            self = .data(value: value as Data)
+        case let value as CKAsset:
+            if let url = value.fileURL {
+                self = .asset(value: url)
+                break
+            }
+            
+            fallthrough
+        default:
+            return nil
+        }
+    }
+    
+    var recordValue: __CKRecordObjCValue {
+        switch self {
+        case .string(let value):
+            return value as NSString
+        case .integer(let value):
+            return value as NSNumber
+        case .double(let value):
+            return value as NSNumber
+        case .date(let value):
+            return value as NSDate
+        case .data(let value):
+            return value as NSData
+        case .asset(let value):
+            return CKAsset(fileURL: value)
+        }
+    }
+}

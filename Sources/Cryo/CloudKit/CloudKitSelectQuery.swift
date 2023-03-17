@@ -141,7 +141,7 @@ extension CloudKitSelectQuery: CryoSelectQuery {
         var results = [Model]()
         for record in records {
             var data = [String: _AnyCryoColumnValue]()
-            for columnDetails in schema {
+            for columnDetails in schema.columns {
                 guard
                     let object = record[columnDetails.columnName],
                     let value = CloudKitAdaptor.decodeValue(from: object, as: columnDetails.type)

@@ -89,7 +89,7 @@ CREATE TABLE IF NOT EXISTS TestModel(
         let value = TestModel(x: 123, y: "Hello there", z: .a)
         let value2 = TestModel(x: 3291, y: "Hello therexxx", z: .c)
         
-        XCTAssertEqual(TestModel.schema.map { $0.columnName }, ["x", "y", "z"])
+        XCTAssertEqual(TestModel.schema.columns.map { $0.columnName }, ["x", "y", "z"])
         
         do {
             let key = "test-123"

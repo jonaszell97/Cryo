@@ -46,7 +46,7 @@ public final class SQLiteSelectQuery<Model: CryoModel> {
             }
             else {
                 let schema = await CryoSchemaManager.shared.schema(for: Model.self)
-                columnsString = schema.map { $0.columnName }.joined(separator: ",")
+                columnsString = schema.columns.map { $0.columnName }.joined(separator: ",")
             }
             
             var result = "SELECT \(columnsString) FROM \(Model.tableName)"
@@ -115,11 +115,11 @@ extension SQLiteSelectQuery: CryoSelectQuery {
         while executeStatus == SQLITE_ROW {
             var row = [any _AnyCryoColumnValue]()
             
-            for i in 0..<schema.count {
+            for i in 0..<schema.columns.count {
                 let value = try SQLiteAdaptor.columnValue(queryStatement,
                                                           connection: connection,
-                                                          columnName: schema[i].columnName,
-                                                          type: schema[i].type,
+                                                          columnName: schema.columns[i].columnName,
+                                                          type: schema.columns[i].type,
                                                           index: Int32(i))
                 
                 row.append(value)
@@ -143,8 +143,8 @@ extension SQLiteSelectQuery: CryoSelectQuery {
         var values = [Model]()
         for row in rows {
             var data = [String: _AnyCryoColumnValue]()
-            for i in 0..<schema.count {
-                data[schema[i].columnName] = row[i]
+            for i in 0..<schema.columns.count {
+                data[schema.columns[i].columnName] = row[i]
             }
             
             values.append(try .init(from: CryoModelDecoder(data: data)))

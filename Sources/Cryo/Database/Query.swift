@@ -356,3 +356,41 @@ extension CryoQueryValue: Hashable {
         }
     }
 }
+
+internal extension CryoQueryValue {
+    init (value: _AnyCryoColumnValue) throws {
+        switch value {
+        case let url as URL:
+            self = .string(value: url.absoluteString)
+        case let value as CryoColumnIntValue:
+            self = .integer(value: Int(value.integerValue))
+        case let value as CryoColumnDoubleValue:
+            self = .double(value: value.doubleValue)
+        case let value as CryoColumnStringValue:
+            self = .string(value: value.stringValue)
+        case let value as CryoColumnDateValue:
+            self = .date(value: value.dateValue)
+        case let value as CryoColumnDataValue:
+            self = .data(value: try value.dataValue)
+        default:
+            self = .data(value: try JSONEncoder().encode(value))
+        }
+    }
+    
+    var columnValue: _AnyCryoColumnValue {
+        switch self {
+        case .string(let value):
+            return value
+        case .integer(let value):
+            return value
+        case .double(let value):
+            return value
+        case .date(let value):
+            return value
+        case .data(let value):
+            return value
+        case .asset(let value):
+            return value
+        }
+    }
+}

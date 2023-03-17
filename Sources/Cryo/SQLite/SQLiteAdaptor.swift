@@ -93,41 +93,16 @@ extension SQLiteAdaptor: CryoDatabaseAdaptor {
 }
 
 extension SQLiteAdaptor {
-    public func execute(operation: DatabaseOperation) async throws {
-//        let query: SQLiteQuery
-//        switch operation.type {
-//        case .insert:
-//            let columnNames = operation.data.map { $0.columnName }
-//            query = try self.query("""
-//INSERT OR REPLACE INTO \(operation.tableName)(_cryo_key,_cryo_created,_cryo_modified,\(columnNames.joined(separator: ","))) VALUES (?,?,?,\(columnNames.map { _ in "?" }.joined(separator: ",")));
-//""")
-//            .bind(operation.rowId)
-//            .bind(Date.now)
-//            .bind(Date.now)
-//            .bind(operation.data)
-//        case .update:
-//            let columnNames = operation.data.map { $0.columnName }
-//            query = try self.query("""
-//UPDATE \(operation.tableName) SET _cryo_modified = ?, \(columnNames.map { "\($0) = ?" }.joined(separator: ", ")) WHERE _cryo_key == ?;
-//""")
-//            .bind(Date.now)
-//            .bind(operation.data)
-//            .bind(operation.rowId)
-//        case .delete:
-//            if operation.tableName.isEmpty {
-//                try await self.removeAll()
-//                return
-//            }
-//            else if operation.rowId.isEmpty {
-//                query = try self.query("DELETE FROM \(operation.tableName);")
-//            }
-//            else {
-//                query = try self.query("DELETE FROM \(operation.tableName) WHERE _cryo_key == ?;")
-//                    .bind(operation.rowId)
-//            }
-//        }
-//        
-//        try query.execute()
+    func execute(operation: DatabaseOperation) async throws {
+        switch operation.type {
+        case .insert:
+            break
+//            try await self.insert(id: operation.rowId, operation., replace: <#T##Bool#>)
+        case .update:
+            break
+        case .delete:
+            break
+        }
     }
     
     public nonisolated var isAvailable: Bool { true }

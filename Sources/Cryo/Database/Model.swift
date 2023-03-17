@@ -139,6 +139,19 @@ internal final actor CryoSchemaManager {
         
         return schema
     }
+    
+    /// Find or create a schema.
+    func schema(for modelType: any CryoModel.Type) -> CryoSchema {
+        let schemaKey = ObjectIdentifier(modelType)
+        if let schema = self.schemas[schemaKey] {
+            return schema
+        }
+        
+        let schema = modelType.schema
+        self.schemas[schemaKey] = schema
+        
+        return schema
+    }
 }
 
 internal struct CryoSchemaColumn {
@@ -152,11 +165,19 @@ internal struct CryoSchemaColumn {
     let getValue: (any CryoModel) -> _AnyCryoColumnValue
 }
 
-internal typealias CryoSchema = [CryoSchemaColumn]
+internal struct CryoSchema {
+    /// The columns of this type.
+    var columns: [CryoSchemaColumn] = []
+    
+    /// Create a value of this model type from the given data dictionary.
+    let create: ([String: _AnyCryoColumnValue]) throws -> any CryoModel
+}
 
 internal extension CryoModel {
     static var schema: CryoSchema {
-        var schema = CryoSchema()
+        var schema = CryoSchema {
+            try Self(from: CryoModelDecoder(data: $0))
+        }
         
         // Create an empty instance and find columns from it
         let emptyInstance = try! Self(from: EmptyDecoder())
@@ -183,7 +204,6 @@ internal extension CryoModel {
             guard let wrappedValue else {
                 continue
             }
-            
             
             let columnType: CryoColumnType
             let childTypeName = "\(childMirror.subjectType)"
@@ -216,7 +236,7 @@ internal extension CryoModel {
                 return wrappedValue as! _AnyCryoColumnValue
             }
             
-            schema.append(.init(columnName: name, type: columnType, getValue: extractValue))
+            schema.columns.append(.init(columnName: name, type: columnType, getValue: extractValue))
         }
         
         return schema

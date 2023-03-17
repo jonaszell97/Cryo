@@ -2,7 +2,7 @@
 import CloudKit
 import Foundation
 
-public enum DatabaseOperationType: String, Codable, CryoColumnStringValue {
+internal enum DatabaseOperationType: String, Codable, CryoColumnStringValue {
     /// An insert operation.
     case insert
     
@@ -13,7 +13,7 @@ public enum DatabaseOperationType: String, Codable, CryoColumnStringValue {
     case delete
 }
 
-public struct DatabaseOperationValue: Codable, CryoColumnDataValue {
+internal struct DatabaseOperationValue: Codable, CryoColumnDataValue {
     /// The name of the column.
     let columnName: String
     
@@ -21,7 +21,7 @@ public struct DatabaseOperationValue: Codable, CryoColumnDataValue {
     let value: CryoQueryValue
 }
 
-public struct DatabaseOperation {
+internal struct DatabaseOperation {
     /// The operation type.
     let type: DatabaseOperationType
     
@@ -43,7 +43,7 @@ public struct DatabaseOperation {
     }
     
     /// Create an insert operation.
-    public static func insert<Model: CryoModel>(tableName: String, id: String, model: Model) throws -> DatabaseOperation {
+    static func insert<Model: CryoModel>(tableName: String, id: String, model: Model) throws -> DatabaseOperation {
         .init(type: .insert, date: .now, tableName: tableName, rowId: id, data: try model.codableData)
     }
     
@@ -53,22 +53,22 @@ public struct DatabaseOperation {
     }
     
     /// Create an update operation.
-    public static func update<Model: CryoModel>(tableName: String, id: String, model: Model) throws -> DatabaseOperation {
+    static func update<Model: CryoModel>(tableName: String, id: String, model: Model) throws -> DatabaseOperation {
         .init(type: .update, date: .now, tableName: tableName, rowId: id, data: try model.codableData)
     }
     
     /// Create a delete operation.
-    public static func delete(tableName: String, id: String) -> DatabaseOperation {
+    static func delete(tableName: String, id: String) -> DatabaseOperation {
         .init(type: .delete, date: .now, tableName: tableName, rowId: id, data: [])
     }
     
     /// Create a delete operation.
-    public static func delete(tableName: String) -> DatabaseOperation {
+    static func delete(tableName: String) -> DatabaseOperation {
         .init(type: .delete, date: .now, tableName: tableName, rowId: "", data: [])
     }
     
     /// Create a delete operation.
-    public static func deleteAll() -> DatabaseOperation {
+    static func deleteAll() -> DatabaseOperation {
         .init(type: .delete, date: .now, tableName: "", rowId: "", data: [])
     }
     
@@ -88,7 +88,7 @@ extension DatabaseOperation: Codable {
         case type, date, tableName, rowId, data
     }
     
-    public func encode(to encoder: Encoder) throws {
+    func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(type, forKey: .type)
         try container.encode(date, forKey: .date)
@@ -97,7 +97,7 @@ extension DatabaseOperation: Codable {
         try container.encode(data, forKey: .data)
     }
     
-    public init(from decoder: Decoder) throws {
+    init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.init(
             type: try container.decode(DatabaseOperationType.self, forKey: .type),
@@ -117,88 +117,11 @@ internal extension CryoModel {
             let schema = Self.schema
             var data: [DatabaseOperationValue] = []
             
-            for column in schema {
+            for column in schema.columns {
                 data.append(.init(columnName: column.columnName, value: try .init(value: column.getValue(self))))
             }
             
             return data
-        }
-    }
-}
-
-internal extension CryoQueryValue {
-    init (value: _AnyCryoColumnValue) throws {
-        switch value {
-        case let url as URL:
-            self = .string(value: url.absoluteString)
-        case let value as CryoColumnIntValue:
-            self = .integer(value: Int(value.integerValue))
-        case let value as CryoColumnDoubleValue:
-            self = .double(value: value.doubleValue)
-        case let value as CryoColumnStringValue:
-            self = .string(value: value.stringValue)
-        case let value as CryoColumnDateValue:
-            self = .date(value: value.dateValue)
-        case let value as CryoColumnDataValue:
-            self = .data(value: try value.dataValue)
-        default:
-            self = .data(value: try JSONEncoder().encode(value))
-        }
-    }
-    
-    var columnValue: _AnyCryoColumnValue {
-        switch self {
-        case .string(let value):
-            return value
-        case .integer(let value):
-            return value
-        case .double(let value):
-            return value
-        case .date(let value):
-            return value
-        case .data(let value):
-            return value
-        case .asset(let value):
-            return value
-        }
-    }
-    
-    init?(value: __CKRecordObjCValue) {
-        switch value {
-        case let value as NSString:
-            self = .string(value: value as String)
-        case let value as NSNumber:
-            self = .double(value: value.doubleValue)
-        case let value as NSDate:
-            self = .date(value: value as Date)
-        case let value as NSData:
-            self = .data(value: value as Data)
-        case let value as CKAsset:
-            if let url = value.fileURL {
-                self = .asset(value: url)
-                break
-            }
-            
-            fallthrough
-        default:
-            return nil
-        }
-    }
-    
-    var recordValue: __CKRecordObjCValue {
-        switch self {
-        case .string(let value):
-            return value as NSString
-        case .integer(let value):
-            return value as NSNumber
-        case .double(let value):
-            return value as NSNumber
-        case .date(let value):
-            return value as NSDate
-        case .data(let value):
-            return value as NSData
-        case .asset(let value):
-            return CKAsset(fileURL: value)
         }
     }
 }

@@ -56,7 +56,7 @@ final class MockSelectQuery<Model: CryoModel>: CryoSelectQuery {
             var matches = true
             var data = [String: _AnyCryoColumnValue]()
             
-            for columnDetails in schema {
+            for columnDetails in schema.columns {
                 guard
                     let object = record[columnDetails.columnName],
                     let value = CloudKitAdaptor.decodeValue(from: object, as: columnDetails.type)
@@ -105,7 +105,7 @@ final class MockInsertQuery<Model: CryoModel>: CryoInsertQuery {
         let record = CKRecord(recordType: modelType.tableName, recordID: id)
         let schema = await CryoSchemaManager.shared.schema(for: modelType)
         
-        for columnDetails in schema {
+        for columnDetails in schema.columns {
             record[columnDetails.columnName] = try CloudKitAdaptor.nsObject(from: columnDetails.getValue(value),
                                                                             valueType: columnDetails.type)
         }
@@ -165,7 +165,7 @@ final class MockUpdateQuery<Model: CryoModel>: CryoUpdateQuery {
             }
             
             var matches = true
-            for columnDetails in schema {
+            for columnDetails in schema.columns {
                 guard
                     let object = record[columnDetails.columnName],
                     let value = CloudKitAdaptor.decodeValue(from: object, as: columnDetails.type)
@@ -236,7 +236,7 @@ final class MockDeleteQuery<Model: CryoModel>: CryoDeleteQuery {
             }
             
             var matches = true
-            for columnDetails in schema {
+            for columnDetails in schema.columns {
                 guard
                     let object = record[columnDetails.columnName],
                     let value = CloudKitAdaptor.decodeValue(from: object, as: columnDetails.type)

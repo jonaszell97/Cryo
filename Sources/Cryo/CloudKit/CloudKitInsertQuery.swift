@@ -39,7 +39,7 @@ public final class CloudKitInsertQuery<Model: CryoModel> {
     public var queryString: String {
         get async {
             let schema = await CryoSchemaManager.shared.schema(for: Model.self)
-            let columns: [String] = schema.map { $0.columnName }
+            let columns: [String] = schema.columns.map { $0.columnName }
             
             let result = """
 INSERT \(replace ? "OR REPLACE " : "")INTO \(Model.tableName)(\(columns.joined(separator: ",")))
@@ -57,7 +57,7 @@ extension CloudKitInsertQuery: CryoInsertQuery {
         let record = CKRecord(recordType: modelType.tableName, recordID: CKRecord.ID(recordName: id))
         let schema = await CryoSchemaManager.shared.schema(for: modelType)
         
-        for columnDetails in schema {
+        for columnDetails in schema.columns {
             record[columnDetails.columnName] = try CloudKitAdaptor.nsObject(from: columnDetails.getValue(value),
                                                                             valueType: columnDetails.type)
         }

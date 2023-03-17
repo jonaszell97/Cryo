@@ -35,7 +35,7 @@ public final class SQLiteCreateTableQuery<Model: CryoModel> {
             let schema = await CryoSchemaManager.shared.schema(for: Model.self)
             var columns = ""
             
-            for columnDetails in schema {
+            for columnDetails in schema.columns {
                 columns += ",\n    \(columnDetails.columnName) \(SQLiteAdaptor.sqliteTypeName(for: columnDetails.type))"
             }
             
