@@ -14,9 +14,8 @@ public final class SQLiteUpdateQuery<Model: CryoModel> {
     /// The database operation for this query.
     var operation: DatabaseOperation {
         get async throws {
-            .update(tableName: Model.tableName, id: untypedQuery.id, data: untypedQuery.setClauses.map {
-                .init(columnName: $0.columnName, value: $0.value)
-            })
+            .update(date: .now, tableName: Model.tableName, rowId: untypedQuery.id,
+                    setClauses: untypedQuery.setClauses, whereClauses: untypedQuery.whereClauses)
         }
     }
 }

@@ -29,7 +29,7 @@ public protocol CryoQuery<Result> {
     func execute() async throws -> Result
 }
 
-public enum CryoComparisonOperator: String {
+public enum CryoComparisonOperator: String, Codable {
     /// Equality (==) comparison.
     case equals
     
@@ -102,7 +102,7 @@ public struct MultiQuery<Result1, Result2>: CryoQuery {
 
 // MARK: WHERE clause
 
-public struct CryoQueryWhereClause {
+public struct CryoQueryWhereClause: Codable {
     /// The name of the column.
     let columnName: String
     
@@ -124,7 +124,7 @@ public protocol CryoWhereClauseQuery<Model>: CryoModelQuery {
 
 // MARK: Set clauses
 
-public struct CryoQuerySetClause {
+public struct CryoQuerySetClause: Codable {
     /// The name of the column.
     let columnName: String
     

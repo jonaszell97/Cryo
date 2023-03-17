@@ -21,7 +21,7 @@ public final class SQLiteInsertQuery<Model: CryoModel> {
                 data.append(.init(columnName: column.columnName, value: try .init(value: column.getValue(untypedQuery.value))))
             }
             
-            return .insert(tableName: Model.tableName, id: untypedQuery.id, data: data)
+            return .insert(date: .now, tableName: Model.tableName, rowId: untypedQuery.id, data: data)
         }
     }
 }

@@ -3,8 +3,49 @@ import Foundation
 import SQLite3
 
 public final class SQLiteDeleteQuery<Model: CryoModel> {
+    /// The untyped query.
+    let untypedQuery: UntypedSQLiteDeleteQuery
+    
+    /// Create an UPDATE query.
+    internal init(id: String?, connection: OpaquePointer, config: CryoConfig?) throws {
+        self.untypedQuery = try .init(id: id, modelType: Model.self, connection: connection, config: config)
+    }
+    
+    /// The database operation for this query.
+    var operation: DatabaseOperation {
+        get async throws {
+            .delete(date: .now, tableName: Model.tableName, rowId: untypedQuery.id, whereClauses: untypedQuery.whereClauses)
+        }
+    }
+}
+
+extension SQLiteDeleteQuery: CryoDeleteQuery {
+    public var queryString: String {
+        get async {
+            await untypedQuery.queryString
+        }
+    }
+    
+    @discardableResult public func execute() async throws -> Int {
+        try await untypedQuery.execute()
+    }
+    
+    public func `where`<Value: _AnyCryoColumnValue>(
+        _ columnName: String,
+        operation: CryoComparisonOperator,
+        value: Value
+    ) async throws -> Self {
+        _ = try await untypedQuery.where(columnName, operation: operation, value: value)
+        return self
+    }
+}
+
+internal class UntypedSQLiteDeleteQuery {
     /// The ID of the row to delete.
     let id: String?
+    
+    /// The model type.
+    let modelType: any CryoModel.Type
     
     /// The where clauses.
     var whereClauses: [CryoQueryWhereClause]
@@ -23,8 +64,9 @@ public final class SQLiteDeleteQuery<Model: CryoModel> {
     #endif
     
     /// Create a SELECT query.
-    internal init(id: String?, connection: OpaquePointer, config: CryoConfig?) throws {
+    internal init(id: String?, modelType: any CryoModel.Type, connection: OpaquePointer, config: CryoConfig?) throws {
         self.connection = connection
+        self.modelType = modelType
         self.id = id
         self.whereClauses = []
         
@@ -40,7 +82,7 @@ public final class SQLiteDeleteQuery<Model: CryoModel> {
                 return completeQueryString
             }
             
-            var result = "DELETE FROM \(Model.tableName)"
+            var result = "DELETE FROM \(modelType.tableName)"
             let hasId = id != nil
             
             if hasId || !whereClauses.isEmpty {
@@ -65,7 +107,7 @@ public final class SQLiteDeleteQuery<Model: CryoModel> {
     }
 }
 
-extension SQLiteDeleteQuery {
+extension UntypedSQLiteDeleteQuery {
     /// Get the compiled query statement.
     func compiledQuery() async throws -> OpaquePointer {
         if let queryStatement {
@@ -100,7 +142,7 @@ extension SQLiteDeleteQuery {
     }
 }
 
-extension SQLiteDeleteQuery: CryoDeleteQuery {
+extension UntypedSQLiteDeleteQuery {
     @discardableResult public func execute() async throws -> Int {
         let queryStatement = try await self.compiledQuery()
         defer {

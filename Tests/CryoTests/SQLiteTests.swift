@@ -91,9 +91,10 @@ CREATE TABLE IF NOT EXISTS TestModel(
         var loadedValue = try await store.select(id: id, from: TestModel.self).execute()
         XCTAssertEqual(loadedValue.first, value)
         
-        try await store.delete(from: TestModel.self)
+        let deleteOperation = try await store.delete(from: TestModel.self)
             .where("x", equals: value.x)
-            .execute()
+            .operation
+        try await store.execute(operation: deleteOperation)
         
         loadedValue = try await store.select(id: id, from: TestModel.self).execute()
         XCTAssertEqual(loadedValue.count, 0)
