@@ -146,6 +146,23 @@ internal extension CryoQueryValue {
         }
     }
     
+    var columnValue: _AnyCryoColumnValue {
+        switch self {
+        case .string(let value):
+            return value
+        case .integer(let value):
+            return value
+        case .double(let value):
+            return value
+        case .date(let value):
+            return value
+        case .data(let value):
+            return value
+        case .asset(let value):
+            return value
+        }
+    }
+    
     init?(value: __CKRecordObjCValue) {
         switch value {
         case let value as NSString:
@@ -168,7 +185,7 @@ internal extension CryoQueryValue {
         }
     }
     
-    var objcValue: __CKRecordObjCValue {
+    var recordValue: __CKRecordObjCValue {
         switch self {
         case .string(let value):
             return value as NSString

@@ -32,9 +32,9 @@ final class MockSelectQuery<Model: CryoModel>: CryoSelectQuery {
     
     var queryString: String { "" }
     
-    func `where`<Value: _AnyCryoColumnValue>(_ columnName: String,
-                                             operation: Cryo.CryoComparisonOperator,
-                                             value: Value) async throws
+    @discardableResult func `where`<Value: _AnyCryoColumnValue>(_ columnName: String,
+                                                                operation: Cryo.CryoComparisonOperator,
+                                                                value: Value) async throws
         -> MockSelectQuery<Model>
     {
         self.whereClauses.append(.init(columnName: columnName, operation: operation,
@@ -115,6 +115,91 @@ final class MockInsertQuery<Model: CryoModel>: CryoInsertQuery {
     }
 }
 
+final class MockUpdateQuery<Model: CryoModel>: CryoUpdateQuery {
+    let id: String?
+    let allRecords: [CKRecord]
+    var setClauses: [CryoQuerySetClause]
+    var whereClauses: [CryoQueryWhereClause]
+    let saveValue: (CKRecord.ID, CKRecord) -> Void
+    
+    init(id: String?,
+         allRecords: [CKRecord],
+         saveValue: @escaping (CKRecord.ID, CKRecord) -> Void) {
+        self.id = id
+        self.allRecords = allRecords
+        self.saveValue = saveValue
+        self.setClauses = []
+        self.whereClauses = []
+    }
+    
+    var queryString: String { "" }
+    
+    @discardableResult func set<Value: _AnyCryoColumnValue>(
+        _ columnName: String,
+        value: Value
+    ) async throws -> Self {
+        self.setClauses.append(.init(columnName: columnName, value: try .init(value: value)))
+        return self
+    }
+    
+    @discardableResult func `where`<Value: _AnyCryoColumnValue>(_ columnName: String,
+                                                                operation: Cryo.CryoComparisonOperator,
+                                                                value: Value) async throws
+        -> MockUpdateQuery<Model>
+    {
+        self.whereClauses.append(.init(columnName: columnName, operation: operation,
+                                       value: try .init(value: value)))
+        return self
+    }
+    
+    func execute() async throws -> Int {
+        let modelType = Model.self
+        let schema = await CryoSchemaManager.shared.schema(for: modelType)
+        
+        var records = [CKRecord]()
+        for record in allRecords {
+            if let id {
+                guard record.recordID.recordName == id else {
+                    continue
+                }
+            }
+            
+            var matches = true
+            for columnDetails in schema {
+                guard
+                    let object = record[columnDetails.columnName],
+                    let value = CloudKitAdaptor.decodeValue(from: object, as: columnDetails.type)
+                else {
+                    continue
+                }
+                
+                for clause in (whereClauses.filter { $0.columnName == columnDetails.columnName }) {
+                    guard try CloudKitAdaptor.check(clause: clause, object: value) else {
+                        matches = false
+                        break
+                    }
+                }
+            }
+            
+            guard matches else {
+                continue
+            }
+            
+            records.append(record)
+        }
+        
+        for record in records {
+            for setClause in setClauses {
+                record[setClause.columnName] = setClause.value.recordValue
+            }
+            
+            saveValue(record.recordID, record)
+        }
+        
+        return records.count
+    }
+}
+
 extension MockCloudKitAdaptor: AnyCloudKitAdaptor {
     public func createTable<Model: CryoModel>(for model: Model.Type) async throws -> NoOpQuery<Model> {
         NoOpQuery(queryString: "", for: model)
@@ -126,6 +211,12 @@ extension MockCloudKitAdaptor: AnyCloudKitAdaptor {
     
     public func insert<Model: CryoModel>(id: String, _ value: Model, replace: Bool = true) async throws -> MockInsertQuery<Model> {
         MockInsertQuery(id: id, value: value) { id, record in
+            self.database[id] = record
+        }
+    }
+    
+    public func update<Model: CryoModel>(id: String? = nil) async throws -> MockUpdateQuery<Model> {
+        MockUpdateQuery(id: id, allRecords: self.database.values.map { $0 }) { id, record in
             self.database[id] = record
         }
     }

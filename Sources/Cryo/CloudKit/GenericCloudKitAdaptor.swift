@@ -184,7 +184,7 @@ extension AnyCloudKitAdaptor {
         
         let record = CKRecord(recordType: tableName, recordID: id)
         for item in data {
-            record[item.columnName] = item.value.objcValue
+            record[item.columnName] = item.value.recordValue
         }
         
         try await self.save(record: record)

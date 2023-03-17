@@ -58,7 +58,7 @@ public protocol CryoDatabaseAdaptor {
     func insert<Model: CryoModel>(id: String, _ value: Model, replace: Bool) async throws -> any CryoInsertQuery<Model>
     
     /// Create an UPDATE query.
-    func update<Model: CryoModel>(id: String?) async throws -> any CryoUpdateQuery<Model>
+    func update<Model: CryoModel>(id: String?, from: Model.Type) async throws -> any CryoUpdateQuery<Model>
     
     /// Create a DELETE query.
     func delete<Model: CryoModel>(id: String?, from: Model.Type) async throws -> any CryoDeleteQuery<Model>
@@ -94,8 +94,8 @@ extension CryoDatabaseAdaptor {
     }
     
     /// Create an UPDATE query.
-    public func update<Model: CryoModel>() async throws -> any CryoUpdateQuery<Model> {
-        try await self.update(id: nil)
+    public func update<Model: CryoModel>(from: Model.Type) async throws -> any CryoUpdateQuery<Model> {
+        try await self.update(id: nil, from: Model.self)
     }
     
     /// Create a SELECT query.

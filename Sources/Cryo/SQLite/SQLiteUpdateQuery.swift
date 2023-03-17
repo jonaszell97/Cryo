@@ -144,7 +144,6 @@ extension SQLiteUpdateQuery: CryoUpdateQuery {
         return Int(sqlite3_changes(connection))
     }
     
-    /// Attach a WHERE clause to this query.
     @discardableResult public func set<Value: _AnyCryoColumnValue>(
         _ columnName: String,
         value: Value
@@ -157,7 +156,6 @@ extension SQLiteUpdateQuery: CryoUpdateQuery {
         return self
     }
     
-    /// Attach a WHERE clause to this query.
     @discardableResult public func `where`<Value: _AnyCryoColumnValue>(
         _ columnName: String,
         operation: CryoComparisonOperator,
