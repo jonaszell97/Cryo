@@ -177,6 +177,9 @@ internal struct CryoSchemaColumn {
 }
 
 internal struct CryoSchema {
+    /// The meta type.
+    let `self`: any CryoModel.Type
+    
     /// The columns of this type.
     var columns: [CryoSchemaColumn] = []
     
@@ -186,7 +189,7 @@ internal struct CryoSchema {
 
 internal extension CryoModel {
     static var schema: CryoSchema {
-        var schema = CryoSchema {
+        var schema = CryoSchema(self: Self.self) {
             try Self(from: CryoModelDecoder(data: $0))
         }
         

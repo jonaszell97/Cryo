@@ -101,9 +101,15 @@ extension SQLiteAdaptor {
             }
             
             let model = try schema.create(operation.modelData)
-            _ = try await UntypedSQLiteInsertQuery(id: operation.rowId, value: model, replace: false, connection: db.connection, config: config)
+            _ = try await UntypedSQLiteInsertQuery(id: operation.rowId!, value: model, replace: false, connection: db.connection, config: config)
                 .execute()
         case .update:
+            guard let schema = await CryoSchemaManager.shared.schema(tableName: operation.tableName) else {
+                throw CryoError.schemaNotInitialized(tableName: operation.tableName)
+            }
+            
+            _ = try await UntypedSQLiteUpdateQuery(id: operation.rowId, modelType: schema.`self`, connection: db.connection, config: config)
+                .execute()
             break
         case .delete:
             break

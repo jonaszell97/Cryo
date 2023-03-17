@@ -32,7 +32,7 @@ internal struct DatabaseOperation {
     let tableName: String
     
     /// The record ID.
-    let rowId: String
+    let rowId: String?
     
     /// The optional data.
     let data: [DatabaseOperationValue]
@@ -48,17 +48,17 @@ internal struct DatabaseOperation {
     }
     
     /// Create an update operation.
-    static func update(tableName: String, id: String, data: [DatabaseOperationValue]) -> DatabaseOperation {
+    static func update(tableName: String, id: String?, data: [DatabaseOperationValue]) -> DatabaseOperation {
         .init(type: .update, date: .now, tableName: tableName, rowId: id, data: data)
     }
     
     /// Create an update operation.
-    static func update<Model: CryoModel>(tableName: String, id: String, model: Model) throws -> DatabaseOperation {
+    static func update<Model: CryoModel>(tableName: String, id: String?, model: Model) throws -> DatabaseOperation {
         .init(type: .update, date: .now, tableName: tableName, rowId: id, data: try model.codableData)
     }
     
     /// Create a delete operation.
-    static func delete(tableName: String, id: String) -> DatabaseOperation {
+    static func delete(tableName: String, id: String?) -> DatabaseOperation {
         .init(type: .delete, date: .now, tableName: tableName, rowId: id, data: [])
     }
     
@@ -72,7 +72,7 @@ internal struct DatabaseOperation {
         .init(type: .delete, date: .now, tableName: "", rowId: "", data: [])
     }
     
-    internal init(type: DatabaseOperationType, date: Date, tableName: String, rowId: String, data: [DatabaseOperationValue]) {
+    internal init(type: DatabaseOperationType, date: Date, tableName: String, rowId: String?, data: [DatabaseOperationValue]) {
         self.type = type
         self.date = date
         self.tableName = tableName
@@ -114,7 +114,7 @@ extension DatabaseOperation: Codable {
             type: try container.decode(DatabaseOperationType.self, forKey: .type),
             date: try container.decode(Date.self, forKey: .date),
             tableName: try container.decode(String.self, forKey: .tableName),
-            rowId: try container.decode(String.self, forKey: .rowId),
+            rowId: try container.decode(String?.self, forKey: .rowId),
             data: try container.decode([DatabaseOperationValue].self, forKey: .data)
         )
     }

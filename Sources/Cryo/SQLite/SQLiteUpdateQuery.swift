@@ -3,8 +3,60 @@ import Foundation
 import SQLite3
 
 public final class SQLiteUpdateQuery<Model: CryoModel> {
+    /// The untyped query.
+    let untypedQuery: UntypedSQLiteUpdateQuery
+    
+    /// Create an UPDATE query.
+    internal init(id: String?, connection: OpaquePointer, config: CryoConfig?) throws {
+        self.untypedQuery = try .init(id: id, modelType: Model.self, connection: connection, config: config)
+    }
+    
+    /// The database operation for this query.
+    var operation: DatabaseOperation {
+        get async throws {
+            .update(tableName: Model.tableName, id: untypedQuery.id, data: untypedQuery.setClauses.map {
+                .init(columnName: $0.columnName, value: $0.value)
+            })
+        }
+    }
+}
+
+extension SQLiteUpdateQuery: CryoUpdateQuery {
+    public var queryString: String {
+        get async {
+            await untypedQuery.queryString
+        }
+    }
+    
+    @discardableResult public func execute() async throws -> Int {
+        try await untypedQuery.execute()
+    }
+    
+    
+    public func set<Value: _AnyCryoColumnValue>(
+        _ columnName: String,
+        value: Value
+    ) async throws -> Self {
+        _ = try await untypedQuery.set(columnName, value: value)
+        return self
+    }
+    
+    public func `where`<Value: _AnyCryoColumnValue>(
+        _ columnName: String,
+        operation: CryoComparisonOperator,
+        value: Value
+    ) async throws -> Self {
+        _ = try await untypedQuery.where(columnName, operation: operation, value: value)
+        return self
+    }
+}
+
+internal class UntypedSQLiteUpdateQuery {
     /// The ID of the row to update.
     let id: String?
+    
+    /// The model type.
+    let modelType: any CryoModel.Type
     
     /// The set clauses.
     var setClauses: [CryoQuerySetClause]
@@ -26,9 +78,10 @@ public final class SQLiteUpdateQuery<Model: CryoModel> {
     #endif
     
     /// Create a SELECT query.
-    internal init(id: String?, connection: OpaquePointer, config: CryoConfig?) throws {
+    internal init(id: String?, modelType: any CryoModel.Type, connection: OpaquePointer, config: CryoConfig?) throws {
         self.connection = connection
         self.id = id
+        self.modelType = modelType
         self.setClauses = []
         self.whereClauses = []
         
@@ -45,7 +98,7 @@ public final class SQLiteUpdateQuery<Model: CryoModel> {
             }
             
             let hasId = id != nil
-            var result = "UPDATE \(Model.tableName) SET _cryo_modified = ?"
+            var result = "UPDATE \(modelType.tableName) SET _cryo_modified = ?"
             
             // Set clauses
             
@@ -77,7 +130,7 @@ public final class SQLiteUpdateQuery<Model: CryoModel> {
     }
 }
 
-extension SQLiteUpdateQuery {
+extension UntypedSQLiteUpdateQuery {
     /// Get the compiled query statement.
     func compiledQuery() async throws -> OpaquePointer {
         if let queryStatement {
@@ -118,7 +171,7 @@ extension SQLiteUpdateQuery {
     }
 }
 
-extension SQLiteUpdateQuery: CryoUpdateQuery {
+extension UntypedSQLiteUpdateQuery {
     @discardableResult public func execute() async throws -> Int {
         let queryStatement = try await self.compiledQuery()
         defer {
