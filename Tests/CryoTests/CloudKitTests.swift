@@ -79,14 +79,17 @@ final class CryoDatabaseTests: XCTestCase {
             let key = AnyKey(id: "test-123", for: TestModel.self)
             try await adaptor.persist(value, for: key)
             
-            let loadedValue = try await adaptor.load(with: key)
+//            let key = "test-123"
+//            try await adaptor.insert(id: key, value).execute()
+            
+            let loadedValue = try await adaptor.select(id: key.id, from: TestModel.self).execute().first
             XCTAssertEqual(value, loadedValue)
             
             try await adaptor.persist(value2, for: AnyKey(id: "test-1234", for: TestModel.self))
             
-            let allValues = try await adaptor.loadAll(of: TestModel.self)
+            let allValues = try await adaptor.select(from: TestModel.self).execute()
             XCTAssertNotNil(allValues)
-            XCTAssertEqual(Set(allValues!), Set([value, value2]))
+            XCTAssertEqual(Set(allValues), Set([value, value2]))
         }
         catch {
             XCTAssert(false, error.localizedDescription)

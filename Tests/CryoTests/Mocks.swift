@@ -19,7 +19,81 @@ final class MockCloudKitAdaptor {
     }
 }
 
+final class MockSelectQuery<Model: CryoModel>: CryoSelectQuery {
+    let id: String?
+    var whereClauses: [CryoQueryWhereClause]
+    let allRecords: [CKRecord]
+    
+    init(id: String?, allRecords: [CKRecord]) {
+        self.id = id
+        self.allRecords = allRecords
+        self.whereClauses = []
+    }
+    
+    var queryString: String { "" }
+    
+    func `where`<Value: _AnyCryoColumnValue>(_ columnName: String,
+                                             operation: Cryo.CryoComparisonOperator,
+                                             value: Value) async throws
+        -> MockSelectQuery<Model>
+    {
+        self.whereClauses.append(.init(columnName: columnName, operation: operation,
+                                       value: try .init(value: value)))
+        return self
+    }
+    
+    func execute() async throws -> [Model] {
+        let schema = await CryoSchemaManager.shared.schema(for: Model.self)
+        
+        var results = [Model]()
+        for record in allRecords {
+            if let id {
+                guard record.recordID.recordName == id else {
+                    continue
+                }
+            }
+            
+            var matches = true
+            var data = [String: _AnyCryoColumnValue]()
+            
+            for columnDetails in schema {
+                guard
+                    let object = record[columnDetails.columnName],
+                    let value = CloudKitAdaptor.decodeValue(from: object, as: columnDetails.type)
+                else {
+                    continue
+                }
+                
+                for clause in (whereClauses.filter { $0.columnName == columnDetails.columnName }) {
+                    guard try CloudKitAdaptor.check(clause: clause, object: value) else {
+                        matches = false
+                        break
+                    }
+                }
+                
+                data[columnDetails.columnName] = value
+            }
+            
+            guard matches else {
+                continue
+            }
+            
+            results.append(try Model(from: CryoModelDecoder(data: data)))
+        }
+        
+        return results
+    }
+}
+
 extension MockCloudKitAdaptor: AnyCloudKitAdaptor {
+    public func createTable<Model: CryoModel>(for model: Model.Type) async throws -> NoOpQuery<Model> {
+        NoOpQuery(queryString: "", for: model)
+    }
+    
+    public func select<Model: CryoModel>(id: String? = nil, from: Model.Type) async throws -> MockSelectQuery<Model> {
+        MockSelectQuery(id: id, allRecords: self.database.values.map { $0 })
+    }
+    
     /// Delete a record with the given id.
     func delete(recordWithId id: CKRecord.ID) async throws {
         database[id] = nil
