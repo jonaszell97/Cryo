@@ -1,48 +1,25 @@
-//
-//import CloudKit
-//import Foundation
-//
-//// MARK: SyncOperation
-//
-//fileprivate struct SyncOperation: CryoModel {
-//    static var tableName: String { "CryoSyncOperation" }
-//    
-//    /// The ID of the store this operation was created by.
-//    @CryoColumn var storeIdentifier: String
-//    
-//    /// The device ID of the store this operation was created by.
-//    @CryoColumn var deviceIdentifier: String
-//    
-//    /// The date of the operation.
-//    @CryoColumn var date: Date
-//    
-//    /// The name of the table this operation runs on.
-//    @CryoColumn var tableName: String
-//    
-//    /// The ID of the affected row.
-//    @CryoColumn var rowId: String
-//    
-//    /// The type of the operation.
-//    @CryoColumn var type: DatabaseOperationType
-//    
-//    /// The data required for this operation.
-//    @CryoColumn var data: [DatabaseOperationValue]
-//}
-//
-//extension SyncOperation {
-//    /// Create a database operation from this sync operation.
-//    var databaseOperation: DatabaseOperation {
-//        .init(type: type, date: date, tableName: tableName, rowId: rowId, data: data)
-//    }
-//    
-//    /// Create a sync operation from a database operation.
-//    static func create(from operation: DatabaseOperation, storeIdentifier: String, deviceIdentifier: String) -> SyncOperation {
-//        .init(storeIdentifier: storeIdentifier, deviceIdentifier: deviceIdentifier,
-//              date: operation.date, tableName: operation.tableName, rowId: operation.rowId,
-//              type: operation.type, data: operation.data)
-//    }
-//}
-//
+
+import CloudKit
+import Foundation
+
+// MARK: SyncOperation
+
+fileprivate struct SyncOperation: CryoModel {
+    static var tableName: String { "CryoSyncOperation" }
+    
+    /// The ID of the store this operation was created by.
+    @CryoColumn var storeIdentifier: String
+    
+    /// The device ID of the store this operation was created by.
+    @CryoColumn var deviceIdentifier: String
+    
+    /// The date of the operation.
+    @CryoColumn var date: Date
+    
+    /// The type of the operation.
+    @CryoColumn var operation: DatabaseOperation
+}
+
 //// MARK: SynchronizedStoreConfig
 //
 //public struct SynchronizedStoreConfig {

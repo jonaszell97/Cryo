@@ -2,7 +2,7 @@
 import CloudKit
 import Foundation
 
-internal enum DatabaseOperation {
+internal enum DatabaseOperation: CryoColumnDataValue {
     /// An insert operation.
     case insert(date: Date, tableName: String, rowId: String, data: [DatabaseOperationValue])
     
