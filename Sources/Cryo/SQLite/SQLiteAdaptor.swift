@@ -42,6 +42,9 @@ public final actor SQLiteAdaptor {
     /// The created tables.
     var createdTables = Set<String>()
     
+    /// The registered update hooks.
+    var updateHooks: [String: [() -> Void]] = [:]
+    
     /// Create an SQLite adaptor.
     public init(databaseUrl: URL, config: CryoConfig? = nil) throws {
         self.databaseUrl = databaseUrl
@@ -148,6 +151,95 @@ extension SQLiteAdaptor {
     public nonisolated func observeAvailabilityChanges(_ callback: @escaping (Bool) -> Void) {
         
     }
+}
+
+// MARK: Update hook
+
+extension SQLiteAdaptor {
+    /// Register a change callback.
+    public func registerChangeListener<Model: CryoModel>(for modelType: Model.Type,
+                                                         listener: @escaping () -> Void) {
+        self.registerChangeListener(tableName: modelType.tableName, listener: listener)
+    }
+    
+    /// Register a change callback.
+    public func registerChangeListener(tableName: String, listener: @escaping () -> Void) {
+        if updateHooks.isEmpty {
+            self.updateHook { op, db, table, rowid in
+                self.updateHookCallback(operation: op, db: db, table: table, rowid: rowid)
+            }
+        }
+        
+        if var hooks = updateHooks[tableName] {
+            hooks.append(listener)
+            updateHooks[tableName] = hooks
+        }
+        else {
+            updateHooks[tableName] = [listener]
+        }
+    }
+}
+
+// Partially taken from SQLite.swift
+fileprivate extension SQLiteAdaptor {
+    /// An SQL operation passed to update callbacks.
+    enum Operation {
+        
+        /// An INSERT operation.
+        case insert
+        
+        /// An UPDATE operation.
+        case update
+        
+        /// A DELETE operation.
+        case delete
+        
+        fileprivate init(rawValue:Int32) {
+            switch rawValue {
+            case SQLITE_INSERT:
+                self = .insert
+            case SQLITE_UPDATE:
+                self = .update
+            case SQLITE_DELETE:
+                self = .delete
+            default:
+                fatalError("unhandled operation code: \(rawValue)")
+            }
+        }
+    }
+    
+    func updateHookCallback(operation: Operation, db: String, table: String, rowid: Int64) {
+        guard let hooks = updateHooks[table] else {
+            return
+        }
+        
+        for hook in hooks {
+            hook()
+        }
+    }
+    
+    /// Registers a callback to be invoked whenever a row is inserted, updated, or deleted in a rowid table.
+    func updateHook(_ callback: ((_ operation: Operation, _ db: String, _ table: String, _ rowid: Int64) -> Void)?) {
+        guard let callback = callback else {
+            sqlite3_update_hook(db.connection, nil, nil)
+            return
+        }
+        
+        let box: UpdateHook = {
+            callback(
+                Operation(rawValue: $0),
+                String(cString: $1),
+                String(cString: $2),
+                $3
+            )
+        }
+        
+        sqlite3_update_hook(db.connection, { callback, operation, db, table, rowid in
+            unsafeBitCast(callback, to: UpdateHook.self)(operation, db!, table!, rowid)
+        }, unsafeBitCast(box, to: UnsafeMutableRawPointer.self))
+    }
+    
+    typealias UpdateHook = @convention(block) (Int32, UnsafePointer<Int8>, UnsafePointer<Int8>, Int64) -> Void
 }
 
 extension SQLiteAdaptor {

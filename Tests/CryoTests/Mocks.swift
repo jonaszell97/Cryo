@@ -12,6 +12,9 @@ final class MockCloudKitAdaptor {
     /// Whether CloudKit is available.
     var isAvailable: Bool
     
+    /// The change callbacks.
+    var updateHooks: [String: [() -> Void]] = [:]
+    
     /// Default initializer.
     init() {
         self.database = [:]
@@ -273,7 +276,9 @@ extension MockCloudKitAdaptor: CryoDatabaseAdaptor {
         MockSelectQuery(id: id, allRecords: self.database.values.map { $0 })
     }
     
-    public func insert<Model: CryoModel>(id: String, _ value: Model, replace: Bool = true) async throws -> MockInsertQuery<Model> {
+    public func insert<Model: CryoModel>(id: String = UUID().uuidString,
+                                         _ value: Model,
+                                         replace: Bool = true) async throws -> MockInsertQuery<Model> {
         MockInsertQuery(id: id, value: value) { id, record in
             self.database[id] = record
         }
@@ -303,5 +308,59 @@ extension MockCloudKitAdaptor {
     
     public func observeAvailabilityChanges(_ callback: @escaping (Bool) -> Void) {
         
+    }
+}
+
+// MARK: Update hook
+
+extension MockCloudKitAdaptor {
+    /// Register a change callback.
+    public func registerChangeListener<Model: CryoModel>(for modelType: Model.Type,
+                                                         listener: @escaping () -> Void) {
+        self.registerChangeListener(tableName: modelType.tableName, listener: listener)
+    }
+    
+    /// Register a change callback.
+    public func registerChangeListener(tableName: String, listener: @escaping () -> Void) {
+        if var hooks = updateHooks[tableName] {
+            hooks.append(listener)
+            updateHooks[tableName] = hooks
+        }
+        else {
+            updateHooks[tableName] = [listener]
+        }
+    }
+}
+
+extension MockCloudKitAdaptor: SynchronizedStoreBackend {
+    /// Persist a sync operation.
+    internal func persist(operation: SyncOperation) async throws {
+        try await self.insert(operation, replace: false).execute()
+    }
+    
+    /// Load sync operations after a given date.
+    internal func loadOperations(after date: Date,
+                                 storeIdentifier: String,
+                                 deviceIdentifier: String) async throws -> [SyncOperation] {
+        try await self
+            .select(from: SyncOperation.self)
+            .where("date", isGreatherThan: date.timeIntervalSinceReferenceDate)
+            .and("storeIdentifier", equals: storeIdentifier)
+            .and("deviceIdentifier", doesNotEqual: deviceIdentifier)
+            .execute()
+    }
+    
+    /// Load a sync operation with the given ID.
+    internal func loadOperation(withId id: String) async throws -> SyncOperation? {
+        try await self.select(id: id, from: SyncOperation.self).execute().first
+    }
+    
+    internal func setupRecordChangeSubscription(for tableName: String,
+                                                storeIdentifier: String,
+                                                deviceIdentifier: String,
+                                                callback: @escaping (String?) -> Void) async throws {
+        self.registerChangeListener(tableName: tableName) {
+            callback(nil)
+        }
     }
 }
