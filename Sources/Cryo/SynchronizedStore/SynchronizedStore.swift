@@ -153,7 +153,7 @@ extension SynchronizedStore {
             return
         }
         
-        let query: CloudKitSelectQuery<SyncOperation>
+        let query: any CryoSelectQuery<SyncOperation>
         if let id = notification.recordID {
             query = try await operationsStore
                 .select(id: id.recordName, from: SyncOperation.self)
@@ -225,11 +225,11 @@ extension SynchronizedStore {
 // MARK: Queries
 
 extension SynchronizedStore: CryoDatabaseAdaptor {
-    public func createTable<Model: CryoModel>(for model: Model.Type) async throws -> SQLiteCreateTableQuery<Model> {
+    public func createTable<Model: CryoModel>(for model: Model.Type) async throws -> any CryoCreateTableQuery<Model> {
         try await localStore.createTable(for: model)
     }
     
-    public func select<Model: CryoModel>(id: String? = nil, from model: Model.Type) async throws -> SQLiteSelectQuery<Model> {
+    public func select<Model: CryoModel>(id: String? = nil, from model: Model.Type) async throws -> any CryoSelectQuery<Model> {
         try await localStore.select(id: id, from: model)
     }
     

@@ -56,48 +56,11 @@ public protocol CryoModelQuery<Model>: CryoQuery {
     associatedtype Model: CryoModel
 }
 
-// MARK: No-op query
+// MARK: Create Table query
 
-public struct NoOpQuery<Model: CryoModel>: CryoQuery {
-    public typealias Result = Void
+public protocol CryoCreateTableQuery<Model>: CryoModelQuery
+    where Result == Void {
     
-    public let queryString: String
-    public func execute() async throws { }
-    
-    public init(queryString: String, for: Model.Type) {
-        self.queryString = queryString
-    }
-}
-
-// MARK: Multi-Query
-
-public struct MultiQuery<Result1, Result2>: CryoQuery {
-    /// The first query.
-    let first: any CryoQuery<Result1>
-    
-    /// The second query.
-    let second: any CryoQuery<Result2>
-    
-    public typealias Result = Void
-    
-    /// Create a multi query.
-    public init(first: any CryoQuery<Result1>, second: any CryoQuery<Result2>) {
-        self.first = first
-        self.second = second
-    }
-    
-    public var queryString: String {
-        get async {
-            "MultiQuery(\(await first.queryString), \(await second.queryString))"
-        }
-    }
-    
-    public func execute() async throws {
-        _ = try await self.first.execute()
-        _ = try await self.second.execute()
-        
-        return
-    }
 }
 
 // MARK: WHERE clause
@@ -173,6 +136,50 @@ public protocol CryoDeleteQuery<Model>: CryoWhereClauseQuery
 {
     /// Execute the query and return the result.
     @discardableResult func execute() async throws -> Result
+}
+
+// MARK: No-op query
+
+public struct NoOpQuery<Model: CryoModel>: CryoCreateTableQuery {
+    public typealias Result = Void
+    
+    public let queryString: String
+    public func execute() async throws { }
+    
+    public init(queryString: String, for: Model.Type) {
+        self.queryString = queryString
+    }
+}
+
+// MARK: Multi-Query
+
+public struct MultiQuery<Result1, Result2>: CryoQuery {
+    /// The first query.
+    let first: any CryoQuery<Result1>
+    
+    /// The second query.
+    let second: any CryoQuery<Result2>
+    
+    public typealias Result = Void
+    
+    /// Create a multi query.
+    public init(first: any CryoQuery<Result1>, second: any CryoQuery<Result2>) {
+        self.first = first
+        self.second = second
+    }
+    
+    public var queryString: String {
+        get async {
+            "MultiQuery(\(await first.queryString), \(await second.queryString))"
+        }
+    }
+    
+    public func execute() async throws {
+        _ = try await self.first.execute()
+        _ = try await self.second.execute()
+        
+        return
+    }
 }
 
 // MARK: Utility extensions

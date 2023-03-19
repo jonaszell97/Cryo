@@ -105,11 +105,11 @@ extension CloudKitAdaptor {
 }
 
 extension CloudKitAdaptor: CryoDatabaseAdaptor {
-    public func createTable<Model: CryoModel>(for model: Model.Type) async throws -> NoOpQuery<Model> {
+    public func createTable<Model: CryoModel>(for model: Model.Type) async throws -> any CryoCreateTableQuery<Model> {
         NoOpQuery(queryString: "", for: model)
     }
     
-    public func select<Model: CryoModel>(id: String? = nil, from: Model.Type) async throws -> CloudKitSelectQuery<Model> {
+    public func select<Model: CryoModel>(id: String? = nil, from: Model.Type) async throws -> any CryoSelectQuery<Model> {
         try CloudKitSelectQuery(for: Model.self, id: id, database: database, config: config)
     }
     

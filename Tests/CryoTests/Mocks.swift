@@ -265,11 +265,11 @@ final class MockDeleteQuery<Model: CryoModel>: CryoDeleteQuery {
 }
 
 extension MockCloudKitAdaptor: CryoDatabaseAdaptor {
-    public func createTable<Model: CryoModel>(for model: Model.Type) async throws -> NoOpQuery<Model> {
+    public func createTable<Model: CryoModel>(for model: Model.Type) async throws -> any CryoCreateTableQuery<Model> {
         NoOpQuery(queryString: "", for: model)
     }
     
-    public func select<Model: CryoModel>(id: String? = nil, from: Model.Type) async throws -> MockSelectQuery<Model> {
+    public func select<Model: CryoModel>(id: String? = nil, from: Model.Type) async throws -> any CryoSelectQuery<Model> {
         MockSelectQuery(id: id, allRecords: self.database.values.map { $0 })
     }
     

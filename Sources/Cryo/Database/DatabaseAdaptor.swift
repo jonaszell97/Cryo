@@ -39,13 +39,13 @@ import Foundation
 public protocol CryoDatabaseAdaptor {
     // MARK: Queries
     
-    #if false
-    
     /// Create a CREATE TABLE query.
-    func createTable<Model: CryoModel>(for: Model.Type) async throws -> any CryoQuery<Void>
+    func createTable<Model: CryoModel>(for: Model.Type) async throws -> any CryoCreateTableQuery<Model>
     
     /// Create a SELECT by ID query.
     func select<Model: CryoModel>(id: String?, from: Model.Type) async throws -> any CryoSelectQuery<Model>
+    
+    #if false
     
     /// Create an INSERT query.
     func insert<Model: CryoModel>(id: String, _ value: Model, replace: Bool) async throws -> any CryoInsertQuery<Model>

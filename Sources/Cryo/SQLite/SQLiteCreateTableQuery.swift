@@ -78,7 +78,7 @@ extension SQLiteCreateTableQuery {
     }
 }
 
-extension SQLiteCreateTableQuery: CryoQuery {
+extension SQLiteCreateTableQuery: CryoCreateTableQuery {
     public typealias Result = Void
     
     public func execute() async throws {

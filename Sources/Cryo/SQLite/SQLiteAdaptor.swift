@@ -66,11 +66,11 @@ extension SQLiteAdaptor {
 
 extension SQLiteAdaptor: CryoDatabaseAdaptor {
     /// Create a table if it does not exist yet.
-    public func createTable<Model: CryoModel>(for model: Model.Type) async throws -> SQLiteCreateTableQuery<Model> {
+    public func createTable<Model: CryoModel>(for model: Model.Type) async throws -> any CryoCreateTableQuery<Model> {
         try SQLiteCreateTableQuery(for: model, connection: db.connection, config: config)
     }
     
-    public func select<Model: CryoModel>(id: String? = nil, from: Model.Type) async throws -> SQLiteSelectQuery<Model> {
+    public func select<Model: CryoModel>(id: String? = nil, from: Model.Type) async throws -> any CryoSelectQuery<Model> {
         var query: SQLiteSelectQuery<Model> = try SQLiteSelectQuery(connection: db.connection, config: config)
         if let id {
             query = try await query.where("_cryo_key", operation: .equals, value: id)
