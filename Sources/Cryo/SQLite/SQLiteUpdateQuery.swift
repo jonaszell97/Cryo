@@ -7,7 +7,7 @@ public final class SQLiteUpdateQuery<Model: CryoModel> {
     let untypedQuery: UntypedSQLiteUpdateQuery
     
     /// Create an UPDATE query.
-    internal init(id: String?, connection: OpaquePointer, config: CryoConfig?) throws {
+    internal init(from: Model.Type, id: String?, connection: OpaquePointer, config: CryoConfig?) throws {
         self.untypedQuery = try .init(id: id, modelType: Model.self, connection: connection, config: config)
     }
     

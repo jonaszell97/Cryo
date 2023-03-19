@@ -19,7 +19,7 @@ public final class CloudKitUpdateQuery<Model: CryoModel> {
     let config: CryoConfig?
     #endif
     
-    /// Create a SELECT query.
+    /// Create an UPDATE query.
     internal init(for: Model.Type, id: String?, database: CKDatabase, config: CryoConfig?) throws {
         self.id = id
         self.database = database

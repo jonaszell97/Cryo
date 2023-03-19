@@ -22,7 +22,7 @@ public final class CloudKitInsertQuery<Model: CryoModel> {
     let config: CryoConfig?
     #endif
     
-    /// Create a SELECT query.
+    /// Create a INSERT query.
     internal init(id: String, value: Model, replace: Bool, database: CKDatabase, config: CryoConfig?) throws {
         self.id = id
         self.value = value

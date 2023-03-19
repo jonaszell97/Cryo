@@ -57,6 +57,20 @@ import Foundation
         self.wrappedValue = (try? adaptor.loadSynchronously(with: Key(id: id))) ?? wrappedValue
     }
     
+    /// Create a persisted value wrapper.
+    ///
+    /// - Parameters:
+    ///   - defaultValue: The wrapped value.
+    ///   - id: The identifier to use as a key.
+    ///   - saveOnWrite: Whether to automatically persist the value after every modification.
+    ///   - adaptor: The adaptor to use for persistence.
+    public init(defaultValue: Value, _ id: String, saveOnWrite: Bool = true, adaptor: any CryoSynchronousAdaptor) {
+        self.id = id
+        self.adaptor = adaptor
+        self.saveOnWrite = saveOnWrite
+        self.wrappedValue = (try? adaptor.loadSynchronously(with: Key(id: id))) ?? defaultValue
+    }
+    
     /// Make several modifications to the wrapped value while only persisting it once at the end.
     ///
     /// - Parameter modify: Closure to modify the value before it is persisted.
@@ -129,6 +143,20 @@ import Foundation
         self.saveOnWrite = saveOnWrite
         self.wrappedValue = (try? UserDefaultsAdaptor.shared.loadSynchronously(
             with: CryoNamedKey(id: id, for: Value.self))) ?? wrappedValue
+    }
+    
+    
+    /// Create a key-value persisted value wrapper.
+    ///
+    /// - Parameters:
+    ///   - defaultValue: The wrapped value.
+    ///   - id: The identifier to use as a key.
+    ///   - saveOnWrite: Whether to automatically persist the value after every modification.
+    public init(defaultValue: Value, _ id: String, saveOnWrite: Bool = true) {
+        self.id = id
+        self.saveOnWrite = saveOnWrite
+        self.wrappedValue = (try? UserDefaultsAdaptor.shared.loadSynchronously(
+            with: CryoNamedKey(id: id, for: Value.self))) ?? defaultValue
     }
     
     /// Make several modifications to the wrapped value while only persisting it once at the end.
@@ -205,9 +233,21 @@ import Foundation
     public init(wrappedValue: Value, _ id: String, saveOnWrite: Bool = true) {
         self.id = id
         self.saveOnWrite = saveOnWrite
-        self.wrappedValue = wrappedValue
         self.wrappedValue = (try? UbiquitousKeyValueStoreAdaptor.shared.loadSynchronously(
             with: CryoNamedKey(id: id, for: Value.self))) ?? wrappedValue
+    }
+    
+    /// Create a ubiquitous key-value persisted value wrapper.
+    ///
+    /// - Parameters:
+    ///   - defaultValue: The wrapped value.
+    ///   - id: The identifier to use as a key.
+    ///   - saveOnWrite: Whether to automatically persist the value after every modification.
+    public init(defaultValue: Value, _ id: String, saveOnWrite: Bool = true) {
+        self.id = id
+        self.saveOnWrite = saveOnWrite
+        self.wrappedValue = (try? UbiquitousKeyValueStoreAdaptor.shared.loadSynchronously(
+            with: CryoNamedKey(id: id, for: Value.self))) ?? defaultValue
     }
     
     /// Make several modifications to the wrapped value while only persisting it once at the end.
@@ -282,6 +322,19 @@ import Foundation
         self.saveOnWrite = saveOnWrite
         self.wrappedValue = (try? DocumentAdaptor.sharedLocal.loadSynchronously(
             with: CryoNamedKey(id: id, for: Value.self))) ?? wrappedValue
+    }
+    
+    /// Create a local document persisted value wrapper.
+    ///
+    /// - Parameters:
+    ///   - defaultValue: The wrapped value.
+    ///   - id: The identifier to use as a key.
+    ///   - saveOnWrite: Whether to automatically persist the value after every modification.
+    public init(defaultValue: Value, _ id: String, saveOnWrite: Bool = true) {
+        self.id = id
+        self.saveOnWrite = saveOnWrite
+        self.wrappedValue = (try? DocumentAdaptor.sharedLocal.loadSynchronously(
+            with: CryoNamedKey(id: id, for: Value.self))) ?? defaultValue
     }
     
     /// Make several modifications to the wrapped value while only persisting it once at the end.

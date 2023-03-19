@@ -79,12 +79,14 @@ extension SQLiteAdaptor: CryoDatabaseAdaptor {
         return query
     }
     
-    public func insert<Model: CryoModel>(id: String, _ value: Model, replace: Bool = true) async throws -> SQLiteInsertQuery<Model> {
+    public func insert<Model: CryoModel>(id: String = UUID().uuidString,
+                                         _ value: Model,
+                                         replace: Bool = true) async throws -> SQLiteInsertQuery<Model> {
         try SQLiteInsertQuery(id: id, value: value, replace: replace, connection: db.connection, config: config)
     }
     
-    public func update<Model: CryoModel>(id: String? = nil) async throws -> SQLiteUpdateQuery<Model> {
-        try SQLiteUpdateQuery(id: id, connection: db.connection, config: config)
+    public func update<Model: CryoModel>(id: String? = nil, from modelType: Model.Type) async throws -> SQLiteUpdateQuery<Model> {
+        try SQLiteUpdateQuery(from: modelType, id: id, connection: db.connection, config: config)
     }
     
     public func delete<Model: CryoModel>(id: String? = nil, from: Model.Type) async throws -> SQLiteDeleteQuery<Model> {
