@@ -13,7 +13,7 @@ final class MockCloudKitAdaptor {
     var isAvailable: Bool
     
     /// The change callbacks.
-    var updateHooks: [String: [() -> Void]] = [:]
+    var updateHooks: [String: [() async throws -> Void]] = [:]
     
     /// Default initializer.
     init() {
@@ -92,11 +92,13 @@ final class MockInsertQuery<Model: CryoModel>: CryoInsertQuery {
     let id: String
     let value: Model
     let saveValue: (CKRecord.ID, CKRecord) -> Void
+    let updateHooks: () async throws -> Void
     
-    init(id: String, value: Model, saveValue: @escaping (CKRecord.ID, CKRecord) -> Void) {
+    init(id: String, value: Model, updateHooks: @escaping () async throws -> Void, saveValue: @escaping (CKRecord.ID, CKRecord) -> Void) {
         self.id = id
         self.value = value
         self.saveValue = saveValue
+        self.updateHooks = updateHooks
     }
     
     var queryString: String { "" }
@@ -114,6 +116,8 @@ final class MockInsertQuery<Model: CryoModel>: CryoInsertQuery {
         }
         
         saveValue(id, record)
+        try await updateHooks()
+        
         return true
     }
 }
@@ -124,13 +128,16 @@ final class MockUpdateQuery<Model: CryoModel>: CryoUpdateQuery {
     var setClauses: [CryoQuerySetClause]
     var whereClauses: [CryoQueryWhereClause]
     let saveValue: (CKRecord.ID, CKRecord) -> Void
+    let updateHooks: () async throws -> Void
     
     init(id: String?,
          allRecords: [CKRecord],
+         updateHooks: @escaping () async throws -> Void,
          saveValue: @escaping (CKRecord.ID, CKRecord) -> Void) {
         self.id = id
         self.allRecords = allRecords
         self.saveValue = saveValue
+        self.updateHooks = updateHooks
         self.setClauses = []
         self.whereClauses = []
     }
@@ -199,6 +206,7 @@ final class MockUpdateQuery<Model: CryoModel>: CryoUpdateQuery {
             saveValue(record.recordID, record)
         }
         
+        try await updateHooks()
         return records.count
     }
 }
@@ -208,11 +216,13 @@ final class MockDeleteQuery<Model: CryoModel>: CryoDeleteQuery {
     var whereClauses: [CryoQueryWhereClause]
     let allRecords: [CKRecord]
     let deleteRecord: (CKRecord.ID) -> Void
+    let updateHooks: () async throws -> Void
     
-    init(id: String?, allRecords: [CKRecord], deleteRecord: @escaping (CKRecord.ID) -> Void) {
+    init(id: String?, allRecords: [CKRecord], updateHooks: @escaping () async throws -> Void, deleteRecord: @escaping (CKRecord.ID) -> Void) {
         self.id = id
         self.allRecords = allRecords
         self.deleteRecord = deleteRecord
+        self.updateHooks = updateHooks
         self.whereClauses = []
     }
     
@@ -263,6 +273,7 @@ final class MockDeleteQuery<Model: CryoModel>: CryoDeleteQuery {
             deletedCount += 1
         }
         
+        try await updateHooks()
         return deletedCount
     }
 }
@@ -279,20 +290,33 @@ extension MockCloudKitAdaptor: CryoDatabaseAdaptor {
     public func insert<Model: CryoModel>(id: String = UUID().uuidString,
                                          _ value: Model,
                                          replace: Bool = true) async throws -> MockInsertQuery<Model> {
-        MockInsertQuery(id: id, value: value) { id, record in
+        MockInsertQuery(id: id, value: value,
+                        updateHooks: { try await self.runUpdateHooks(tableName: Model.tableName) }) { id, record in
             self.database[id] = record
         }
     }
     
     public func update<Model: CryoModel>(id: String? = nil) async throws -> MockUpdateQuery<Model> {
-        MockUpdateQuery(id: id, allRecords: self.database.values.map { $0 }) { id, record in
+        MockUpdateQuery(id: id, allRecords: self.database.values.map { $0 },
+                        updateHooks: { try await self.runUpdateHooks(tableName: Model.tableName) }) { id, record in
             self.database[id] = record
         }
     }
     
     public func delete<Model: CryoModel>(id: String? = nil, from: Model.Type) async throws -> MockDeleteQuery<Model> {
-        MockDeleteQuery(id: id, allRecords: self.database.values.map { $0 }) { id in
+        MockDeleteQuery(id: id, allRecords: self.database.values.map { $0 },
+                        updateHooks: { try await self.runUpdateHooks(tableName: Model.tableName) }) { id in
             self.database[id] = nil
+        }
+    }
+    
+    func runUpdateHooks(tableName: String) async throws {
+        guard let hooks = updateHooks[tableName] else {
+            return
+        }
+        
+        for hook in hooks {
+            try await hook()
         }
     }
 }
@@ -321,7 +345,7 @@ extension MockCloudKitAdaptor {
     }
     
     /// Register a change callback.
-    public func registerChangeListener(tableName: String, listener: @escaping () -> Void) {
+    public func registerChangeListener(tableName: String, listener: @escaping () async throws -> Void) {
         if var hooks = updateHooks[tableName] {
             hooks.append(listener)
             updateHooks[tableName] = hooks
@@ -344,7 +368,7 @@ extension MockCloudKitAdaptor: SynchronizedStoreBackend {
                                  deviceIdentifier: String) async throws -> [SyncOperation] {
         try await self
             .select(from: SyncOperation.self)
-            .where("date", isGreatherThan: date.timeIntervalSinceReferenceDate)
+            .where("date", isGreatherThan: date)
             .and("storeIdentifier", equals: storeIdentifier)
             .and("deviceIdentifier", doesNotEqual: deviceIdentifier)
             .execute()
@@ -358,9 +382,9 @@ extension MockCloudKitAdaptor: SynchronizedStoreBackend {
     internal func setupRecordChangeSubscription(for tableName: String,
                                                 storeIdentifier: String,
                                                 deviceIdentifier: String,
-                                                callback: @escaping (String?) -> Void) async throws {
+                                                callback: @escaping (String?) async throws -> Void) async throws {
         self.registerChangeListener(tableName: tableName) {
-            callback(nil)
+            try await callback(nil)
         }
     }
 }

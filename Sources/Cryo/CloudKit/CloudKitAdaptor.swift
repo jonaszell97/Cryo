@@ -274,19 +274,19 @@ extension CloudKitAdaptor {
             switch clause.value {
             case .string(value: let value):
                 guard let object = object as? CryoColumnStringValue else { return false }
-                return value > object.stringValue
+                return object.stringValue > value
             case .integer(value: let value):
                 guard let object = object as? CryoColumnIntValue else { return false }
-                return value > object.integerValue
+                return object.integerValue > value
             case .double(value: let value):
                 guard let object = object as? CryoColumnDoubleValue else { return false }
-                return value > object.doubleValue
+                return object.doubleValue > value
             case .date(value: let value):
                 guard let object = object as? CryoColumnDateValue else { return false }
-                return value > object.dateValue
+                return object.dateValue > value
             case .asset(value: let value):
                 guard let object = object as? CryoColumnStringValue else { return false }
-                return value.absoluteString > object.stringValue
+                return object.stringValue > value.absoluteString
             case .data:
                 return false
             }
@@ -294,19 +294,19 @@ extension CloudKitAdaptor {
             switch clause.value {
             case .string(value: let value):
                 guard let object = object as? CryoColumnStringValue else { return false }
-                return value >= object.stringValue
+                return object.stringValue >= value
             case .integer(value: let value):
                 guard let object = object as? CryoColumnIntValue else { return false }
-                return value >= object.integerValue
+                return object.integerValue >= value
             case .double(value: let value):
                 guard let object = object as? CryoColumnDoubleValue else { return false }
-                return value >= object.doubleValue
+                return object.doubleValue >= value
             case .date(value: let value):
                 guard let object = object as? CryoColumnDateValue else { return false }
-                return value >= object.dateValue
+                return object.dateValue >= value
             case .asset(value: let value):
                 guard let object = object as? CryoColumnStringValue else { return false }
-                return value.absoluteString >= object.stringValue
+                return object.stringValue >= value.absoluteString
             case .data:
                 return false
             }
@@ -314,19 +314,19 @@ extension CloudKitAdaptor {
             switch clause.value {
             case .string(value: let value):
                 guard let object = object as? CryoColumnStringValue else { return false }
-                return value < object.stringValue
+                return object.stringValue < value
             case .integer(value: let value):
                 guard let object = object as? CryoColumnIntValue else { return false }
-                return value < object.integerValue
+                return object.integerValue < value
             case .double(value: let value):
                 guard let object = object as? CryoColumnDoubleValue else { return false }
-                return value < object.doubleValue
+                return object.doubleValue < value
             case .date(value: let value):
                 guard let object = object as? CryoColumnDateValue else { return false }
-                return value < object.dateValue
+                return object.dateValue < value
             case .asset(value: let value):
                 guard let object = object as? CryoColumnStringValue else { return false }
-                return value.absoluteString < object.stringValue
+                return object.stringValue < value.absoluteString
             case .data:
                 return false
             }
@@ -334,19 +334,19 @@ extension CloudKitAdaptor {
             switch clause.value {
             case .string(value: let value):
                 guard let object = object as? CryoColumnStringValue else { return false }
-                return value <= object.stringValue
+                return object.stringValue <= value
             case .integer(value: let value):
                 guard let object = object as? CryoColumnIntValue else { return false }
-                return value <= object.integerValue
+                return object.integerValue <= value
             case .double(value: let value):
                 guard let object = object as? CryoColumnDoubleValue else { return false }
-                return value <= object.doubleValue
+                return object.doubleValue <= value
             case .date(value: let value):
                 guard let object = object as? CryoColumnDateValue else { return false }
-                return value <= object.dateValue
+                return object.dateValue <= value
             case .asset(value: let value):
                 guard let object = object as? CryoColumnStringValue else { return false }
-                return value.absoluteString <= object.stringValue
+                return object.stringValue <= value.absoluteString
             case .data:
                 return false
             }

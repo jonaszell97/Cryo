@@ -43,7 +43,7 @@ public final actor SQLiteAdaptor {
     var createdTables = Set<String>()
     
     /// The registered update hooks.
-    var updateHooks: [String: [() -> Void]] = [:]
+    var updateHooks: [String: [() async throws -> Void]] = [:]
     
     /// Create an SQLite adaptor.
     public init(databaseUrl: URL, config: CryoConfig? = nil) throws {
@@ -163,10 +163,12 @@ extension SQLiteAdaptor {
     }
     
     /// Register a change callback.
-    public func registerChangeListener(tableName: String, listener: @escaping () -> Void) {
+    public func registerChangeListener(tableName: String, listener: @escaping () async throws -> Void) {
         if updateHooks.isEmpty {
             self.updateHook { op, db, table, rowid in
-                self.updateHookCallback(operation: op, db: db, table: table, rowid: rowid)
+                Task {
+                    try await self.updateHookCallback(operation: op, db: db, table: table, rowid: rowid)
+                }
             }
         }
         
@@ -208,13 +210,13 @@ fileprivate extension SQLiteAdaptor {
         }
     }
     
-    func updateHookCallback(operation: Operation, db: String, table: String, rowid: Int64) {
+    func updateHookCallback(operation: Operation, db: String, table: String, rowid: Int64) async throws {
         guard let hooks = updateHooks[table] else {
             return
         }
         
         for hook in hooks {
-            hook()
+            try await hook()
         }
     }
     

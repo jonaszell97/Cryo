@@ -20,7 +20,7 @@ internal protocol SynchronizedStoreBackend {
     func setupRecordChangeSubscription(for tableName: String,
                                        storeIdentifier: String,
                                        deviceIdentifier: String,
-                                       callback: @escaping (String?) -> Void) async throws
+                                       callback: @escaping (String?) async throws -> Void) async throws
 }
 
 extension SQLiteAdaptor: SynchronizedStoreBackend {
@@ -50,9 +50,9 @@ extension SQLiteAdaptor: SynchronizedStoreBackend {
     internal func setupRecordChangeSubscription(for tableName: String,
                                                 storeIdentifier: String,
                                                 deviceIdentifier: String,
-                                                callback: @escaping (String?) -> Void) async throws {
+                                                callback: @escaping (String?) async throws -> Void) async throws {
         self.registerChangeListener(tableName: tableName) {
-            callback(nil)
+            try await callback(nil)
         }
     }
 }
@@ -84,7 +84,7 @@ extension CloudKitAdaptor: SynchronizedStoreBackend {
     internal func setupRecordChangeSubscription(for tableName: String,
                                                 storeIdentifier: String,
                                                 deviceIdentifier: String,
-                                                callback: @escaping (String?) -> Void) async throws {
+                                                callback: @escaping (String?) async throws -> Void) async throws {
         // Subscribe to changes from other devices for this store
         let predicate = NSPredicate(format: "storeIdentifier == %@ AND deviceIdentifier != %@",
                                     storeIdentifier, deviceIdentifier)
