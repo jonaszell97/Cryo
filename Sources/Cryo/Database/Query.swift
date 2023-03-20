@@ -99,7 +99,7 @@ public protocol CryoSetClauseQuery<Model>: CryoModelQuery {
     /// Attach a WHERE clause to this query.
     func set<Value: _AnyCryoColumnValue>(
         _ columnName: String,
-        value: Value
+        to value: Value
     ) async throws -> Self
 }
 

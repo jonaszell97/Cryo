@@ -24,7 +24,7 @@ extension SynchronizedInsertQuery: CryoInsertQuery {
         get async { await query.queryString }
     }
     
-    public func execute() async throws -> QueryType.Result {
+    @discardableResult public func execute() async throws -> QueryType.Result {
         let result = try await query.execute()
         try await onExecutionCompleted()
         
@@ -55,7 +55,7 @@ extension SynchronizedUpdateQuery: CryoUpdateQuery {
         get async { await query.queryString }
     }
     
-    public func execute() async throws -> QueryType.Result {
+    @discardableResult public func execute() async throws -> QueryType.Result {
         let result = try await query.execute()
         try await onExecutionCompleted()
         
@@ -72,8 +72,8 @@ extension SynchronizedUpdateQuery: CryoUpdateQuery {
     
     
     public func set<Value: _AnyCryoColumnValue>(_ columnName: String,
-                                                value: Value) async throws -> Self {
-        _ = try await query.set(columnName, value: value)
+                                                to value: Value) async throws -> Self {
+        _ = try await query.set(columnName, to: value)
         return self
     }
 }
@@ -101,7 +101,7 @@ extension SynchronizedDeleteQuery: CryoDeleteQuery {
         get async { await query.queryString }
     }
     
-    public func execute() async throws -> QueryType.Result {
+    @discardableResult public func execute() async throws -> QueryType.Result {
         let result = try await query.execute()
         try await onExecutionCompleted()
         

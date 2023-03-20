@@ -16,8 +16,23 @@ internal struct SyncOperation: CryoModel {
     /// The date of the operation.
     @CryoColumn var date: Date
     
-    /// The type of the operation.
-    @CryoColumn var operation: DatabaseOperation
+    /// The operation data.
+    @CryoColumn var operationData: Data
+    
+    /// The operation.
+    var operation: DatabaseOperation {
+        get throws {
+            try JSONDecoder().decode(DatabaseOperation.self, from: operationData)
+        }
+    }
+    
+    /// Create a sync operation.
+    init(storeIdentifier: String, deviceIdentifier: String, date: Date, operation: DatabaseOperation) throws {
+        self.storeIdentifier = storeIdentifier
+        self.deviceIdentifier = deviceIdentifier
+        self.date = date
+        self.operationData = try JSONEncoder().encode(operation)
+    }
 }
 
 // MARK: SynchronizedStoreConfig
@@ -132,9 +147,7 @@ fileprivate extension SynchronizedStoreImpl {
             try await operationsStore.setupRecordChangeSubscription(for: SyncOperation.tableName,
                                                                     storeIdentifier: config.storeIdentifier,
                                                                     deviceIdentifier: deviceIdentifier) { recordId in
-                Task {
-                    try await self.externalChangeNotificationReceived(recordId: recordId)
-                }
+                try await self.externalChangeNotificationReceived(recordId: recordId)
             }
             
             self.changeSubscriptionSetup = true
@@ -179,7 +192,7 @@ extension SynchronizedStoreImpl {
     
     /// Execute a sync operation.
     func execute(operation: SyncOperation) async throws {
-        try await localStore.execute(operation: operation.operation)
+        try await localStore.execute(operation: try operation.operation)
     }
 }
 
@@ -206,9 +219,9 @@ fileprivate extension SynchronizedStoreImpl {
     
     /// Publish an operation that was executed locally.
     func publish(operation: DatabaseOperation) async throws {
-        let syncOperation = SyncOperation(storeIdentifier: config.storeIdentifier,
-                                          deviceIdentifier: deviceIdentifier,
-                                          date: .now, operation: operation)
+        let syncOperation = try SyncOperation(storeIdentifier: config.storeIdentifier,
+                                              deviceIdentifier: deviceIdentifier,
+                                              date: .now, operation: operation)
         
         try await operationsStore.persist(operation: syncOperation)
     }

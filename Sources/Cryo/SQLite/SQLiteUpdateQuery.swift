@@ -34,9 +34,9 @@ extension SQLiteUpdateQuery: CryoUpdateQuery {
     
     public func set<Value: _AnyCryoColumnValue>(
         _ columnName: String,
-        value: Value
+        to value: Value
     ) async throws -> Self {
-        _ = try await untypedQuery.set(columnName, value: value)
+        _ = try await untypedQuery.set(columnName, to: value)
         return self
     }
     
@@ -149,20 +149,24 @@ extension UntypedSQLiteUpdateQuery {
             throw CryoError.queryCompilationFailed(query: queryString, status: prepareStatus, message: message)
         }
         
-        var baseIndex = 0
+        var bindIndex = 1
+        
+        SQLiteAdaptor.bind(queryStatement, value: .date(value: .now), index: Int32(bindIndex))
+        bindIndex += 1
+        
         for i in 0..<setClauses.count {
-            SQLiteAdaptor.bind(queryStatement, value: setClauses[i].value, index: Int32(i + 1 + baseIndex))
+            SQLiteAdaptor.bind(queryStatement, value: setClauses[i].value, index: Int32(bindIndex))
+            bindIndex += 1
         }
         
-        baseIndex = setClauses.count
-        
         if let id {
-            SQLiteAdaptor.bind(queryStatement, value: .string(value: id), index: Int32(baseIndex + 1))
-            baseIndex += 1
+            SQLiteAdaptor.bind(queryStatement, value: .string(value: id), index: Int32(bindIndex))
+            bindIndex += 1
         }
         
         for i in 0..<whereClauses.count {
-            SQLiteAdaptor.bind(queryStatement, value: whereClauses[i].value, index: Int32(baseIndex + i + 1))
+            SQLiteAdaptor.bind(queryStatement, value: whereClauses[i].value, index: Int32(bindIndex))
+            bindIndex += 1
         }
         
         self.queryStatement = queryStatement
@@ -198,7 +202,7 @@ extension UntypedSQLiteUpdateQuery {
     
     public func set<Value: _AnyCryoColumnValue>(
         _ columnName: String,
-        value: Value
+        to value: Value
     ) async throws -> Self {
         guard self.queryStatement == nil else {
             throw CryoError.modifyingFinalizedQuery

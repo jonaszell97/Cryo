@@ -194,7 +194,7 @@ extension CloudKitUpdateQuery: CryoUpdateQuery {
     
     public func set<Value: _AnyCryoColumnValue>(
         _ columnName: String,
-        value: Value
+        to value: Value
     ) async throws -> Self {
         self.setClauses.append(.init(columnName: columnName, value: try .init(value: value)))
         return self
