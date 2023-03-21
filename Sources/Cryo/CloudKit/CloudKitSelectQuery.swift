@@ -3,8 +3,46 @@ import CloudKit
 import Foundation
 
 public final class CloudKitSelectQuery<Model: CryoModel> {
+    /// The untyped query.
+    let untypedQuery: UntypedCloudKitSelectQuery
+    
+    /// Create an UPDATE query.
+    internal init(from: Model.Type, id: String?, database: CKDatabase, config: CryoConfig?) throws {
+        self.untypedQuery = try .init(for: Model.self, id: id, database: database, config: config)
+    }
+}
+
+extension CloudKitSelectQuery: CryoSelectQuery {
+    public var id: String? { untypedQuery.id }
+    public var whereClauses: [CryoQueryWhereClause] { untypedQuery.whereClauses }
+    
+    public var queryString: String {
+        get async {
+            await untypedQuery.queryString
+        }
+    }
+    
+    @discardableResult public func execute() async throws -> [Model] {
+        try await untypedQuery.execute() as! [Model]
+    }
+    
+    
+    public func `where`<Value: _AnyCryoColumnValue>(
+        _ columnName: String,
+        operation: CryoComparisonOperator,
+        value: Value
+    ) async throws -> Self {
+        _ = try await untypedQuery.where(columnName, operation: operation, value: value)
+        return self
+    }
+}
+
+internal class UntypedCloudKitSelectQuery {
     /// The ID of the record to fetch.
     let id: String?
+    
+    /// The model type.
+    let modelType: any CryoModel.Type
     
     /// The where clauses.
     var whereClauses: [CryoQueryWhereClause]
@@ -17,9 +55,10 @@ public final class CloudKitSelectQuery<Model: CryoModel> {
     #endif
     
     /// Create a SELECT query.
-    internal init(for: Model.Type, id: String?, database: CKDatabase, config: CryoConfig?) throws {
+    internal init(for modelType: any CryoModel.Type, id: String?, database: CKDatabase, config: CryoConfig?) throws {
         self.id = id
         self.database = database
+        self.modelType = modelType
         self.whereClauses = []
         
         #if DEBUG
@@ -30,7 +69,7 @@ public final class CloudKitSelectQuery<Model: CryoModel> {
     /// The complete query string.
     public var queryString: String {
         get async {
-            var result = "SELECT * FROM \(Model.tableName)"
+            var result = "SELECT * FROM \(modelType.tableName)"
             for i in 0..<whereClauses.count {
                 if i == 0 {
                     result += " WHERE "
@@ -48,11 +87,11 @@ public final class CloudKitSelectQuery<Model: CryoModel> {
     }
 }
 
-extension CloudKitSelectQuery {
-    static func fetch(id: String?, whereClauses: [CryoQueryWhereClause], database: CKDatabase) async throws -> [CKRecord] {
+extension UntypedCloudKitSelectQuery {
+    static func fetch(id: String?, modelType: any CryoModel.Type, whereClauses: [CryoQueryWhereClause],
+                      database: CKDatabase) async throws -> [CKRecord] {
         if let id {
             // Fetch single record
-            
             let recordId = CKRecord.ID(recordName: id)
             return try await withCheckedThrowingContinuation { continuation in
                 database.fetch(withRecordID: recordId) { record, error in
@@ -94,7 +133,7 @@ extension CloudKitSelectQuery {
             predicate = NSPredicate(format: predicateFormat, argumentArray: predicateArgs)
         }
         
-        let query = CKQuery(recordType: Model.tableName, predicate: predicate)
+        let query = CKQuery(recordType: modelType.tableName, predicate: predicate)
         
         var operation: CKQueryOperation? = CKQueryOperation(query: query)
         operation?.resultsLimit = CKQueryOperation.maximumResults
@@ -133,12 +172,12 @@ extension CloudKitSelectQuery {
     }
 }
 
-extension CloudKitSelectQuery: CryoSelectQuery {
-    public func execute() async throws -> [Model] {
-        let records = try await Self.fetch(id: id, whereClauses: whereClauses, database: database)
-        let schema = await CryoSchemaManager.shared.schema(for: Model.self)
+extension UntypedCloudKitSelectQuery {
+    public func execute() async throws -> [any CryoModel] {
+        let records = try await Self.fetch(id: id, modelType: modelType, whereClauses: whereClauses, database: database)
+        let schema = await CryoSchemaManager.shared.schema(for: modelType)
         
-        var results = [Model]()
+        var results = [any CryoModel]()
         for record in records {
             var data = [String: _AnyCryoColumnValue]()
             for columnDetails in schema.columns {
@@ -152,7 +191,7 @@ extension CloudKitSelectQuery: CryoSelectQuery {
                 data[columnDetails.columnName] = value
             }
             
-            results.append(try Model(from: CryoModelDecoder(data: data)))
+            results.append(try schema.create(data))
         }
                           
         return results

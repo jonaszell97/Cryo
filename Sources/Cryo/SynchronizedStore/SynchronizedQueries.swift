@@ -18,6 +18,9 @@ public final class SynchronizedInsertQuery<QueryType: CryoInsertQuery> {
 }
 
 extension SynchronizedInsertQuery: CryoInsertQuery {
+    public var id: String { query.id }
+    public var value: QueryType.Model { query.value }
+    
     public typealias Model = QueryType.Model
     
     public var queryString: String {
@@ -49,6 +52,10 @@ public final class SynchronizedUpdateQuery<QueryType: CryoUpdateQuery> {
 }
 
 extension SynchronizedUpdateQuery: CryoUpdateQuery {
+    public var id: String? { query.id }
+    public var whereClauses: [CryoQueryWhereClause] { query.whereClauses }
+    public var setClauses: [CryoQuerySetClause] { query.setClauses }
+    
     public typealias Model = QueryType.Model
     
     public var queryString: String {
@@ -95,6 +102,9 @@ public final class SynchronizedDeleteQuery<QueryType: CryoDeleteQuery> {
 }
 
 extension SynchronizedDeleteQuery: CryoDeleteQuery {
+    public var id: String? { query.id }
+    public var whereClauses: [CryoQueryWhereClause] { query.whereClauses }
+    
     public typealias Model = QueryType.Model
     
     public var queryString: String {

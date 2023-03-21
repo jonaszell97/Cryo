@@ -3,8 +3,55 @@ import CloudKit
 import Foundation
 
 public final class CloudKitUpdateQuery<Model: CryoModel> {
+    /// The untyped query.
+    let untypedQuery: UntypedCloudKitUpdateQuery
+    
+    /// Create an UPDATE query.
+    internal init(from: Model.Type, id: String?, database: CKDatabase, config: CryoConfig?) throws {
+        self.untypedQuery = try .init(for: Model.self, id: id, database: database, config: config)
+    }
+}
+
+extension CloudKitUpdateQuery: CryoUpdateQuery {
+    public var id: String? { untypedQuery.id }
+    public var whereClauses: [CryoQueryWhereClause] { untypedQuery.whereClauses }
+    public var setClauses: [CryoQuerySetClause] { untypedQuery.setClauses }
+    
+    public var queryString: String {
+        get async {
+            await untypedQuery.queryString
+        }
+    }
+    
+    @discardableResult public func execute() async throws -> Int {
+        try await untypedQuery.execute()
+    }
+    
+    
+    public func set<Value: _AnyCryoColumnValue>(
+        _ columnName: String,
+        to value: Value
+    ) async throws -> Self {
+        _ = try await untypedQuery.set(columnName, to: value)
+        return self
+    }
+    
+    public func `where`<Value: _AnyCryoColumnValue>(
+        _ columnName: String,
+        operation: CryoComparisonOperator,
+        value: Value
+    ) async throws -> Self {
+        _ = try await untypedQuery.where(columnName, operation: operation, value: value)
+        return self
+    }
+}
+
+internal class UntypedCloudKitUpdateQuery {
     /// The ID of the record to fetch.
     let id: String?
+    
+    /// The model type.
+    let modelType: any CryoModel.Type
     
     /// The set clauses.
     var setClauses: [CryoQuerySetClause]
@@ -20,9 +67,10 @@ public final class CloudKitUpdateQuery<Model: CryoModel> {
     #endif
     
     /// Create an UPDATE query.
-    internal init(for: Model.Type, id: String?, database: CKDatabase, config: CryoConfig?) throws {
+    internal init(for modelType: any CryoModel.Type, id: String?, database: CKDatabase, config: CryoConfig?) throws {
         self.id = id
         self.database = database
+        self.modelType = modelType
         self.setClauses = []
         self.whereClauses = []
         
@@ -35,7 +83,7 @@ public final class CloudKitUpdateQuery<Model: CryoModel> {
     public var queryString: String {
         get async {
             let hasId = id != nil
-            var result = "UPDATE \(Model.tableName)"
+            var result = "UPDATE \(modelType.tableName)"
             
             // Set clauses
             
@@ -75,7 +123,7 @@ public final class CloudKitUpdateQuery<Model: CryoModel> {
     }
 }
 
-extension CloudKitUpdateQuery {
+extension UntypedCloudKitUpdateQuery {
     func fetch() async throws -> [CKRecord] {
         if let id {
             // Fetch single record
@@ -121,7 +169,7 @@ extension CloudKitUpdateQuery {
             predicate = NSPredicate(format: predicateFormat, argumentArray: predicateArgs)
         }
         
-        let query = CKQuery(recordType: Model.tableName, predicate: predicate)
+        let query = CKQuery(recordType: modelType.tableName, predicate: predicate)
         
         var operation: CKQueryOperation? = CKQueryOperation(query: query)
         operation?.resultsLimit = CKQueryOperation.maximumResults
@@ -160,7 +208,7 @@ extension CloudKitUpdateQuery {
     }
 }
 
-extension CloudKitUpdateQuery: CryoUpdateQuery {
+extension UntypedCloudKitUpdateQuery {
     @discardableResult public func execute() async throws -> Int {
         let records = try await self.fetch()
         for record in records {

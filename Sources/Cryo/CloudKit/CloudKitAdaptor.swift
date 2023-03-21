@@ -110,7 +110,7 @@ extension CloudKitAdaptor: CryoDatabaseAdaptor {
     }
     
     public func select<Model: CryoModel>(id: String? = nil, from: Model.Type) async throws -> any CryoSelectQuery<Model> {
-        try CloudKitSelectQuery(for: Model.self, id: id, database: database, config: config)
+        try CloudKitSelectQuery(from: Model.self, id: id, database: database, config: config)
     }
     
     public func insert<Model: CryoModel>(id: String = UUID().uuidString,
@@ -120,11 +120,57 @@ extension CloudKitAdaptor: CryoDatabaseAdaptor {
     }
     
     public func update<Model: CryoModel>(id: String? = nil, from: Model.Type) async throws -> CloudKitUpdateQuery<Model> {
-        try CloudKitUpdateQuery(for: Model.self, id: id, database: database, config: config)
+        try CloudKitUpdateQuery(from: Model.self, id: id, database: database, config: config)
     }
     
     public func delete<Model: CryoModel>(id: String? = nil, from: Model.Type) async throws -> CloudKitDeleteQuery<Model> {
-        try CloudKitDeleteQuery(for: Model.self, id: id, database: database, config: config)
+        try CloudKitDeleteQuery(from: Model.self, id: id, database: database, config: config)
+    }
+}
+
+extension CloudKitAdaptor: ResilientStoreBackend {
+    func execute(operation: DatabaseOperation) async throws {
+        switch operation {
+        case .insert(_, let tableName, let rowId, let data):
+            guard let schema = await CryoSchemaManager.shared.schema(tableName: tableName) else {
+                throw CryoError.schemaNotInitialized(tableName: tableName)
+            }
+            
+            var modelData = [String: _AnyCryoColumnValue]()
+            for item in data {
+                modelData[item.columnName] = item.value.columnValue
+            }
+            
+            let model = try schema.create(modelData)
+            _ = try await UntypedCloudKitInsertQuery(id: rowId, value: model, replace: false, database: database, config: config)
+                .execute()
+        case .update(_, let tableName, let rowId, let setClauses, let whereClauses):
+            guard let schema = await CryoSchemaManager.shared.schema(tableName: tableName) else {
+                throw CryoError.schemaNotInitialized(tableName: tableName)
+            }
+            
+            let query = try UntypedCloudKitUpdateQuery(for: schema.`self`, id: rowId, database: database, config: config)
+            for setClause in setClauses {
+                _ = try await query.set(setClause.columnName, to: setClause.value.columnValue)
+            }
+            for whereClause in whereClauses {
+                _ = try await query.where(whereClause.columnName, operation: whereClause.operation, value: whereClause.value.columnValue)
+            }
+
+            _ = try await query.execute()
+            break
+        case .delete(_, let tableName, let rowId, let whereClauses):
+            guard let schema = await CryoSchemaManager.shared.schema(tableName: tableName) else {
+                throw CryoError.schemaNotInitialized(tableName: tableName)
+            }
+            
+            let query = try UntypedCloudKitDeleteQuery(for: schema.`self`, id: rowId, database: database, config: config)
+            for whereClause in whereClauses {
+                _ = try await query.where(whereClause.columnName, operation: whereClause.operation, value: whereClause.value.columnValue)
+            }
+            
+            _ = try await query.execute()
+        }
     }
 }
 

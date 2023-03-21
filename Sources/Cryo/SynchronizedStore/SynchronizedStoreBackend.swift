@@ -125,4 +125,3 @@ extension CloudKitAdaptor: SynchronizedStoreBackend {
         try await store.externalChangeNotificationReceived(recordId: notification.recordID?.recordName)
     }
 }
-

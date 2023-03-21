@@ -23,6 +23,41 @@ internal struct DatabaseOperationValue: Codable, CryoColumnDataValue {
     let value: CryoQueryValue
 }
 
+extension CryoInsertQuery {
+    /// The database operation for this query.
+    internal var operation: DatabaseOperation {
+        get async throws {
+            var data = [DatabaseOperationValue]()
+            let schema = await CryoSchemaManager.shared.schema(for: Model.self)
+            
+            for column in schema.columns {
+                data.append(.init(columnName: column.columnName, value: try .init(value: column.getValue(self.value))))
+            }
+            
+            return .insert(date: .now, tableName: Model.tableName, rowId: self.id, data: data)
+        }
+    }
+}
+
+extension CryoUpdateQuery {
+    /// The database operation for this query.
+    internal var operation: DatabaseOperation {
+        get async throws {
+            .update(date: .now, tableName: Model.tableName, rowId: self.id,
+                    setClauses: self.setClauses, whereClauses: self.whereClauses)
+        }
+    }
+}
+
+extension CryoDeleteQuery {
+    /// The database operation for this query.
+    internal var operation: DatabaseOperation {
+        get async throws {
+            .delete(date: .now, tableName: Model.tableName, rowId: self.id, whereClauses: self.whereClauses)
+        }
+    }
+}
+
 // MARK: Conformances
 
 extension DatabaseOperation: Codable {

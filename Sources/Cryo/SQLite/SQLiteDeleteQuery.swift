@@ -10,16 +10,12 @@ public final class SQLiteDeleteQuery<Model: CryoModel> {
     internal init(id: String?, connection: OpaquePointer, config: CryoConfig?) throws {
         self.untypedQuery = try .init(id: id, modelType: Model.self, connection: connection, config: config)
     }
-    
-    /// The database operation for this query.
-    var operation: DatabaseOperation {
-        get async throws {
-            .delete(date: .now, tableName: Model.tableName, rowId: untypedQuery.id, whereClauses: untypedQuery.whereClauses)
-        }
-    }
 }
 
 extension SQLiteDeleteQuery: CryoDeleteQuery {
+    public var id: String? { untypedQuery.id }
+    public var whereClauses: [CryoQueryWhereClause] { untypedQuery.whereClauses }
+    
     public var queryString: String {
         get async {
             await untypedQuery.queryString

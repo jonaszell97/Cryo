@@ -71,13 +71,17 @@ public struct SynchronizedStoreConfig {
 
 public final class SynchronizedStore {
     /// The store implementation.
-    let store: SynchronizedStoreImpl<CloudKitAdaptor>
+    let store: SynchronizedStoreImpl<ResilientCloudKitStore>
     
     /// Create a synchronized store.
     public init(config: SynchronizedStoreConfig) async throws {
-        let backend = await CloudKitAdaptor(config: config.cryoConfig,
+        let cloudKitStore = await CloudKitAdaptor(config: config.cryoConfig,
                                             containerIdentifier: config.containerIdentifier,
                                             database: \.privateCloudDatabase)
+        
+        let backend = await ResilientCloudKitStore(store: cloudKitStore,
+                                                   config: .init(identifier: "\(config.storeIdentifier)_resilient",
+                                                                 cryoConfig: config.cryoConfig))
         
         self.store = try await SynchronizedStoreImpl(config: config, backend: backend)
     }

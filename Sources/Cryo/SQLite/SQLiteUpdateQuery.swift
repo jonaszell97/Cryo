@@ -10,17 +10,13 @@ public final class SQLiteUpdateQuery<Model: CryoModel> {
     internal init(from: Model.Type, id: String?, connection: OpaquePointer, config: CryoConfig?) throws {
         self.untypedQuery = try .init(id: id, modelType: Model.self, connection: connection, config: config)
     }
-    
-    /// The database operation for this query.
-    var operation: DatabaseOperation {
-        get async throws {
-            .update(date: .now, tableName: Model.tableName, rowId: untypedQuery.id,
-                    setClauses: untypedQuery.setClauses, whereClauses: untypedQuery.whereClauses)
-        }
-    }
 }
 
 extension SQLiteUpdateQuery: CryoUpdateQuery {
+    public var id: String? { untypedQuery.id }
+    public var whereClauses: [CryoQueryWhereClause] { untypedQuery.whereClauses }
+    public var setClauses: [CryoQuerySetClause] { untypedQuery.setClauses }
+    
     public var queryString: String {
         get async {
             await untypedQuery.queryString

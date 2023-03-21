@@ -101,7 +101,7 @@ extension SQLiteAdaptor: CryoDatabaseAdaptor {
     }
 }
 
-extension SQLiteAdaptor {
+extension SQLiteAdaptor: ResilientStoreBackend {
     func execute(operation: DatabaseOperation) async throws {
         switch operation {
         case .insert(_, let tableName, let rowId, let data):

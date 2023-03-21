@@ -10,23 +10,12 @@ public final class SQLiteInsertQuery<Model: CryoModel> {
     internal init(id: String, value: Model, replace: Bool, connection: OpaquePointer, config: CryoConfig?) throws {
         self.untypedQuery = try .init(id: id, value: value, replace: replace, connection: connection, config: config)
     }
-    
-    /// The database operation for this query.
-    var operation: DatabaseOperation {
-        get async throws {
-            var data = [DatabaseOperationValue]()
-            let schema = await CryoSchemaManager.shared.schema(for: Model.self)
-            
-            for column in schema.columns {
-                data.append(.init(columnName: column.columnName, value: try .init(value: column.getValue(untypedQuery.value))))
-            }
-            
-            return .insert(date: .now, tableName: Model.tableName, rowId: untypedQuery.id, data: data)
-        }
-    }
 }
 
 extension SQLiteInsertQuery: CryoInsertQuery {
+    public var id: String { untypedQuery.id }
+    public var value: Model { untypedQuery.value as! Model }
+    
     public var queryString: String {
         get async {
             await untypedQuery.queryString

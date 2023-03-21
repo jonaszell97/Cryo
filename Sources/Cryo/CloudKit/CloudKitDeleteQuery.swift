@@ -3,8 +3,52 @@ import CloudKit
 import Foundation
 
 public final class CloudKitDeleteQuery<Model: CryoModel> {
-    /// The ID of the record to fetch.
+    /// The untyped query.
+    let untypedQuery: UntypedCloudKitDeleteQuery
+    
+    /// Create an UPDATE query.
+    internal init(from: Model.Type, id: String?, database: CKDatabase, config: CryoConfig?) throws {
+        self.untypedQuery = try .init(for: Model.self, id: id, database: database, config: config)
+    }
+    
+    /// The database operation for this query.
+    var operation: DatabaseOperation {
+        get async throws {
+            .delete(date: .now, tableName: Model.tableName, rowId: untypedQuery.id, whereClauses: untypedQuery.whereClauses)
+        }
+    }
+}
+
+extension CloudKitDeleteQuery: CryoDeleteQuery {
+    public var id: String? { untypedQuery.id }
+    public var whereClauses: [CryoQueryWhereClause] { untypedQuery.whereClauses }
+    
+    public var queryString: String {
+        get async {
+            await untypedQuery.queryString
+        }
+    }
+    
+    @discardableResult public func execute() async throws -> Int {
+        try await untypedQuery.execute()
+    }
+    
+    public func `where`<Value: _AnyCryoColumnValue>(
+        _ columnName: String,
+        operation: CryoComparisonOperator,
+        value: Value
+    ) async throws -> Self {
+        _ = try await untypedQuery.where(columnName, operation: operation, value: value)
+        return self
+    }
+}
+
+internal class UntypedCloudKitDeleteQuery {
+    /// The ID of the row to delete.
     let id: String?
+    
+    /// The model type.
+    let modelType: any CryoModel.Type
     
     /// The where clauses.
     var whereClauses: [CryoQueryWhereClause]
@@ -17,8 +61,9 @@ public final class CloudKitDeleteQuery<Model: CryoModel> {
     #endif
     
     /// Create a DELETE query.
-    internal init(for: Model.Type, id: String?, database: CKDatabase, config: CryoConfig?) throws {
+    internal init(for modelType: any CryoModel.Type, id: String?, database: CKDatabase, config: CryoConfig?) throws {
         self.id = id
+        self.modelType = modelType
         self.database = database
         self.whereClauses = []
         
@@ -30,7 +75,7 @@ public final class CloudKitDeleteQuery<Model: CryoModel> {
     /// The complete query string.
     public var queryString: String {
         get async {
-            var result = "DELETE FROM \(Model.tableName)"
+            var result = "DELETE FROM \(modelType.tableName)"
             for i in 0..<whereClauses.count {
                 if i == 0 {
                     result += " WHERE "
@@ -48,9 +93,12 @@ public final class CloudKitDeleteQuery<Model: CryoModel> {
     }
 }
 
-extension CloudKitDeleteQuery: CryoDeleteQuery {
+extension UntypedCloudKitDeleteQuery {
     @discardableResult public func execute() async throws -> Int {
-        let records = try await CloudKitSelectQuery<Model>.fetch(id: id, whereClauses: whereClauses, database: database)
+        let records = try await UntypedCloudKitSelectQuery.fetch(id: id, modelType: modelType,
+                                                                 whereClauses: whereClauses,
+                                                                 database: database)
+        
         return try await withCheckedThrowingContinuation { continuation in
             let operation = CKModifyRecordsOperation()
             operation.recordIDsToDelete = records.map { $0.recordID }

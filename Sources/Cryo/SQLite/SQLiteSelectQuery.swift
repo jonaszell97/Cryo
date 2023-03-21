@@ -7,7 +7,7 @@ public final class SQLiteSelectQuery<Model: CryoModel> {
     let columns: [String]?
     
     /// The where clauses.
-    var whereClauses: [CryoQueryWhereClause]
+    public private(set) var whereClauses: [CryoQueryWhereClause]
     
     /// The compiled query statement.
     var queryStatement: OpaquePointer? = nil
@@ -97,6 +97,17 @@ extension SQLiteSelectQuery {
 }
 
 extension SQLiteSelectQuery: CryoSelectQuery {
+    public var id: String? {
+        guard let value = (whereClauses.first { $0.columnName == "_cryo_key" }?.value) else {
+            return nil
+        }
+        guard case .string(let id) = value else {
+            return nil
+        }
+        
+        return id
+    }
+    
     public func execute() async throws -> [Model] {
         let queryStatement = try await self.compiledQuery()
         defer {

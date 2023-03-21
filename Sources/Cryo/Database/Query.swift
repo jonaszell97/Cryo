@@ -77,6 +77,9 @@ public struct CryoQueryWhereClause: Codable {
 }
 
 public protocol CryoWhereClauseQuery<Model>: CryoModelQuery {
+    /// Get the attached where clauses.
+    var whereClauses: [CryoQueryWhereClause] { get }
+    
     /// Attach a WHERE clause to this query.
     func `where`<Value: _AnyCryoColumnValue>(
         _ columnName: String,
@@ -96,6 +99,9 @@ public struct CryoQuerySetClause: Codable {
 }
 
 public protocol CryoSetClauseQuery<Model>: CryoModelQuery {
+    /// Get the attached set clauses.
+    var setClauses: [CryoQuerySetClause] { get }
+    
     /// Attach a WHERE clause to this query.
     func set<Value: _AnyCryoColumnValue>(
         _ columnName: String,
@@ -108,7 +114,8 @@ public protocol CryoSetClauseQuery<Model>: CryoModelQuery {
 public protocol CryoSelectQuery<Model>: CryoWhereClauseQuery
     where Self.Result == [Model]
 {
-    
+    /// The optional ID of the query.
+    var id: String? { get }
 }
 
 // MARK: Insert
@@ -116,6 +123,12 @@ public protocol CryoSelectQuery<Model>: CryoWhereClauseQuery
 public protocol CryoInsertQuery<Model>: CryoModelQuery
     where Self.Result == Bool
 {
+    /// The ID the value is inserted with.
+    var id: String { get }
+    
+    /// The value that will be inserted.
+    var value: Model { get }
+    
     /// Execute the query and return the result.
     @discardableResult func execute() async throws -> Result
 }
@@ -125,6 +138,9 @@ public protocol CryoInsertQuery<Model>: CryoModelQuery
 public protocol CryoUpdateQuery<Model>: CryoWhereClauseQuery, CryoSetClauseQuery
     where Self.Result == Int
 {
+    /// The optional ID of the query.
+    var id: String? { get }
+    
     /// Execute the query and return the result.
     @discardableResult func execute() async throws -> Result
 }
@@ -134,6 +150,9 @@ public protocol CryoUpdateQuery<Model>: CryoWhereClauseQuery, CryoSetClauseQuery
 public protocol CryoDeleteQuery<Model>: CryoWhereClauseQuery
     where Self.Result == Int
 {
+    /// The optional ID of the query.
+    var id: String? { get }
+    
     /// Execute the query and return the result.
     @discardableResult func execute() async throws -> Result
 }

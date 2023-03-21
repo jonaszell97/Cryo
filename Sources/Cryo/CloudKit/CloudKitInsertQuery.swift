@@ -3,11 +3,36 @@ import CloudKit
 import Foundation
 
 public final class CloudKitInsertQuery<Model: CryoModel> {
+    /// The untyped query.
+    let untypedQuery: UntypedCloudKitInsertQuery
+    
+    /// Create an INSERT query.
+    internal init(id: String, value: Model, replace: Bool, database: CKDatabase, config: CryoConfig?) throws {
+        self.untypedQuery = try .init(id: id, value: value, replace: replace, database: database, config: config)
+    }
+}
+
+extension CloudKitInsertQuery: CryoInsertQuery {
+    public var id: String { untypedQuery.id }
+    public var value: Model { untypedQuery.value as! Model }
+    
+    public var queryString: String {
+        get async {
+            await untypedQuery.queryString
+        }
+    }
+    
+    @discardableResult public func execute() async throws -> Bool {
+        try await untypedQuery.execute()
+    }
+}
+
+internal class UntypedCloudKitInsertQuery {
     /// The ID of the record to insert.
     let id: String
     
     /// The model value to insert.
-    let value: Model
+    let value: any CryoModel
     
     /// Whether to replace an existing value with the same key
     let replace: Bool
@@ -23,7 +48,7 @@ public final class CloudKitInsertQuery<Model: CryoModel> {
     #endif
     
     /// Create a INSERT query.
-    internal init(id: String, value: Model, replace: Bool, database: CKDatabase, config: CryoConfig?) throws {
+    internal init(id: String, value: any CryoModel, replace: Bool, database: CKDatabase, config: CryoConfig?) throws {
         self.id = id
         self.value = value
         self.replace = replace
@@ -38,11 +63,12 @@ public final class CloudKitInsertQuery<Model: CryoModel> {
     /// The complete query string.
     public var queryString: String {
         get async {
-            let schema = await CryoSchemaManager.shared.schema(for: Model.self)
+            let modelType = type(of: value)
+            let schema = await CryoSchemaManager.shared.schema(for: modelType)
             let columns: [String] = schema.columns.map { $0.columnName }
             
             let result = """
-INSERT \(replace ? "OR REPLACE " : "")INTO \(Model.tableName)(\(columns.joined(separator: ",")))
+INSERT \(replace ? "OR REPLACE " : "")INTO \(modelType.tableName)(\(columns.joined(separator: ",")))
     VALUES (\(columns.map { _ in "?" }.joined(separator: ",")));
 """
             
@@ -51,9 +77,9 @@ INSERT \(replace ? "OR REPLACE " : "")INTO \(Model.tableName)(\(columns.joined(s
     }
 }
 
-extension CloudKitInsertQuery: CryoInsertQuery {
+extension UntypedCloudKitInsertQuery {
     @discardableResult public func execute() async throws -> Bool {
-        let modelType = Model.self
+        let modelType = type(of: value)
         let record = CKRecord(recordType: modelType.tableName, recordID: CKRecord.ID(recordName: id))
         let schema = await CryoSchemaManager.shared.schema(for: modelType)
         
