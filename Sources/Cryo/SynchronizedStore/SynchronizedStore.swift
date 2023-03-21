@@ -133,6 +133,10 @@ internal final class SynchronizedStoreImpl<Backend: SynchronizedStoreBackend> {
         self._lastSynchronizationDate = .init(defaultValue: .distantPast, synchronizationDateKey)
         self._changeSubscriptionSetup = .init(defaultValue: false, subscriptionSetupKey)
         
+        for modelType in config.managedModels {
+            try await localStore.createTable(modelType: modelType).execute()
+        }
+        
         try await self.initialize()
     }
 }
@@ -152,6 +156,9 @@ fileprivate extension SynchronizedStoreImpl {
             
             self.changeSubscriptionSetup = true
         }
+        
+        // Perform initial synchronization
+        try await self.externalChangeNotificationReceived()
     }
 }
 
@@ -202,23 +209,27 @@ fileprivate extension SynchronizedStoreImpl {
     /// Synchronize an INSERT operation that was executed locally.
     func didExecute<Model: CryoModel>(_ query: SQLiteInsertQuery<Model>) async throws {
         let operation = try await query.operation
-        try await self.publish(operation: operation)
+        try await self.publish(operation: operation, tableName: Model.tableName)
     }
     
     /// Synchronize an UPDATE operation that was executed locally.
     func didExecute<Model: CryoModel>(_ query: SQLiteUpdateQuery<Model>) async throws {
         let operation = try await query.operation
-        try await self.publish(operation: operation)
+        try await self.publish(operation: operation, tableName: Model.tableName)
     }
     
     /// Synchronize a DELETE operation that was executed locally.
     func didExecute<Model: CryoModel>(_ query: SQLiteDeleteQuery<Model>) async throws {
         let operation = try await query.operation
-        try await self.publish(operation: operation)
+        try await self.publish(operation: operation, tableName: Model.tableName)
     }
     
     /// Publish an operation that was executed locally.
-    func publish(operation: DatabaseOperation) async throws {
+    func publish(operation: DatabaseOperation, tableName: String) async throws {
+        guard (config.managedModels.contains { $0.tableName == tableName }) else {
+            throw CryoError.schemaNotInitialized(tableName: tableName)
+        }
+        
         let syncOperation = try SyncOperation(storeIdentifier: config.storeIdentifier,
                                               deviceIdentifier: deviceIdentifier,
                                               date: .now, operation: operation)

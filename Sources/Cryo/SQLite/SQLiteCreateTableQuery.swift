@@ -3,6 +3,31 @@ import Foundation
 import SQLite3
 
 public final class SQLiteCreateTableQuery<Model: CryoModel> {
+    /// The untyped query.
+    let untypedQuery: UntypedSQLiteCreateTableQuery
+    
+    /// Create a CREATE TABLE query.
+    internal init(for: Model.Type, connection: OpaquePointer, config: CryoConfig?) throws {
+        self.untypedQuery = try .init(for: Model.self, connection: connection, config: config)
+    }
+}
+
+extension SQLiteCreateTableQuery: CryoCreateTableQuery {
+    public var queryString: String {
+        get async {
+            await untypedQuery.queryString
+        }
+    }
+    
+    public func execute() async throws {
+        try await untypedQuery.execute()
+    }
+}
+
+internal class UntypedSQLiteCreateTableQuery {
+    /// The model type.
+    let modelType: any CryoModel.Type
+    
     /// The complete query string.
     var completeQueryString: String? = nil
     
@@ -17,8 +42,9 @@ public final class SQLiteCreateTableQuery<Model: CryoModel> {
     #endif
     
     /// Create a CREATE TABLE query.
-    internal init(for: Model.Type, connection: OpaquePointer, config: CryoConfig?) throws {
+    internal init(for modelType: any CryoModel.Type, connection: OpaquePointer, config: CryoConfig?) throws {
         self.connection = connection
+        self.modelType = modelType
         
         #if DEBUG
         self.config = config
@@ -32,7 +58,7 @@ public final class SQLiteCreateTableQuery<Model: CryoModel> {
                 return completeQueryString
             }
             
-            let schema = await CryoSchemaManager.shared.schema(for: Model.self)
+            let schema = await CryoSchemaManager.shared.schema(for: modelType)
             var columns = ""
             
             for columnDetails in schema.columns {
@@ -40,7 +66,7 @@ public final class SQLiteCreateTableQuery<Model: CryoModel> {
             }
             
             let result = """
-CREATE TABLE IF NOT EXISTS \(Model.tableName)(
+CREATE TABLE IF NOT EXISTS \(modelType.tableName)(
     _cryo_key TEXT NOT NULL UNIQUE,
     _cryo_created TEXT NOT NULL,
     _cryo_modified TEXT NOT NULL\(columns)
@@ -53,7 +79,7 @@ CREATE TABLE IF NOT EXISTS \(Model.tableName)(
     }
 }
 
-extension SQLiteCreateTableQuery {
+extension UntypedSQLiteCreateTableQuery {
     /// Get the compiled query statement.
     func compiledQuery() async throws -> OpaquePointer {
         if let queryStatement {
@@ -78,7 +104,7 @@ extension SQLiteCreateTableQuery {
     }
 }
 
-extension SQLiteCreateTableQuery: CryoCreateTableQuery {
+extension UntypedSQLiteCreateTableQuery {
     public typealias Result = Void
     
     public func execute() async throws {
@@ -104,6 +130,6 @@ extension SQLiteCreateTableQuery: CryoCreateTableQuery {
         }
         
         // Initialize the CryoSchema
-        _ = await CryoSchemaManager.shared.schema(for: Model.self)
+        _ = await CryoSchemaManager.shared.schema(for: modelType)
     }
 }

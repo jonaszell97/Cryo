@@ -73,6 +73,10 @@ extension SQLiteAdaptor: CryoDatabaseAdaptor {
         try SQLiteCreateTableQuery(for: model, connection: db.connection, config: config)
     }
     
+    func createTable(modelType: any CryoModel.Type) async throws -> UntypedSQLiteCreateTableQuery {
+        try UntypedSQLiteCreateTableQuery(for: modelType, connection: db.connection, config: config)
+    }
+    
     public func select<Model: CryoModel>(id: String? = nil, from: Model.Type) async throws -> any CryoSelectQuery<Model> {
         var query: SQLiteSelectQuery<Model> = try SQLiteSelectQuery(connection: db.connection, config: config)
         if let id {

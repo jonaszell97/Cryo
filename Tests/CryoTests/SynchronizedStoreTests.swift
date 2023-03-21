@@ -39,10 +39,7 @@ final class SynchronizedStoreTests: XCTestCase {
                                              cryoConfig: CryoConfig { print("[\($0)] \($1)") })
         let backend = backend ?? MockCloudKitAdaptor()
         
-        let store = try await StoreType(config: config, backend: backend, deviceIdentifier: deviceIdentifier)
-        try await store.createTable(for: TestModel.self).execute()
-        
-        return store
+        return try await StoreType(config: config, backend: backend, deviceIdentifier: deviceIdentifier)
     }
     
     private func persistAndLoadTest(_ value: TestModel, to store: StoreType) async throws {
@@ -171,6 +168,36 @@ final class SynchronizedStoreTests: XCTestCase {
                 .execute().first
             
             XCTAssertEqual(record?.x, values[i].x + 1)
+        }
+    }
+    
+    func testStoreInitialization() async throws {
+        let phoneStore = try await createStore(identifier: "TestStore", deviceIdentifier: "iPhone13,1")
+        
+        var values = [TestModel]()
+        
+        // Create records on one device
+        for i in 0..<10 {
+            let id = "\(i)"
+            let model = TestModel.random()
+            values.append(model)
+            
+            try await phoneStore.insert(id: id, model)
+                .execute()
+        }
+        
+        // Initialize other device
+        let tabletStore = try await createStore(identifier: "TestStore", deviceIdentifier: "iPad14,2",
+                                                backend: phoneStore.operationsStore)
+        
+        
+        // Retrieve records on other device
+        for i in 0..<10 {
+            let id = "\(i)"
+            let record = try await tabletStore.select(id: id, from: TestModel.self)
+                .execute().first
+            
+            XCTAssertEqual(record, values[i])
         }
     }
 }
