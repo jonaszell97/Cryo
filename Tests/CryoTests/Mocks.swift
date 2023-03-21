@@ -107,9 +107,10 @@ final class MockSelectQuery<Model: CryoModel>: CryoSelectQuery {
 final class MockInsertQuery<Model: CryoModel>: CryoInsertQuery {
     let query: UntypedMockInsertQuery
     
-    init(id: String, value: Model, updateHooks: @escaping () async throws -> Void,
+    init(id: String, value: Model, isAvailable: Bool, updateHooks: @escaping () async throws -> Void,
          saveValue: @escaping (CKRecord.ID, CKRecord) -> Void) {
-        self.query = .init(id: id, value: value, updateHooks: updateHooks, saveValue: saveValue)
+        self.query = .init(id: id, value: value, isAvailable: isAvailable,
+                           updateHooks: updateHooks, saveValue: saveValue)
     }
     
     @discardableResult func execute() async throws -> Bool {
@@ -127,19 +128,25 @@ final class UntypedMockInsertQuery {
     let value: any CryoModel
     let saveValue: (CKRecord.ID, CKRecord) -> Void
     let updateHooks: () async throws -> Void
+    let isAvailable: Bool
     
-    init(id: String, value: any CryoModel,
+    init(id: String, value: any CryoModel, isAvailable: Bool,
          updateHooks: @escaping () async throws -> Void,
          saveValue: @escaping (CKRecord.ID, CKRecord) -> Void) {
         self.id = id
         self.value = value
         self.saveValue = saveValue
         self.updateHooks = updateHooks
+        self.isAvailable = isAvailable
     }
     
     var queryString: String { "" }
     
     @discardableResult func execute() async throws -> Bool {
+        guard isAvailable else {
+            throw CryoError.backendNotAvailable
+        }
+        
         let id = CKRecord.ID(recordName: id)
         
         let modelType = type(of: value)
@@ -162,10 +169,12 @@ final class MockUpdateQuery<Model: CryoModel>: CryoUpdateQuery {
     
     init(from modelType: Model.Type,
          id: String?,
+         isAvailable: Bool,
          allRecords: [CKRecord],
          updateHooks: @escaping () async throws -> Void,
          saveValue: @escaping (CKRecord.ID, CKRecord) -> Void) {
-        self.query = .init(modelType: modelType, id: id, allRecords: allRecords,
+        self.query = .init(modelType: modelType, id: id, isAvailable: isAvailable,
+                           allRecords: allRecords,
                            updateHooks: updateHooks, saveValue: saveValue)
     }
     
@@ -203,9 +212,11 @@ final class UntypedMockUpdateQuery {
     var whereClauses: [CryoQueryWhereClause]
     let saveValue: (CKRecord.ID, CKRecord) -> Void
     let updateHooks: () async throws -> Void
+    let isAvailable: Bool
     
     init(modelType: any CryoModel.Type,
          id: String?,
+         isAvailable: Bool,
          allRecords: [CKRecord],
          updateHooks: @escaping () async throws -> Void,
          saveValue: @escaping (CKRecord.ID, CKRecord) -> Void) {
@@ -214,6 +225,7 @@ final class UntypedMockUpdateQuery {
         self.allRecords = allRecords
         self.saveValue = saveValue
         self.updateHooks = updateHooks
+        self.isAvailable = isAvailable
         self.setClauses = []
         self.whereClauses = []
     }
@@ -239,6 +251,10 @@ final class UntypedMockUpdateQuery {
     }
     
     @discardableResult func execute() async throws -> Int {
+        guard isAvailable else {
+            throw CryoError.backendNotAvailable
+        }
+        
         let schema = await CryoSchemaManager.shared.schema(for: modelType)
         
         var records = [CKRecord]()
@@ -288,10 +304,11 @@ final class UntypedMockUpdateQuery {
 final class MockDeleteQuery<Model: CryoModel>: CryoDeleteQuery {
     let query: UntypedMockDeleteQuery
     
-    init(id: String?, allRecords: [CKRecord],
+    init(id: String?, isAvailable: Bool, allRecords: [CKRecord],
          updateHooks: @escaping () async throws -> Void,
          deleteRecord: @escaping (CKRecord.ID) -> Void) {
-        self.query = .init(modelType: Model.self, id: id, allRecords: allRecords,
+        self.query = .init(modelType: Model.self, id: id, isAvailable: isAvailable,
+                           allRecords: allRecords,
                            updateHooks: updateHooks, deleteRecord: deleteRecord)
     }
     
@@ -326,9 +343,10 @@ final class UntypedMockDeleteQuery {
     let allRecords: [CKRecord]
     let deleteRecord: (CKRecord.ID) -> Void
     let updateHooks: () async throws -> Void
+    let isAvailable: Bool
     
     init(modelType: any CryoModel.Type,
-         id: String?, allRecords: [CKRecord],
+         id: String?, isAvailable: Bool, allRecords: [CKRecord],
          updateHooks: @escaping () async throws -> Void,
          deleteRecord: @escaping (CKRecord.ID) -> Void) {
         self.id = id
@@ -336,6 +354,7 @@ final class UntypedMockDeleteQuery {
         self.allRecords = allRecords
         self.deleteRecord = deleteRecord
         self.updateHooks = updateHooks
+        self.isAvailable = isAvailable
         self.whereClauses = []
     }
     
@@ -351,6 +370,10 @@ final class UntypedMockDeleteQuery {
     }
     
     @discardableResult func execute() async throws -> Int {
+        guard isAvailable else {
+            throw CryoError.backendNotAvailable
+        }
+    
         let schema = await CryoSchemaManager.shared.schema(for: modelType)
         
         var deletedCount = 0
@@ -405,8 +428,7 @@ extension MockCloudKitAdaptor: ResilientStoreBackend {
             }
             
             let model = try schema.create(modelData)
-            let query = UntypedMockInsertQuery(id: rowId,
-                                               value: model,
+            let query = UntypedMockInsertQuery(id: rowId, value: model, isAvailable: self.isAvailable,
                                                updateHooks: { try await self.runUpdateHooks(tableName: tableName) }) { id, record in
                 self.insertRecord(id: id, record: record, tableName: tableName)
             }
@@ -417,7 +439,8 @@ extension MockCloudKitAdaptor: ResilientStoreBackend {
                 throw CryoError.schemaNotInitialized(tableName: tableName)
             }
             
-            let query = UntypedMockUpdateQuery(modelType: schema.`self`, id: rowId, allRecords: self.allRecords(tableName: tableName),
+            let query = UntypedMockUpdateQuery(modelType: schema.`self`, id: rowId, isAvailable: self.isAvailable,
+                                               allRecords: self.allRecords(tableName: tableName),
                                                updateHooks: { try await self.runUpdateHooks(tableName: tableName) }) { id, record in
                 self.insertRecord(id: id, record: record, tableName: tableName)
             }
@@ -436,7 +459,8 @@ extension MockCloudKitAdaptor: ResilientStoreBackend {
                 throw CryoError.schemaNotInitialized(tableName: tableName)
             }
             
-            let query = UntypedMockDeleteQuery(modelType: schema.`self`, id: rowId, allRecords: self.allRecords(tableName: tableName),
+            let query = UntypedMockDeleteQuery(modelType: schema.`self`, id: rowId, isAvailable: self.isAvailable,
+                                               allRecords: self.allRecords(tableName: tableName),
                                                updateHooks: { try await self.runUpdateHooks(tableName: tableName) }) { id in
                 self.database[tableName]?.removeValue(forKey: id)
             }
@@ -462,21 +486,23 @@ extension MockCloudKitAdaptor: CryoDatabaseAdaptor {
     public func insert<Model: CryoModel>(id: String = UUID().uuidString,
                                          _ value: Model,
                                          replace: Bool = true) async throws -> MockInsertQuery<Model> {
-        MockInsertQuery(id: id, value: value,
+        MockInsertQuery(id: id, value: value, isAvailable: self.isAvailable,
                         updateHooks: { try await self.runUpdateHooks(tableName: Model.tableName) }) { id, record in
             self.insertRecord(id: id, record: record, tableName: Model.tableName)
         }
     }
     
     public func update<Model: CryoModel>(id: String? = nil, from: Model.Type) async throws -> MockUpdateQuery<Model> {
-        MockUpdateQuery(from: Model.self, id: id, allRecords: self.allRecords(tableName: Model.tableName),
+        MockUpdateQuery(from: Model.self, id: id, isAvailable: self.isAvailable,
+                        allRecords: self.allRecords(tableName: Model.tableName),
                         updateHooks: { try await self.runUpdateHooks(tableName: Model.tableName) }) { id, record in
             self.insertRecord(id: id, record: record, tableName: Model.tableName)
         }
     }
     
     public func delete<Model: CryoModel>(id: String? = nil, from: Model.Type) async throws -> MockDeleteQuery<Model> {
-        MockDeleteQuery(id: id, allRecords: self.allRecords(tableName: Model.tableName),
+        MockDeleteQuery(id: id, isAvailable: self.isAvailable,
+                        allRecords: self.allRecords(tableName: Model.tableName),
                         updateHooks: { try await self.runUpdateHooks(tableName: Model.tableName) }) { id in
             self.database[Model.tableName]?.removeValue(forKey: id)
         }

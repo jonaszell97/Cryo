@@ -79,9 +79,9 @@ public final class SynchronizedStore {
                                             containerIdentifier: config.containerIdentifier,
                                             database: \.privateCloudDatabase)
         
-        let backend = await ResilientCloudKitStore(store: cloudKitStore,
-                                                   config: .init(identifier: "\(config.storeIdentifier)_resilient",
-                                                                 cryoConfig: config.cryoConfig))
+        let backend = try await ResilientCloudKitStore(store: cloudKitStore,
+                                                       config: .init(identifier: "\(config.storeIdentifier)_resilient",
+                                                                     cryoConfig: config.cryoConfig))
         
         self.store = try await SynchronizedStoreImpl(config: config, backend: backend)
     }

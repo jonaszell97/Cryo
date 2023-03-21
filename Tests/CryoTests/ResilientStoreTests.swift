@@ -43,28 +43,28 @@ extension TestModel2: Hashable {
 final class ResilientStoreTests: XCTestCase {
     typealias StoreType = ResilientStoreImpl<MockCloudKitAdaptor>
     
-    static func createResilientStore(resetState: Bool = true) async throws -> StoreType {
+    static func createResilientStore(database: MockCloudKitAdaptor? = nil, resetState: Bool = true) async throws -> StoreType {
         if resetState {
             try await DocumentAdaptor.sharedLocal.removeAll()
         }
         
-        let databaseAdaptor = MockCloudKitAdaptor()
+        let databaseAdaptor = database ?? MockCloudKitAdaptor()
         databaseAdaptor.isAvailable = true
         
         let cryoConfig = CryoConfig { print("[\($0)] \($1)") }
         let config = ResilientCloudKitStoreConfig(identifier: "TestStore_resilient", maximumNumberOfRetries: 5, cryoConfig: cryoConfig)
         
-        return await StoreType(store: databaseAdaptor, config: config)
+        return try await StoreType(store: databaseAdaptor, config: config)
     }
     
-    static func setAvailability(of store: StoreType, to available: Bool) async {
+    static func setAvailability(of store: StoreType, to available: Bool) async throws {
         store.store.isAvailable = available
         
         guard available else {
             return
         }
         
-        await store.executeFailedOperations()
+        try await store.executeFailedOperations()
     }
     
     func testEnabledMirroring() async throws {
@@ -112,24 +112,18 @@ final class ResilientStoreTests: XCTestCase {
         let value2 = TestModel(x: 3291, y: "Hello therexxx")
         
         // Disable the cloud store
-        await Self.setAvailability(of: store, to: false)
+        try await Self.setAvailability(of: store, to: false)
         
-//        do {
-//            let key = CryoNamedKey(id: "test-123", for: TestModel.self)
-//            try await store.persist(value, for: key)
-//
-//            let loadedValue = try await store.load(with: key)
-//            XCTAssertEqual(value, loadedValue)
-//
-//            try await store.persist(value2, for: CryoNamedKey(id: "test-1234", for: TestModel.self))
-//
-//            let allValues = try await store.loadAll(of: TestModel.self)
-//            XCTAssertNotNil(allValues)
-//            XCTAssertEqual(Set(allValues!), Set([value, value2]))
-//        }
-//        catch {
-//            XCTAssert(false, error.localizedDescription)
-//        }
+        do {
+            try await store.insert(id: "test-123", value, replace: false).execute()
+            try await store.insert(id: "test-1234", value2).execute()
+            
+            let allValues = try await store.select(from: TestModel.self).execute()
+            XCTAssertEqual(allValues.count, 0)
+        }
+        catch {
+            XCTAssert(false, error.localizedDescription)
+        }
     }
     
     func testReenabledMirroring() async throws {
@@ -137,137 +131,170 @@ final class ResilientStoreTests: XCTestCase {
         
         let value = TestModel(x: 123, y: "Hello there")
         let value2 = TestModel(x: 3291, y: "Hello therexxx")
-        let value3 = TestModel2(x: 931.32, y: 141)
-        let value4 = TestModel2(x: 74738.1234, y: 8431)
         
         // Disable the cloud store
-        await Self.setAvailability(of: store, to: false)
+        try await Self.setAvailability(of: store, to: false)
         
         do {
-//            let key = CryoNamedKey(id: "test-123", for: TestModel.self)
-//            try await store.persist(value, for: key)
-//
-//            var loadedValue = try await store.mainAdaptor.load(with: key)
-//            XCTAssertEqual(nil, loadedValue)
-//
-//            let key2 = CryoNamedKey(id: "testModel2_1", for: TestModel2.self)
-//            try await store.persist(value3, for: key2)
-//
-//            // Reenable the store.
-//            try await Self.setAvailability(of: store, to: true)
-//
-//            loadedValue = try await store.mainAdaptor.load(with: key)
-//            XCTAssertEqual(value, loadedValue)
-//
-//            try await store.persist(value2, for: CryoNamedKey(id: "test-1234", for: TestModel.self))
-//
-//            let allValues = try await store.loadAll(of: TestModel.self)
-//            XCTAssertNotNil(allValues)
-//            XCTAssertEqual(Set(allValues!), Set([value, value2]))
-//
-//            let key3 = CryoNamedKey(id: "testModel2_2", for: TestModel2.self)
-//            try await store.persist(value4, for: key3)
-//
-//            let allValues2 = try await store.loadAll(of: TestModel2.self)
-//            XCTAssertNotNil(allValues2)
-//            XCTAssertEqual(Set(allValues2!), Set([value3, value4]))
+            try await store.insert(id: "test-123", value, replace: false).execute()
+            try await store.insert(id: "test-1234", value2).execute()
+            
+            var allValues = try await store.select(from: TestModel.self).execute()
+            XCTAssertEqual(allValues.count, 0)
+            
+            // Reenable store
+            try await Self.setAvailability(of: store, to: true)
+            
+            allValues = try await store.select(from: TestModel.self).execute()
+            XCTAssertNotNil(allValues)
+            XCTAssertEqual(Set(allValues), Set([value, value2]))
         }
         catch {
             XCTAssert(false, error.localizedDescription)
         }
     }
     
-    func testMirroredModifications() async throws {
+    func testUpdatePropagation() async throws {
         let store = try await Self.createResilientStore()
         do {
             let value = TestModel(x: 123, y: "Hello there")
             
             // Save a value
-//            let key = CryoNamedKey(id: "testModel1", for: TestModel.self)
-//            try await store.persist(value, for: key)
-//
-//            // Disable the cloud store
-//            try await Self.setAvailability(of: store, to: false)
-//
-//            // Load & modify the value
-//            var loadedValue = try await store.load(with: key)
-//            XCTAssertEqual(loadedValue, value)
-//
-//            loadedValue!.x = 3847
-//            try await store.persist(loadedValue, for: key)
-//
-//            // Ensure changes are (only) saved locally
-//            loadedValue = try await store.load(with: key)
-//            XCTAssertNotEqual(loadedValue, value)
-//            XCTAssertEqual(loadedValue!.x, 3847)
-//            XCTAssertEqual(loadedValue!.y, value.y)
-//
-//            loadedValue = try await store.mainAdaptor.load(with: key)
-//            XCTAssertEqual(loadedValue, value)
-//
-//            // Reenable the store
-//            try await Self.setAvailability(of: store, to: true)
-//
-//            // Ensure changes are propagated
-//            loadedValue = try await store.load(with: key)
-//            XCTAssertNotEqual(loadedValue, value)
-//            XCTAssertEqual(loadedValue!.x, 3847)
-//            XCTAssertEqual(loadedValue!.y, value.y)
-//
-//            loadedValue = try await store.mainAdaptor.load(with: key)
-//            XCTAssertNotEqual(loadedValue, value)
-//            XCTAssertEqual(loadedValue!.x, 3847)
-//            XCTAssertEqual(loadedValue!.y, value.y)
+            try await store.insert(id: "testModel1", value).execute()
+            
+            // Disable the cloud store
+            try await Self.setAvailability(of: store, to: false)
+            
+            // Modify the value
+            try await store.update(id: "testModel1", from: TestModel.self)
+                .set("x", to: 3847)
+                .execute()
+            
+            // Changes should not be reflected locally
+            var loadedValue = try await store.select(id: "testModel1", from: TestModel.self)
+                .execute().first
+            XCTAssertEqual(loadedValue, value)
+            
+            // Reenable store
+            try await Self.setAvailability(of: store, to: true)
+            
+            // Ensure changes are propagated
+            loadedValue = try await store.select(id: "testModel1", from: TestModel.self)
+                .execute().first
+            XCTAssertEqual(loadedValue?.x, 3847)
+            XCTAssertEqual(loadedValue?.y, value.y)
         }
         catch {
             XCTAssert(false, error.localizedDescription)
         }
     }
     
-    func testMirroredModificationsWithRelaunch() async throws {
-        var store = try await Self.createResilientStore()
+    func testUpdatePropagationWithRelaunch() async throws {
+        let database = MockCloudKitAdaptor()
+        do {
+            let store = try await Self.createResilientStore(database: database)
+            let value = TestModel(x: 123, y: "Hello there")
+            
+            // Save a value
+            try await store.insert(id: "testModel1", value).execute()
+            
+            // Disable the cloud store
+            try await Self.setAvailability(of: store, to: false)
+            
+            // Modify the value
+            try await store.update(id: "testModel1", from: TestModel.self)
+                .set("x", to: 3847)
+                .execute()
+            
+            // Changes should not be reflected locally
+            let loadedValue = try await store.select(id: "testModel1", from: TestModel.self)
+                .execute().first
+            XCTAssertEqual(loadedValue, value)
+        }
+        catch {
+            XCTAssert(false, error.localizedDescription)
+        }
+        
+        do {
+            // Recreate the store
+            let store = try await Self.createResilientStore(database: database, resetState: false)
+            
+            // Ensure changes are propagated
+            let loadedValue = try await store.select(id: "testModel1", from: TestModel.self)
+                .execute().first
+            XCTAssertEqual(loadedValue?.x, 3847)
+        }
+        catch {
+            XCTAssert(false, error.localizedDescription)
+        }
+    }
+    
+    func testDeletePropagation() async throws {
+        let store = try await Self.createResilientStore()
         do {
             let value = TestModel(x: 123, y: "Hello there")
             
             // Save a value
-//            let key = CryoNamedKey(id: "testModel1", for: TestModel.self)
-//            try await store.persist(value, for: key)
-//
-//            // Disable the cloud store
-//            try await Self.setAvailability(of: store, to: false)
-//
-//            // Load & modify the value
-//            var loadedValue = try await store.load(with: key)
-//            XCTAssertEqual(loadedValue, value)
-//
-//            loadedValue!.x = 3847
-//            try await store.persist(loadedValue, for: key)
-//
-//            // Ensure changes are (only) saved locally
-//            loadedValue = try await store.load(with: key)
-//            XCTAssertNotEqual(loadedValue, value)
-//            XCTAssertEqual(loadedValue!.x, 3847)
-//            XCTAssertEqual(loadedValue!.y, value.y)
-//
-//            loadedValue = try await store.mainAdaptor.load(with: key)
-//            XCTAssertEqual(loadedValue, value)
-//
-//            // Reload the store
-//            (store, _) = try await Self.createMirroredStore(resetState: false)
-//
-//            // Reenable the store
-//            try await Self.setAvailability(of: store, to: true)
-//
-//            // Ensure changes are propagated
-//            loadedValue = try await store.load(with: key)
-//            XCTAssertNotEqual(loadedValue, value)
-//            XCTAssertEqual(loadedValue!.x, 3847)
-//            XCTAssertEqual(loadedValue!.y, value.y)
-//
-//            loadedValue = try await store.mainAdaptor.load(with: key)
-//            XCTAssertNotEqual(loadedValue, value)
-//            XCTAssertEqual(loadedValue!.x, 3847)
-//            XCTAssertEqual(loadedValue!.y, value.y)
+            try await store.insert(id: "testModel1", value).execute()
+            
+            // Disable the cloud store
+            try await Self.setAvailability(of: store, to: false)
+            
+            // Delete the value
+            try await store.delete(id: "testModel1", from: TestModel.self)
+                .execute()
+            
+            // Changes should not be reflected locally
+            var loadedValue = try await store.select(id: "testModel1", from: TestModel.self)
+                .execute().first
+            XCTAssertEqual(loadedValue, value)
+            
+            // Reenable store
+            try await Self.setAvailability(of: store, to: true)
+            
+            // Ensure changes are propagated
+            loadedValue = try await store.select(id: "testModel1", from: TestModel.self)
+                .execute().first
+            XCTAssertNil(loadedValue)
+        }
+        catch {
+            XCTAssert(false, error.localizedDescription)
+        }
+    }
+    
+    func testDeletePropagationWithRelaunch() async throws {
+        let database = MockCloudKitAdaptor()
+        do {
+            let store = try await Self.createResilientStore(database: database)
+            let value = TestModel(x: 123, y: "Hello there")
+            
+            // Save a value
+            try await store.insert(id: "testModel1", value).execute()
+            
+            // Disable the cloud store
+            try await Self.setAvailability(of: store, to: false)
+            
+            // Delete the value
+            try await store.delete(id: "testModel1", from: TestModel.self)
+                .execute()
+            
+            // Changes should not be reflected locally
+            let loadedValue = try await store.select(id: "testModel1", from: TestModel.self)
+                .execute().first
+            XCTAssertEqual(loadedValue, value)
+        }
+        catch {
+            XCTAssert(false, error.localizedDescription)
+        }
+        
+        do {
+            // Recreate the store
+            let store = try await Self.createResilientStore(database: database, resetState: false)
+            
+            // Ensure changes are propagated
+            let loadedValue = try await store.select(id: "testModel1", from: TestModel.self)
+                .execute().first
+            XCTAssertNil(loadedValue)
         }
         catch {
             XCTAssert(false, error.localizedDescription)

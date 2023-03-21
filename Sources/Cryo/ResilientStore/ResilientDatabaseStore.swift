@@ -44,8 +44,8 @@ public final class ResilientCloudKitStore {
     let store: ResilientStoreImpl<CloudKitAdaptor>
     
     /// Create a resilient CloudKit store.
-    public init(store: CloudKitAdaptor, config: ResilientCloudKitStoreConfig) async {
-        self.store = await .init(store: store, config: config)
+    public init(store: CloudKitAdaptor, config: ResilientCloudKitStoreConfig) async throws {
+        self.store = try await .init(store: store, config: config)
     }
 }
 
@@ -110,12 +110,12 @@ final class ResilientStoreImpl<Backend: ResilientStoreBackend> {
     @CryoLocalDocument fileprivate var failedOperationsQueue: [QueuedOperation]
     
     /// Create a resilient cloud kit store.
-    public init(store: Backend, config: ResilientCloudKitStoreConfig) async {
+    public init(store: Backend, config: ResilientCloudKitStoreConfig) async throws {
         self.store = store
         self.config = config
-        self._failedOperationsQueue = .init(defaultValue: [], "_crcks_\(config.identifier)", saveOnWrite: true)
+        self._failedOperationsQueue = .init(defaultValue: [], "_crcks_\(config.identifier)", saveOnWrite: false)
         
-        await self.executeFailedOperations()
+        try await self.executeFailedOperations()
     }
 }
 
@@ -140,20 +140,23 @@ extension ResilientStoreImpl {
     }
     
     /// Enqueue a failed operation.
-    func enqueueFailedOperation(_ operation: DatabaseOperation) {
+    func enqueueFailedOperation(_ operation: DatabaseOperation) async throws {
         let queuedOperation = QueuedOperation(id: UUID(), date: .now, operation: operation)
         self.failedOperationsQueue.append(queuedOperation)
+        try await self._failedOperationsQueue.persist()
     }
     
     /// Try to execute the failed operations in the queue.
-    func executeFailedOperations() async {
+    func executeFailedOperations() async throws {
         let queue = failedOperationsQueue.sorted { $0.date < $1.date }
         for operation in queue {
             var operation = operation
             config.cryoConfig.log?(.debug, "retrying \(operation.id)")
             
             let completed = await self.execute(operation: operation.operation, enqueueIfFailed: false)
+            
             self.failedOperationsQueue.removeAll { $0.id == operation.id }
+            try await self._failedOperationsQueue.persist()
             
             guard !completed else {
                 continue
@@ -166,7 +169,9 @@ extension ResilientStoreImpl {
             }
             
             operation.numberOfAttempts += 1
+            
             self.failedOperationsQueue.append(operation)
+            try await self._failedOperationsQueue.persist()
         }
     }
 }
