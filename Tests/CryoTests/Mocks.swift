@@ -301,6 +301,7 @@ final class UntypedMockUpdateQuery {
         return records.count
     }
 }
+
 final class MockDeleteQuery<Model: CryoModel>: CryoDeleteQuery {
     let query: UntypedMockDeleteQuery
     
@@ -607,7 +608,7 @@ extension ResilientStoreImpl where Backend == MockCloudKitAdaptor {
     }
     
     func update<Model: CryoModel>(id: String? = nil, from modelType: Model.Type)
-    async throws -> ResilientUpdateQuery<MockUpdateQuery<Model>>
+        async throws -> ResilientUpdateQuery<MockUpdateQuery<Model>>
     {
         let query = try await store.update(id: id, from: modelType)
         return ResilientUpdateQuery(query: query) {
@@ -617,7 +618,7 @@ extension ResilientStoreImpl where Backend == MockCloudKitAdaptor {
     }
     
     func delete<Model: CryoModel>(id: String? = nil, from modelType: Model.Type)
-    async throws -> ResilientDeleteQuery<MockDeleteQuery<Model>>
+        async throws -> ResilientDeleteQuery<MockDeleteQuery<Model>>
     {
         let query = try await store.delete(id: id, from: modelType)
         return ResilientDeleteQuery(query: query) {
