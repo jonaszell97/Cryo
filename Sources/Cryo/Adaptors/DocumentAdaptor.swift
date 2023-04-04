@@ -19,10 +19,10 @@ import Foundation
 /// ```
 public struct DocumentAdaptor {
     /// The URL documents should be saved to.
-    let url: URL
+    public let url: URL
     
     /// The file manager instance to use.
-    let fileManager: FileManager
+    public let fileManager: FileManager
     
     /// Create a document adaptor.
     ///
