@@ -39,7 +39,7 @@ final class PropertyWrapperTests: XCTestCase {
             XCTAssertEqual(37, myStruct.testValue4)
         }
         
-        try? await Task.sleep(nanoseconds: 1)
+        try? await Task.sleep(nanoseconds: 1000)
         
         do {
             var myStruct = TestStruct()
