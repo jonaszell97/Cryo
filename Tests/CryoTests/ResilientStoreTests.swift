@@ -3,6 +3,7 @@ import XCTest
 @testable import Cryo
 
 fileprivate struct TestModel: CryoModel {
+    @CryoColumn var id: String = UUID().uuidString
     @CryoColumn var x: Int16
     @CryoColumn var y: String
 }
@@ -22,6 +23,7 @@ extension TestModel: Hashable {
 }
 
 fileprivate struct TestModel2: CryoModel {
+    @CryoColumn var id: String = UUID().uuidString
     @CryoColumn var x: Double
     @CryoColumn var y: Int
 }
@@ -76,16 +78,14 @@ final class ResilientStoreTests: XCTestCase {
         
         // Store first value
         do {
-            let key = "test-123"
-            try await store.insert(id: key, value, replace: false).execute()
+            try await store.insert(value, replace: false).execute()
             
-            let loadedValue = try await store.select(id: key, from: TestModel.self).execute().first
+            let loadedValue = try await store.select(id: value.id, from: TestModel.self).execute().first
             XCTAssertEqual(value, loadedValue)
             
-            let key2 = "testModel2"
-            try await store.insert(id: key2, value3, replace: false).execute()
+            try await store.insert(value3, replace: false).execute()
             
-            let loadedValue2 = try await store.select(id: key2, from: TestModel2.self).execute().first
+            let loadedValue2 = try await store.select(id: value3.id, from: TestModel2.self).execute().first
             XCTAssertEqual(value3, loadedValue2)
         }
         catch {
@@ -94,7 +94,7 @@ final class ResilientStoreTests: XCTestCase {
         
         // Store second value
         do {
-            try await store.insert(id: "test-1234", value2).execute()
+            try await store.insert(value2).execute()
             
             let allValues = try await store.select(from: TestModel.self).execute()
             XCTAssertNotNil(allValues)
@@ -115,8 +115,8 @@ final class ResilientStoreTests: XCTestCase {
         try await Self.setAvailability(of: store, to: false)
         
         do {
-            try await store.insert(id: "test-123", value, replace: false).execute()
-            try await store.insert(id: "test-1234", value2).execute()
+            try await store.insert(value, replace: false).execute()
+            try await store.insert(value2).execute()
             
             let allValues = try await store.select(from: TestModel.self).execute()
             XCTAssertEqual(allValues.count, 0)
@@ -136,8 +136,8 @@ final class ResilientStoreTests: XCTestCase {
         try await Self.setAvailability(of: store, to: false)
         
         do {
-            try await store.insert(id: "test-123", value, replace: false).execute()
-            try await store.insert(id: "test-1234", value2).execute()
+            try await store.insert(value, replace: false).execute()
+            try await store.insert(value2).execute()
             
             var allValues = try await store.select(from: TestModel.self).execute()
             XCTAssertEqual(allValues.count, 0)
@@ -160,18 +160,18 @@ final class ResilientStoreTests: XCTestCase {
             let value = TestModel(x: 123, y: "Hello there")
             
             // Save a value
-            try await store.insert(id: "testModel1", value).execute()
+            try await store.insert(value).execute()
             
             // Disable the cloud store
             try await Self.setAvailability(of: store, to: false)
             
             // Modify the value
-            try await store.update(id: "testModel1", from: TestModel.self)
+            try await store.update(id: value.id, from: TestModel.self)
                 .set("x", to: 3847)
                 .execute()
             
             // Changes should not be reflected locally
-            var loadedValue = try await store.select(id: "testModel1", from: TestModel.self)
+            var loadedValue = try await store.select(id: value.id, from: TestModel.self)
                 .execute().first
             XCTAssertEqual(loadedValue, value)
             
@@ -179,7 +179,7 @@ final class ResilientStoreTests: XCTestCase {
             try await Self.setAvailability(of: store, to: true)
             
             // Ensure changes are propagated
-            loadedValue = try await store.select(id: "testModel1", from: TestModel.self)
+            loadedValue = try await store.select(id: value.id, from: TestModel.self)
                 .execute().first
             XCTAssertEqual(loadedValue?.x, 3847)
             XCTAssertEqual(loadedValue?.y, value.y)
@@ -191,23 +191,23 @@ final class ResilientStoreTests: XCTestCase {
     
     func testUpdatePropagationWithRelaunch() async throws {
         let database = MockCloudKitAdaptor()
+        let value = TestModel(x: 123, y: "Hello there")
         do {
             let store = try await Self.createResilientStore(database: database)
-            let value = TestModel(x: 123, y: "Hello there")
             
             // Save a value
-            try await store.insert(id: "testModel1", value).execute()
+            try await store.insert(value).execute()
             
             // Disable the cloud store
             try await Self.setAvailability(of: store, to: false)
             
             // Modify the value
-            try await store.update(id: "testModel1", from: TestModel.self)
+            try await store.update(id: value.id, from: TestModel.self)
                 .set("x", to: 3847)
                 .execute()
             
             // Changes should not be reflected locally
-            let loadedValue = try await store.select(id: "testModel1", from: TestModel.self)
+            let loadedValue = try await store.select(id: value.id, from: TestModel.self)
                 .execute().first
             XCTAssertEqual(loadedValue, value)
         }
@@ -220,7 +220,7 @@ final class ResilientStoreTests: XCTestCase {
             let store = try await Self.createResilientStore(database: database, resetState: false)
             
             // Ensure changes are propagated
-            let loadedValue = try await store.select(id: "testModel1", from: TestModel.self)
+            let loadedValue = try await store.select(id: value.id, from: TestModel.self)
                 .execute().first
             XCTAssertEqual(loadedValue?.x, 3847)
         }
@@ -235,17 +235,17 @@ final class ResilientStoreTests: XCTestCase {
             let value = TestModel(x: 123, y: "Hello there")
             
             // Save a value
-            try await store.insert(id: "testModel1", value).execute()
+            try await store.insert(value).execute()
             
             // Disable the cloud store
             try await Self.setAvailability(of: store, to: false)
             
             // Delete the value
-            try await store.delete(id: "testModel1", from: TestModel.self)
+            try await store.delete(id: value.id, from: TestModel.self)
                 .execute()
             
             // Changes should not be reflected locally
-            var loadedValue = try await store.select(id: "testModel1", from: TestModel.self)
+            var loadedValue = try await store.select(id: value.id, from: TestModel.self)
                 .execute().first
             XCTAssertEqual(loadedValue, value)
             
@@ -253,7 +253,7 @@ final class ResilientStoreTests: XCTestCase {
             try await Self.setAvailability(of: store, to: true)
             
             // Ensure changes are propagated
-            loadedValue = try await store.select(id: "testModel1", from: TestModel.self)
+            loadedValue = try await store.select(id: value.id, from: TestModel.self)
                 .execute().first
             XCTAssertNil(loadedValue)
         }
@@ -264,22 +264,22 @@ final class ResilientStoreTests: XCTestCase {
     
     func testDeletePropagationWithRelaunch() async throws {
         let database = MockCloudKitAdaptor()
+        let value = TestModel(x: 123, y: "Hello there")
         do {
             let store = try await Self.createResilientStore(database: database)
-            let value = TestModel(x: 123, y: "Hello there")
             
             // Save a value
-            try await store.insert(id: "testModel1", value).execute()
+            try await store.insert(value).execute()
             
             // Disable the cloud store
             try await Self.setAvailability(of: store, to: false)
             
             // Delete the value
-            try await store.delete(id: "testModel1", from: TestModel.self)
+            try await store.delete(id: value.id, from: TestModel.self)
                 .execute()
             
             // Changes should not be reflected locally
-            let loadedValue = try await store.select(id: "testModel1", from: TestModel.self)
+            let loadedValue = try await store.select(id: value.id, from: TestModel.self)
                 .execute().first
             XCTAssertEqual(loadedValue, value)
         }
@@ -292,7 +292,7 @@ final class ResilientStoreTests: XCTestCase {
             let store = try await Self.createResilientStore(database: database, resetState: false)
             
             // Ensure changes are propagated
-            let loadedValue = try await store.select(id: "testModel1", from: TestModel.self)
+            let loadedValue = try await store.select(id: value.id, from: TestModel.self)
                 .execute().first
             XCTAssertNil(loadedValue)
         }

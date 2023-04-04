@@ -8,6 +8,7 @@ fileprivate enum TestEnum: Int, CryoColumnIntValue, Hashable {
 }
 
 fileprivate struct TestModel: CryoModel {
+    @CryoColumn var id: String = UUID().uuidString
     @CryoColumn var x: Int16 = 0
     @CryoColumn var y: String = ""
     @CryoColumn var z: TestEnum = .c
@@ -73,16 +74,15 @@ final class CryoDatabaseTests: XCTestCase {
         let value = TestModel(x: 123, y: "Hello there", z: .a, w: assetUrl)
         let value2 = TestModel(x: 3291, y: "Hello therexxx", z: .c, w: assetUrl)
         
-        XCTAssertEqual(TestModel.schema.columns.map { $0.columnName }, ["x", "y", "z", "w", "a", "b", "c"])
+        XCTAssertEqual(TestModel.schema.columns.map { $0.columnName }, ["id", "x", "y", "z", "w", "a", "b", "c"])
         
         do {
-            let key = "test-123"
-            _ = try await adaptor.insert(id: key, value).execute()
+            _ = try await adaptor.insert(value).execute()
             
-            let loadedValue = try await adaptor.select(id: key, from: TestModel.self).execute().first
+            let loadedValue = try await adaptor.select(id: value.id, from: TestModel.self).execute().first
             XCTAssertEqual(value, loadedValue)
             
-            _ = try await adaptor.insert(id: "test-1234", value2).execute()
+            _ = try await adaptor.insert(value2).execute()
             
             let allValues = try await adaptor.select(from: TestModel.self).execute()
             XCTAssertNotNil(allValues)

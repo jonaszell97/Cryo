@@ -484,10 +484,8 @@ extension MockCloudKitAdaptor: CryoDatabaseAdaptor {
         MockSelectQuery(id: id, allRecords: self.allRecords(tableName: Model.tableName))
     }
     
-    public func insert<Model: CryoModel>(id: String = UUID().uuidString,
-                                         _ value: Model,
-                                         replace: Bool = true) async throws -> MockInsertQuery<Model> {
-        MockInsertQuery(id: id, value: value, isAvailable: self.isAvailable,
+    public func insert<Model: CryoModel>(_ value: Model, replace: Bool = true) async throws -> MockInsertQuery<Model> {
+        MockInsertQuery(id: value.id, value: value, isAvailable: self.isAvailable,
                         updateHooks: { try await self.runUpdateHooks(tableName: Model.tableName) }) { id, record in
             self.insertRecord(id: id, record: record, tableName: Model.tableName)
         }
@@ -600,7 +598,7 @@ extension ResilientStoreImpl where Backend == MockCloudKitAdaptor {
     func insert<Model: CryoModel>(id: String = UUID().uuidString,
                                   _ value: Model,
                                   replace: Bool = true) async throws -> ResilientInsertQuery<MockInsertQuery<Model>> {
-        let query = try await store.insert(id: id, value, replace: replace)
+        let query = try await store.insert(value, replace: replace)
         return ResilientInsertQuery(query: query) {
             try await self.enqueueFailedOperation(query.operation)
             return false

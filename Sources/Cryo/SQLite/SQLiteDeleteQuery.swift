@@ -86,7 +86,7 @@ internal class UntypedSQLiteDeleteQuery {
             }
             
             if hasId {
-                result += "_cryo_key = ?"
+                result += "id = ?"
             }
             
             for i in 0..<whereClauses.count {

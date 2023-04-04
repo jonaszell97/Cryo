@@ -48,7 +48,7 @@ public protocol CryoDatabaseAdaptor {
     #if false
     
     /// Create an INSERT query.
-    func insert<Model: CryoModel>(id: String, _ value: Model, replace: Bool) async throws -> any CryoInsertQuery<Model>
+    func insert<Model: CryoModel>(_ value: Model, replace: Bool) async throws -> any CryoInsertQuery<Model>
     
     /// Create an UPDATE query.
     func update<Model: CryoModel>(id: String?, from: Model.Type) async throws -> any CryoUpdateQuery<Model>

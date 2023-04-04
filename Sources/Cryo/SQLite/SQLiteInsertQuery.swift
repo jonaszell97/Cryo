@@ -78,8 +78,8 @@ internal class UntypedSQLiteInsertQuery {
             let columns: [String] = schema.columns.map { $0.columnName }
             
             let result = """
-INSERT \(replace ? "OR REPLACE " : "")INTO \(modelType.tableName)(_cryo_key,_cryo_created,_cryo_modified,\(columns.joined(separator: ",")))
-    VALUES (?,?,?,\(columns.map { _ in "?" }.joined(separator: ",")));
+INSERT \(replace ? "OR REPLACE " : "")INTO \(modelType.tableName)(_cryo_created,_cryo_modified,\(columns.joined(separator: ",")))
+    VALUES (?,?,\(columns.map { _ in "?" }.joined(separator: ",")));
 """
             
             self.completeQueryString = result
@@ -110,7 +110,7 @@ extension UntypedSQLiteInsertQuery {
         
         let schema = await CryoSchemaManager.shared.schema(for: type(of: value))
         
-        var bindings: [CryoQueryValue] = [.string(value: id), .date(value: created), .date(value: created)]
+        var bindings: [CryoQueryValue] = [.date(value: created), .date(value: created)]
         bindings.append(contentsOf: try schema.columns.map { try .init(value: $0.getValue(value)) })
         
         for i in 0..<bindings.count {
@@ -139,7 +139,7 @@ extension UntypedSQLiteInsertQuery {
             if executeStatus == SQLITE_CONSTRAINT {
                 if let errorPointer = sqlite3_errmsg(connection) {
                     let message = String(cString: errorPointer)
-                    if message.contains("UNIQUE") && message.contains("_cryo_key") {
+                    if message.contains("UNIQUE") && message.contains("id") {
                         throw CryoError.duplicateId(id: self.id)
                     }
                 }

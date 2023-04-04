@@ -2,11 +2,12 @@ import XCTest
 @testable import Cryo
 
 fileprivate struct TestModel: CryoModel {
+    @CryoColumn var id: String = UUID().uuidString
     @CryoColumn var x: Int16 = 0
     @CryoColumn var y: String = ""
     
-    static func random() -> Self {
-        .init(x: .random(in: Int16.min...Int16.max), y: String((0..<10).map { _ in
+    static func random(id: String = UUID().uuidString) -> Self {
+        .init(id: id, x: .random(in: Int16.min...Int16.max), y: String((0..<10).map { _ in
             "abcdefghijklmnopqrstuvwxyz0123456789".randomElement()!
         }))
     }
@@ -43,17 +44,16 @@ final class SynchronizedStoreTests: XCTestCase {
     }
     
     private func persistAndLoadTest(_ value: TestModel, to store: StoreType) async throws {
-        let id = UUID().uuidString
-        try await store.insert(id: id, value).execute()
+        try await store.insert(value).execute()
         
-        var loadedValue = try await store.select(id: id, from: TestModel.self).execute()
+        var loadedValue = try await store.select(id: value.id, from: TestModel.self).execute()
         XCTAssertEqual(loadedValue.first, value)
         
         try await store.delete(from: TestModel.self)
             .where("x", equals: value.x)
             .execute()
         
-        loadedValue = try await store.select(id: id, from: TestModel.self).execute()
+        loadedValue = try await store.select(id: value.id, from: TestModel.self).execute()
         XCTAssertEqual(loadedValue.count, 0)
     }
     
@@ -80,10 +80,10 @@ final class SynchronizedStoreTests: XCTestCase {
         // Create records on one device
         for i in 0..<100 {
             let id = "\(i)"
-            let model = TestModel.random()
+            let model = TestModel.random(id: id)
             values.append(model)
             
-            try await phoneStore.insert(id: id, model)
+            try await phoneStore.insert(model)
                 .execute()
         }
         
@@ -107,10 +107,10 @@ final class SynchronizedStoreTests: XCTestCase {
         // Create records on one device
         for i in 0..<10 {
             let id = "\(i)"
-            let model = TestModel.random()
+            let model = TestModel.random(id: id)
             values.append(model)
             
-            try await phoneStore.insert(id: id, model)
+            try await phoneStore.insert(model)
                 .execute()
         }
         
@@ -141,10 +141,10 @@ final class SynchronizedStoreTests: XCTestCase {
         // Create records on one device
         for i in 0..<10 {
             let id = "\(i)"
-            let model = TestModel.random()
+            let model = TestModel.random(id: id)
             values.append(model)
             
-            try await phoneStore.insert(id: id, model)
+            try await phoneStore.insert(model)
                 .execute()
         }
         
@@ -179,10 +179,10 @@ final class SynchronizedStoreTests: XCTestCase {
         // Create records on one device
         for i in 0..<10 {
             let id = "\(i)"
-            let model = TestModel.random()
+            let model = TestModel.random(id: id)
             values.append(model)
             
-            try await phoneStore.insert(id: id, model)
+            try await phoneStore.insert(model)
                 .execute()
         }
         

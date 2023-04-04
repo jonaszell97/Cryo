@@ -62,12 +62,19 @@ internal class UntypedSQLiteCreateTableQuery {
             var columns = ""
             
             for columnDetails in schema.columns {
-                columns += ",\n    \(columnDetails.columnName) \(SQLiteAdaptor.sqliteTypeName(for: columnDetails.type))"
+                let specifiers: String
+                if columnDetails.columnName == "id" {
+                    specifiers = " NOT NULL UNIQUE"
+                }
+                else {
+                    specifiers = ""
+                }
+                
+                columns += ",\n    \(columnDetails.columnName) \(SQLiteAdaptor.sqliteTypeName(for: columnDetails.type))\(specifiers)"
             }
             
             let result = """
 CREATE TABLE IF NOT EXISTS \(modelType.tableName)(
-    _cryo_key TEXT NOT NULL UNIQUE,
     _cryo_created TEXT NOT NULL,
     _cryo_modified TEXT NOT NULL\(columns)
 );

@@ -7,6 +7,9 @@ import Foundation
 internal struct SyncOperation: CryoModel {
     static var tableName: String { "CryoSyncOperation" }
     
+    /// The ID of this operation.
+    @CryoColumn var id: String
+    
     /// The ID of the store this operation was created by.
     @CryoColumn var storeIdentifier: String
     
@@ -27,7 +30,8 @@ internal struct SyncOperation: CryoModel {
     }
     
     /// Create a sync operation.
-    init(storeIdentifier: String, deviceIdentifier: String, date: Date, operation: DatabaseOperation) throws {
+    init(id: String = UUID().uuidString, storeIdentifier: String, deviceIdentifier: String, date: Date, operation: DatabaseOperation) throws {
+        self.id = id
         self.storeIdentifier = storeIdentifier
         self.deviceIdentifier = deviceIdentifier
         self.date = date
@@ -253,10 +257,10 @@ extension SynchronizedStoreImpl: CryoDatabaseAdaptor {
         try await localStore.select(id: id, from: model)
     }
     
-    internal func insert<Model: CryoModel>(id: String = UUID().uuidString, _ value: Model, replace: Bool = true)
+    internal func insert<Model: CryoModel>(_ value: Model, replace: Bool = true)
         async throws -> SynchronizedInsertQuery<SQLiteInsertQuery<Model>>
     {
-        let query = try await localStore.insert(id: id, value, replace: replace)
+        let query = try await localStore.insert(value, replace: replace)
         return .init(query: query) {
             try await self.didExecute(query)
         }

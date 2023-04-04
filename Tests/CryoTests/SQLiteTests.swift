@@ -8,12 +8,13 @@ fileprivate enum TestEnum: Int, CryoColumnIntValue, Hashable, CaseIterable {
 }
 
 fileprivate struct TestModel: CryoModel {
+    @CryoColumn var id: String = UUID().uuidString
     @CryoColumn var x: Int16 = 0
     @CryoColumn var y: String = ""
     @CryoColumn var z: TestEnum = .c
     
-    static func random() -> Self {
-        .init(x: .random(in: Int16.min...Int16.max), y: String((0..<10).map { _ in
+    static func random(id: String = UUID().uuidString) -> Self {
+        .init(id: id, x: .random(in: Int16.min...Int16.max), y: String((0..<10).map { _ in
             "abcdefghijklmnopqrstuvwxyz0123456789".randomElement()!
         }), z: .allCases.randomElement()!)
     }
@@ -21,10 +22,11 @@ fileprivate struct TestModel: CryoModel {
 
 extension TestModel: Hashable {
     static func ==(lhs: TestModel, rhs: TestModel) -> Bool {
-        lhs.x == rhs.x && lhs.y == rhs.y && lhs.z == rhs.z
+        lhs.id == rhs.id && lhs.x == rhs.x && lhs.y == rhs.y && lhs.z == rhs.z
     }
     
     func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
         hasher.combine(x)
         hasher.combine(y)
         hasher.combine(z)
@@ -57,38 +59,35 @@ final class CryoSQLiteTests: XCTestCase {
         
         XCTAssertEqual(query, """
 CREATE TABLE IF NOT EXISTS TestModel(
-    _cryo_key TEXT NOT NULL UNIQUE,
     _cryo_created TEXT NOT NULL,
     _cryo_modified TEXT NOT NULL,
+    id TEXT NOT NULL UNIQUE,
     x INTEGER,
-    y REAL,
+    y TEXT,
     z INTEGER
 );
 """);
     }
     
     private func persistAndLoadTest(_ value: TestModel, to store: SQLiteAdaptor) async throws {
-        let id = UUID().uuidString
-        try await store.insert(id: id, value).execute()
+        try await store.insert(value).execute()
         
-        var loadedValue = try await store.select(id: id, from: TestModel.self).execute()
+        var loadedValue = try await store.select(id: value.id, from: TestModel.self).execute()
         XCTAssertEqual(loadedValue.first, value)
         
         try await store.delete(from: TestModel.self)
             .where("x", equals: value.x)
             .execute()
         
-        loadedValue = try await store.select(id: id, from: TestModel.self).execute()
+        loadedValue = try await store.select(id: value.id, from: TestModel.self).execute()
         XCTAssertEqual(loadedValue.count, 0)
     }
     
     private func persistAndLoadOperationTest(_ value: TestModel, to store: SQLiteAdaptor) async throws {
-        let id = UUID().uuidString
-        
-        let operation = try await store.insert(id: id, value).operation
+        let operation = try await store.insert(value).operation
         try await store.execute(operation: operation)
         
-        var loadedValue = try await store.select(id: id, from: TestModel.self).execute()
+        var loadedValue = try await store.select(id: value.id, from: TestModel.self).execute()
         XCTAssertEqual(loadedValue.first, value)
         
         let deleteOperation = try await store.delete(from: TestModel.self)
@@ -96,7 +95,7 @@ CREATE TABLE IF NOT EXISTS TestModel(
             .operation
         try await store.execute(operation: deleteOperation)
         
-        loadedValue = try await store.select(id: id, from: TestModel.self).execute()
+        loadedValue = try await store.select(id: value.id, from: TestModel.self).execute()
         XCTAssertEqual(loadedValue.count, 0)
     }
     
@@ -107,22 +106,21 @@ CREATE TABLE IF NOT EXISTS TestModel(
         let value = TestModel(x: 123, y: "Hello there", z: .a)
         let value2 = TestModel(x: 3291, y: "Hello therexxx", z: .c)
         
-        XCTAssertEqual(TestModel.schema.columns.map { $0.columnName }, ["x", "y", "z"])
+        XCTAssertEqual(TestModel.schema.columns.map { $0.columnName }, ["id", "x", "y", "z"])
         
         do {
-            let key = "test-123"
-            _ = try await adaptor.insert(id: key, value).execute()
+            _ = try await adaptor.insert(value).execute()
             
-            let loadedValue = try await adaptor.select(id: key, from: TestModel.self).execute().first
+            let loadedValue = try await adaptor.select(id: value.id, from: TestModel.self).execute().first
             XCTAssertEqual(value, loadedValue)
             
-            _ = try await adaptor.insert(id: "test-1234", value2).execute()
+            _ = try await adaptor.insert(value2).execute()
             
             let allValues = try await adaptor.select(from: TestModel.self).execute()
             XCTAssertNotNil(allValues)
             XCTAssertEqual(Set(allValues), Set([value, value2]))
             
-            _ = try await adaptor.delete(id: "test-1234", from: TestModel.self).execute()
+            _ = try await adaptor.delete(id: value2.id, from: TestModel.self).execute()
             let count = try await adaptor.select(from: TestModel.self).execute().count
             XCTAssertEqual(count, 1)
             
@@ -149,7 +147,7 @@ CREATE TABLE IF NOT EXISTS TestModel(
         do {
             let value = TestModel(x: 123, y: "Hello there", z: .a)
 
-            let inserted = try await adaptor.insert(id: "test-123", value).execute()
+            let inserted = try await adaptor.insert(value).execute()
             XCTAssertEqual(inserted, true)
 
             let result0 = try await adaptor
@@ -193,11 +191,11 @@ CREATE TABLE IF NOT EXISTS TestModel(
         do {
             let value = TestModel(x: 123, y: "Hello there", z: .a)
             
-            let inserted = try await adaptor.insert(id: "test-123", value, replace: true).execute()
+            let inserted = try await adaptor.insert(value, replace: true).execute()
             XCTAssertEqual(inserted, true)
 
             do {
-                _ = try await adaptor.insert(id: "test-123", value, replace: false).execute()
+                _ = try await adaptor.insert(value, replace: false).execute()
                 XCTFail("should not be reached")
             }
             catch let e as CryoError {
@@ -224,10 +222,10 @@ CREATE TABLE IF NOT EXISTS TestModel(
         
         for i in 0..<100 {
             let id = "id\(i)"
-            let model = TestModel.random()
+            let model = TestModel.random(id: id)
             models.append(model)
             
-            _ = try await adaptor.insert(id: id, model).execute()
+            _ = try await adaptor.insert(model).execute()
         }
         
         let idsToDelete = Set((0..<10).map { _ in (0..<100).randomElement()! })

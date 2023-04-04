@@ -40,6 +40,9 @@ public protocol CryoModel: Codable {
     ///
     /// By default, the type name is used as the table name.
     static var tableName: String { get }
+    
+    /// The ID of this model.
+    var id: String { get }
 }
 
 extension CryoModel {
@@ -196,6 +199,7 @@ internal extension CryoModel {
         // Create an empty instance and find columns from it
         let emptyInstance = try! Self(from: EmptyDecoder())
         let mirror = Mirror(reflecting: emptyInstance)
+        var foundId = false
         
         for child in mirror.children {
             guard
@@ -209,6 +213,8 @@ internal extension CryoModel {
             guard !name.isEmpty else {
                 continue
             }
+            
+            foundId = foundId || label == "_id"
             
             let childMirror = Mirror(reflecting: child.value)
             let wrappedValue = childMirror.children.first {
@@ -251,6 +257,10 @@ internal extension CryoModel {
             }
             
             schema.columns.append(.init(columnName: name, type: columnType, getValue: extractValue))
+        }
+        
+        guard foundId else {
+            fatalError("CryoModel must contain property `@CryoColumn var id: String`")
         }
         
         return schema

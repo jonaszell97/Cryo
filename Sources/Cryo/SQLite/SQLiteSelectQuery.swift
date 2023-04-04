@@ -98,7 +98,7 @@ extension SQLiteSelectQuery {
 
 extension SQLiteSelectQuery: CryoSelectQuery {
     public var id: String? {
-        guard let value = (whereClauses.first { $0.columnName == "_cryo_key" }?.value) else {
+        guard let value = (whereClauses.first { $0.columnName == "id" }?.value) else {
             return nil
         }
         guard case .string(let id) = value else {

@@ -80,10 +80,9 @@ extension ResilientCloudKitStore {
         try await store.select(id: id, from: model)
     }
     
-    func insert<Model: CryoModel>(id: String = UUID().uuidString,
-                                  _ value: Model,
+    func insert<Model: CryoModel>(_ value: Model,
                                   replace: Bool = true) async throws -> ResilientInsertQuery<CloudKitInsertQuery<Model>> {
-        try await store.insert(id: id, value, replace: replace)
+        try await store.insert(value, replace: replace)
     }
     
     func update<Model: CryoModel>(id: String? = nil, from modelType: Model.Type)
@@ -185,10 +184,9 @@ extension ResilientStoreImpl where Backend == CloudKitAdaptor {
         try await store.select(id: id, from: model)
     }
     
-    func insert<Model: CryoModel>(id: String = UUID().uuidString,
-                                  _ value: Model,
+    func insert<Model: CryoModel>(_ value: Model,
                                   replace: Bool = true) async throws -> ResilientInsertQuery<CloudKitInsertQuery<Model>> {
-        let query = try await store.insert(id: id, value, replace: replace)
+        let query = try await store.insert(value, replace: replace)
         return ResilientInsertQuery(query: query) {
             try await self.enqueueFailedOperation(query.operation)
             return false

@@ -80,16 +80,14 @@ extension SQLiteAdaptor: CryoDatabaseAdaptor {
     public func select<Model: CryoModel>(id: String? = nil, from: Model.Type) async throws -> any CryoSelectQuery<Model> {
         var query: SQLiteSelectQuery<Model> = try SQLiteSelectQuery(connection: db.connection, config: config)
         if let id {
-            query = try await query.where("_cryo_key", operation: .equals, value: id)
+            query = try await query.where("id", operation: .equals, value: id)
         }
         
         return query
     }
     
-    public func insert<Model: CryoModel>(id: String = UUID().uuidString,
-                                         _ value: Model,
-                                         replace: Bool = true) async throws -> SQLiteInsertQuery<Model> {
-        try SQLiteInsertQuery(id: id, value: value, replace: replace, connection: db.connection, config: config)
+    public func insert<Model: CryoModel>(_ value: Model, replace: Bool = true) async throws -> SQLiteInsertQuery<Model> {
+        try SQLiteInsertQuery(id: value.id, value: value, replace: replace, connection: db.connection, config: config)
     }
     
     public func update<Model: CryoModel>(id: String? = nil, from modelType: Model.Type) async throws -> SQLiteUpdateQuery<Model> {
@@ -275,11 +273,11 @@ extension SQLiteAdaptor {
         case .integer:
             return "INTEGER"
         case .double:
-            return "DOUBLE"
+            return "NUMERIC"
         case .text:
-            return "REAL"
+            return "TEXT"
         case .date:
-            return "STRING"
+            return "TEXT"
         case .bool:
             return "INTEGER"
         case .data:
