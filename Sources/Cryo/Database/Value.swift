@@ -212,6 +212,14 @@ extension URL: CryoColumnStringValue {
     public init (stringValue: String) { self.init(string: stringValue)! }
 }
 
+extension Decimal: CryoColumnStringValue {
+    /// The string value of this instance.
+    public var stringValue: String { self.description }
+    
+    /// Initialize from a string value.
+    public init (stringValue: String) { self.init(string: stringValue)! }
+}
+
 extension RawRepresentable where RawValue: CryoColumnStringValue {
     /// The string value of this instance.
     public var stringValue: String { self.rawValue.stringValue }
