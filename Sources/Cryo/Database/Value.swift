@@ -217,15 +217,23 @@ extension Decimal: CryoColumnStringValue {
     public var stringValue: String { self.description }
     
     /// Initialize from a string value.
-    public init (stringValue: String) { self.init(string: stringValue)! }
+    public init (stringValue: String) { self = Decimal(string: stringValue) ?? 0 }
 }
 
-extension RawRepresentable where RawValue: CryoColumnStringValue {
+extension UUID: CryoColumnStringValue {
+    /// The string value of this instance.
+    public var stringValue: String { self.uuidString }
+    
+    /// Initialize from a string value.
+    public init (stringValue: String) { self = .init(uuidString: stringValue) ?? UUID(uuidString: "00000000-0000-0000-0000-000000000000")! }
+}
+
+extension RawRepresentable where RawValue: CryoColumnStringValue, Self: CaseIterable {
     /// The string value of this instance.
     public var stringValue: String { self.rawValue.stringValue }
     
     /// Initialize from a string value.
-    public init (stringValue: String) { self = Self(rawValue: .init(stringValue: stringValue))! }
+    public init (stringValue: String) { self = Self(rawValue: .init(stringValue: stringValue)) ?? .allCases.first! }
 }
 
 extension Data: CryoColumnDataValue {
