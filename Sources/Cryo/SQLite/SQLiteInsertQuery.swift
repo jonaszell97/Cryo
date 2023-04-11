@@ -86,6 +86,22 @@ INSERT \(replace ? "OR REPLACE " : "")INTO \(modelType.tableName)(_cryo_created,
             return result
         }
     }
+    
+    fileprivate var logQueryString: String {
+        get async {
+            let modelType = type(of: value)
+            let schema = await CryoSchemaManager.shared.schema(for: modelType)
+            let columns: [String] = schema.columns.map { $0.columnName }
+            
+            let result = """
+INSERT \(replace ? "OR REPLACE " : "")INTO \(modelType.tableName)(_cryo_created,_cryo_modified,\(columns.joined(separator: ",")))
+    VALUES (?,?,\(columns.map { "\($0)" }.joined(separator: ",")));
+"""
+            
+            self.completeQueryString = result
+            return result
+        }
+    }
 }
 
 extension UntypedSQLiteInsertQuery {
@@ -117,6 +133,10 @@ extension UntypedSQLiteInsertQuery {
             SQLiteAdaptor.bind(queryStatement, value: bindings[i], index: Int32(i + 1))
         }
         
+        #if DEBUG
+        config?.log?(.debug, "[SQLite3Connection] query \(queryString), bindings \(bindings.map { "\($0)" }.joined(separator: ", "))")
+        #endif
+        
         self.queryStatement = queryStatement
         return queryStatement
     }
@@ -129,10 +149,6 @@ extension UntypedSQLiteInsertQuery {
             sqlite3_finalize(queryStatement)
         }
         
-        #if DEBUG
-        config?.log?(.debug, "[SQLite3Connection] query \(await queryString)")
-        #endif
-        
         let executeStatus = sqlite3_step(queryStatement)
         guard executeStatus == SQLITE_DONE else {
             // Check if UNIQUE constraint failed
@@ -141,6 +157,10 @@ extension UntypedSQLiteInsertQuery {
                     let message = String(cString: errorPointer)
                     if message.contains("UNIQUE") && message.contains("id") {
                         throw CryoError.duplicateId(id: self.id)
+                    }
+                    if message.contains("FOREIGN") {
+                        throw CryoError.foreignKeyConstraintFailed(tableName: type(of: value).tableName,
+                                                                   message: message)
                     }
                 }
             }

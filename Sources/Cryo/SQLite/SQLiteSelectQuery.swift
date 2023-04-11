@@ -3,8 +3,46 @@ import Foundation
 import SQLite3
 
 public final class SQLiteSelectQuery<Model: CryoModel> {
+    /// The untyped query.
+    let untypedQuery: UntypedSQLiteSelectQuery
+    
+    /// Create a SELECT query.
+    internal init(columns: [String]? = nil, connection: OpaquePointer, config: CryoConfig?) throws {
+        self.untypedQuery = try .init(columns: columns, modelType: Model.self, connection: connection, config: config)
+    }
+}
+
+extension SQLiteSelectQuery: CryoSelectQuery {
+    public var id: String? { untypedQuery.id }
+    public var whereClauses: [CryoQueryWhereClause] { untypedQuery.whereClauses }
+    
+    public var queryString: String {
+        get async {
+            await untypedQuery.queryString
+        }
+    }
+    
+    @discardableResult public func execute() async throws -> [Model] {
+        try await untypedQuery.execute() as! [Model]
+    }
+    
+    
+    public func `where`<Value: _AnyCryoColumnValue>(
+        _ columnName: String,
+        operation: CryoComparisonOperator,
+        value: Value
+    ) async throws -> Self {
+        _ = try await untypedQuery.where(columnName, operation: operation, value: value)
+        return self
+    }
+}
+
+internal class UntypedSQLiteSelectQuery {
     /// The columns to select.
     let columns: [String]?
+    
+    /// The model type.
+    let modelType: any CryoModel.Type
     
     /// The where clauses.
     public private(set) var whereClauses: [CryoQueryWhereClause]
@@ -23,8 +61,9 @@ public final class SQLiteSelectQuery<Model: CryoModel> {
     #endif
     
     /// Create a SELECT query.
-    internal init(columns: [String]? = nil, connection: OpaquePointer, config: CryoConfig?) throws {
+    internal init(columns: [String]? = nil, modelType: any CryoModel.Type, connection: OpaquePointer, config: CryoConfig?) throws {
         self.connection = connection
+        self.modelType = modelType
         self.columns = columns
         self.whereClauses = []
         
@@ -45,11 +84,11 @@ public final class SQLiteSelectQuery<Model: CryoModel> {
                 columnsString = columns.joined(separator: ",")
             }
             else {
-                let schema = await CryoSchemaManager.shared.schema(for: Model.self)
+                let schema = await CryoSchemaManager.shared.schema(for: modelType)
                 columnsString = schema.columns.map { $0.columnName }.joined(separator: ",")
             }
             
-            var result = "SELECT \(columnsString) FROM \(Model.tableName)"
+            var result = "SELECT \(columnsString) FROM \(modelType.tableName)"
             for i in 0..<whereClauses.count {
                 if i == 0 {
                     result += " WHERE "
@@ -67,7 +106,7 @@ public final class SQLiteSelectQuery<Model: CryoModel> {
     }
 }
 
-extension SQLiteSelectQuery {
+extension UntypedSQLiteSelectQuery {
     /// Get the compiled query statement.
     func compiledQuery() async throws -> OpaquePointer {
         if let queryStatement {
@@ -94,9 +133,31 @@ extension SQLiteSelectQuery {
         self.queryStatement = queryStatement
         return queryStatement
     }
+    
+    /// Get a result value from the given query.
+    func columnValue(_ queryStatement: OpaquePointer, connection: OpaquePointer,
+                     column: CryoSchemaColumn, index: Int32) async throws -> _AnyCryoColumnValue? {
+        switch column {
+        case .value(let columnName, let type, _):
+            return try SQLiteAdaptor.columnValue(queryStatement,
+                                                 connection: connection,
+                                                 columnName: columnName,
+                                                 type: type,
+                                                 index: index)
+        case .oneToOneRelation(let columnName, let modelType, _):
+            let id = try SQLiteAdaptor.columnValue(queryStatement,
+                                                   connection: connection,
+                                                   columnName: columnName,
+                                                   type: .text,
+                                                   index: index) as! String
+            return try await UntypedSQLiteSelectQuery(modelType: modelType, connection: connection, config: config)
+                .where("id", operation: .equals, value: id)
+                .execute().first
+        }
+    }
 }
 
-extension SQLiteSelectQuery: CryoSelectQuery {
+extension UntypedSQLiteSelectQuery {
     public var id: String? {
         guard let value = (whereClauses.first { $0.columnName == "id" }?.value) else {
             return nil
@@ -108,7 +169,7 @@ extension SQLiteSelectQuery: CryoSelectQuery {
         return id
     }
     
-    public func execute() async throws -> [Model] {
+    public func execute() async throws -> [any CryoModel] {
         let queryStatement = try await self.compiledQuery()
         defer {
             sqlite3_finalize(queryStatement)
@@ -118,7 +179,7 @@ extension SQLiteSelectQuery: CryoSelectQuery {
         config?.log?(.debug, "[SQLite3Connection] query \(await queryString), bindings \(whereClauses.map { "\($0.value)" })")
         #endif
         
-        let schema = await CryoSchemaManager.shared.schema(for: Model.self)
+        let schema = await CryoSchemaManager.shared.schema(for: modelType)
         
         var executeStatus = sqlite3_step(queryStatement)
         var rows = [[any _AnyCryoColumnValue]]()
@@ -127,13 +188,12 @@ extension SQLiteSelectQuery: CryoSelectQuery {
             var row = [any _AnyCryoColumnValue]()
             
             for i in 0..<schema.columns.count {
-                let value = try SQLiteAdaptor.columnValue(queryStatement,
-                                                          connection: connection,
-                                                          columnName: schema.columns[i].columnName,
-                                                          type: schema.columns[i].type,
-                                                          index: Int32(i))
+                let value = try await self.columnValue(queryStatement,
+                                                       connection: connection,
+                                                       column: schema.columns[i],
+                                                       index: Int32(i))
                 
-                row.append(value)
+                row.append(value!)
             }
             
             rows.append(row)
@@ -151,14 +211,14 @@ extension SQLiteSelectQuery: CryoSelectQuery {
                                                  message: message)
         }
         
-        var values = [Model]()
+        var values = [any CryoModel]()
         for row in rows {
             var data = [String: _AnyCryoColumnValue]()
             for i in 0..<schema.columns.count {
                 data[schema.columns[i].columnName] = row[i]
             }
             
-            values.append(try .init(from: CryoModelDecoder(data: data)))
+            values.append(try schema.create(data))
         }
         
         return values
@@ -179,6 +239,4 @@ extension SQLiteSelectQuery: CryoSelectQuery {
                                        value: try .init(value: value)))
         return self
     }
-    
-    public typealias Result = [Model]
 }

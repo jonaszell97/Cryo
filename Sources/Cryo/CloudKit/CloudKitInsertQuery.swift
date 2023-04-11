@@ -85,7 +85,7 @@ extension UntypedCloudKitInsertQuery {
         
         for columnDetails in schema.columns {
             record[columnDetails.columnName] = try CloudKitAdaptor.nsObject(from: columnDetails.getValue(value),
-                                                                            valueType: columnDetails.type)
+                                                                            column: columnDetails)
         }
         
         return try await withCheckedThrowingContinuation { continuation in

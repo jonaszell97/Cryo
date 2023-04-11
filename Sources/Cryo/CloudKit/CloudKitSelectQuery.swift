@@ -170,6 +170,17 @@ extension UntypedCloudKitSelectQuery {
         
         return data
     }
+    
+    func decodeValue(from value: __CKRecordObjCValue, column: CryoSchemaColumn) async throws -> _AnyCryoColumnValue? {
+        switch column {
+        case .value(_, let type, _):
+            return CloudKitAdaptor.decodeValue(from: value, as: type)
+        case .oneToOneRelation(_, let modelType, _):
+            let id = (value as! NSString) as String
+            return try await UntypedCloudKitSelectQuery(for: modelType, id: id, database: database, config: config)
+                .execute().first
+        }
+    }
 }
 
 extension UntypedCloudKitSelectQuery {
@@ -183,7 +194,7 @@ extension UntypedCloudKitSelectQuery {
             for columnDetails in schema.columns {
                 guard
                     let object = record[columnDetails.columnName],
-                    let value = CloudKitAdaptor.decodeValue(from: object, as: columnDetails.type)
+                    let value = try await self.decodeValue(from: object, column: columnDetails)
                 else {
                     continue
                 }

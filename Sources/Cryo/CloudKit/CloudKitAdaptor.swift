@@ -246,28 +246,34 @@ extension CloudKitAdaptor {
     }
     
     /// The NSObject representation oft his value.
-    static func nsObject(from value: _AnyCryoColumnValue, valueType: CryoColumnType) throws -> __CKRecordObjCValue {
-        switch value {
-        case let url as URL:
-            if case .asset = valueType {
-                return CKAsset(fileURL: url)
+    static func nsObject(from value: _AnyCryoColumnValue, column: CryoSchemaColumn) throws -> __CKRecordObjCValue {
+        switch column {
+        case .value(_, let type, _):
+            switch value {
+            case let url as URL:
+                if case .asset = type {
+                    return CKAsset(fileURL: url)
+                }
+                
+                return url.absoluteString as NSString
+            case let value as CryoColumnIntValue:
+                return value.integerValue as NSNumber
+            case let value as CryoColumnDoubleValue:
+                return value.doubleValue as NSNumber
+            case let value as CryoColumnStringValue:
+                return value.stringValue as NSString
+            case let value as CryoColumnDateValue:
+                return value.dateValue as NSDate
+            case let value as CryoColumnDataValue:
+                return try value.dataValue as NSData
+                
+            default:
+                return (try JSONEncoder().encode(value)) as NSData
             }
-            
-            return url.absoluteString as NSString
-        case let value as CryoColumnIntValue:
-            return value.integerValue as NSNumber
-        case let value as CryoColumnDoubleValue:
-            return value.doubleValue as NSNumber
-        case let value as CryoColumnStringValue:
-            return value.stringValue as NSString
-        case let value as CryoColumnDateValue:
-            return value.dateValue as NSDate
-        case let value as CryoColumnDataValue:
-            return try value.dataValue as NSData
-            
-        default:
-            return (try JSONEncoder().encode(value)) as NSData
+        case .oneToOneRelation:
+            return (value as! CryoModel).id as NSString
         }
+        
     }
     
     static func check(clause: CryoQueryWhereClause, object: _AnyCryoColumnValue) throws -> Bool {

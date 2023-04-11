@@ -63,6 +63,44 @@ extension SQLiteAdaptor {
     public func withAttachedDatabase(databaseUrl: URL, _ operations: (String) async throws -> Void) async throws {
         // TODO
     }
+    
+    /// Enable foreign keys.
+    public func enableForeignKeys() async throws {
+        let queryString = "PRAGMA foreign_keys = ON"
+        var queryStatement: OpaquePointer?
+        
+        let prepareStatus = sqlite3_prepare_v3(db.connection, queryString, -1, 0, &queryStatement, nil)
+        guard prepareStatus == SQLITE_OK, let queryStatement else {
+            var message: String? = nil
+            if let errorPointer = sqlite3_errmsg(db.connection) {
+                message = String(cString: errorPointer)
+            }
+            
+            throw CryoError.queryCompilationFailed(query: queryString, status: prepareStatus, message: message)
+        }
+        
+        defer {
+            sqlite3_finalize(queryStatement)
+        }
+        
+        #if DEBUG
+        config?.log?(.debug, "[SQLite3Connection] enabling foreign keys")
+        #endif
+        
+        let executeStatus = sqlite3_step(queryStatement)
+        guard executeStatus != SQLITE_DONE else {
+            return
+        }
+        
+        var message: String? = nil
+        if let errorPointer = sqlite3_errmsg(db.connection) {
+            message = String(cString: errorPointer)
+        }
+        
+        throw CryoError.queryExecutionFailed(query: queryString,
+                                             status: executeStatus,
+                                             message: message)
+    }
 }
 
 // MARK: Queries
@@ -268,22 +306,27 @@ extension SQLiteAdaptor {
     }
 
     /// The SQLite type name for a Swift type.
-    static func sqliteTypeName(for type: CryoColumnType) -> String {
-        switch type {
-        case .integer:
-            return "INTEGER"
-        case .double:
-            return "NUMERIC"
-        case .text:
+    static func sqliteTypeName(for column: CryoSchemaColumn) -> String {
+        switch column {
+        case .value(_, let type, _):
+            switch type {
+            case .integer:
+                return "INTEGER"
+            case .double:
+                return "NUMERIC"
+            case .text:
+                return "TEXT"
+            case .date:
+                return "TEXT"
+            case .bool:
+                return "INTEGER"
+            case .data:
+                return "BLOB"
+            case .asset:
+                return "BLOB"
+            }
+        case .oneToOneRelation:
             return "TEXT"
-        case .date:
-            return "TEXT"
-        case .bool:
-            return "INTEGER"
-        case .data:
-            return "BLOB"
-        case .asset:
-            return "BLOB"
         }
     }
     

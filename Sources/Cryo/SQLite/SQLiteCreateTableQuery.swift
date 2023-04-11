@@ -62,15 +62,21 @@ internal class UntypedSQLiteCreateTableQuery {
             var columns = ""
             
             for columnDetails in schema.columns {
-                let specifiers: String
-                if columnDetails.columnName == "id" {
-                    specifiers = " NOT NULL UNIQUE"
+                switch columnDetails {
+                case .value(let columnName, _, _):
+                    let specifiers: String
+                    if columnName == "id" {
+                        specifiers = " NOT NULL UNIQUE"
+                    }
+                    else {
+                        specifiers = ""
+                    }
+                    
+                    columns += ",\n    \(columnName) \(SQLiteAdaptor.sqliteTypeName(for: columnDetails))\(specifiers)"
+                case .oneToOneRelation(let columnName, let modelType, _):
+                    columns += ",\n    \(columnName) TEXT NOT NULL"
+                    columns += ",\n    FOREIGN KEY(\(columnName)) REFERENCES \(modelType.tableName)(id)"
                 }
-                else {
-                    specifiers = ""
-                }
-                
-                columns += ",\n    \(columnDetails.columnName) \(SQLiteAdaptor.sqliteTypeName(for: columnDetails.type))\(specifiers)"
             }
             
             let result = """

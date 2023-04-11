@@ -35,7 +35,7 @@ import Foundation
 /// | 1   | "Hello"  | YYYY-MM-DD | /... |
 /// | 2   | "Hi"  | YYYY-MM-DD | /... |
 /// | 3   | "How are you?"  | YYYY-MM-DD | /... |
-public protocol CryoModel: Codable {
+public protocol CryoModel: Codable, _AnyCryoColumnValue {
     /// The name of the table representing this model.
     ///
     /// By default, the type name is used as the table name.
@@ -83,6 +83,50 @@ extension CryoColumn: Codable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         self.init(wrappedValue: try container.decode(Value.self))
+    }
+}
+
+@propertyWrapper public struct CryoOneToOne<Value: CryoModel> {
+    /// The wrapped value that is referenced by this column.
+    public var wrappedValue: Value
+    
+    /// Create a one-to-one relationship.
+    public init(wrappedValue: Value) {
+        self.wrappedValue = wrappedValue
+    }
+}
+
+extension CryoOneToOne: Codable {
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(wrappedValue)
+    }
+    
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        self.init(wrappedValue: try container.decode(Value.self))
+    }
+}
+
+@propertyWrapper public struct CryoOneToMany<Value: CryoModel> {
+    /// The wrapped value that is referenced by this column.
+    public var wrappedValue: [Value]
+    
+    /// Create a one-to-one relationship.
+    public init(wrappedValue: [Value]) {
+        self.wrappedValue = wrappedValue
+    }
+}
+
+extension CryoOneToMany: Codable {
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(wrappedValue)
+    }
+    
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        self.init(wrappedValue: try container.decode([Value].self))
     }
 }
 
@@ -168,15 +212,43 @@ internal final actor CryoSchemaManager {
     }
 }
 
-internal struct CryoSchemaColumn {
-    /// The name of the column.
-    let columnName: String
+//internal struct CryoSchemaColumn {
+//    /// The name of the column.
+//    let columnName: String
+//
+//    /// The type of the column.
+//    let type: CryoColumnType
+//
+//    /// Function to extract the value of this column from a model value.
+//    let getValue: (any CryoModel) -> _AnyCryoColumnValue
+//}
+
+internal enum CryoSchemaColumn {
+    /// A value column.
+    case value(columnName: String, type: CryoColumnType, getValue: (any CryoModel) -> _AnyCryoColumnValue)
     
-    /// The type of the column.
-    let type: CryoColumnType
+    /// A one-to-one relationship.
+    case oneToOneRelation(columnName: String, modelType: any CryoModel.Type, getValue: (any CryoModel) -> _AnyCryoColumnValue)
+}
+
+extension CryoSchemaColumn {
+    var columnName: String {
+        switch self {
+        case .value(let columnName, _, _):
+            return columnName
+        case .oneToOneRelation(let columnName, _, _):
+            return columnName
+        }
+    }
     
-    /// Function to extract the value of this column from a model value.
-    let getValue: (any CryoModel) -> _AnyCryoColumnValue
+    var getValue: (any CryoModel) -> _AnyCryoColumnValue {
+        switch self {
+        case .value(_, _, let getValue):
+            return getValue
+        case .oneToOneRelation(_, _, let getValue):
+            return getValue
+        }
+    }
 }
 
 internal struct CryoSchema {
@@ -229,34 +301,54 @@ internal extension CryoModel {
             let childTypeName = "\(childMirror.subjectType)"
             
             let wrappedValueMirror = Mirror(reflecting: wrappedValue.value)
-            if childTypeName.starts(with: "CryoColumn") {
-                switch wrappedValueMirror.subjectType {
-                case is CryoColumnIntValue.Type: columnType = .integer
-                case is CryoColumnDoubleValue.Type: columnType = .double
-                case is CryoColumnStringValue.Type: columnType = .text
-                case is CryoColumnDateValue.Type: columnType = .date
-                case is CryoColumnDataValue.Type: columnType = .data
-                default:
-                    fatalError("\(wrappedValueMirror.subjectType) is not a valid type for a CryoColumn")
+            let column: CryoSchemaColumn
+            
+            if childTypeName.starts(with: "CryoOneToOne") {
+                let extractValue: (any CryoModel) -> _AnyCryoColumnValue = { this in
+                    let mirror = Mirror(reflecting: this)
+                    let child = mirror.children.first { $0.label == label }!
+                    let childMirror = Mirror(reflecting: child.value)
+                    let wrappedValue = childMirror.children.first { $0.label == "wrappedValue" }!.value
+                    
+                    return (wrappedValue as! CryoModel).id
                 }
-            }
-            else if childTypeName.starts(with: "CryoAsset") {
-                columnType = .asset
+                
+                column = .oneToOneRelation(columnName: name,
+                                           modelType: wrappedValueMirror.subjectType as! CryoModel.Type,
+                                           getValue: extractValue)
             }
             else {
-                continue
-            }
-            
-            let extractValue: (any CryoModel) -> _AnyCryoColumnValue = { this in
-                let mirror = Mirror(reflecting: this)
-                let child = mirror.children.first { $0.label == label }!
-                let childMirror = Mirror(reflecting: child.value)
-                let wrappedValue = childMirror.children.first { $0.label == "wrappedValue" }!.value
+                let extractValue: (any CryoModel) -> _AnyCryoColumnValue = { this in
+                    let mirror = Mirror(reflecting: this)
+                    let child = mirror.children.first { $0.label == label }!
+                    let childMirror = Mirror(reflecting: child.value)
+                    let wrappedValue = childMirror.children.first { $0.label == "wrappedValue" }!.value
+                    
+                    return wrappedValue as! _AnyCryoColumnValue
+                }
                 
-                return wrappedValue as! _AnyCryoColumnValue
+                if childTypeName.starts(with: "CryoColumn") {
+                    switch wrappedValueMirror.subjectType {
+                    case is CryoColumnIntValue.Type: columnType = .integer
+                    case is CryoColumnDoubleValue.Type: columnType = .double
+                    case is CryoColumnStringValue.Type: columnType = .text
+                    case is CryoColumnDateValue.Type: columnType = .date
+                    case is CryoColumnDataValue.Type: columnType = .data
+                    default:
+                        fatalError("\(wrappedValueMirror.subjectType) is not a valid type for a CryoColumn")
+                    }
+                }
+                else if childTypeName.starts(with: "CryoAsset") {
+                    columnType = .asset
+                }
+                else {
+                    continue
+                }
+                
+                column = .value(columnName: name, type: columnType, getValue: extractValue)
             }
             
-            schema.columns.append(.init(columnName: name, type: columnType, getValue: extractValue))
+            schema.columns.append(column)
         }
         
         guard foundId else {

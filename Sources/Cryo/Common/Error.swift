@@ -6,7 +6,7 @@ public enum CryoError: Error {
     /// A value cannot be persisted with the given adaptor.
     case cannotPersistValue(valueType: Any.Type, adaptorType: Any.Type)
     
-    // MARK: CloudKit
+    // MARK: Databases
     
     /// Failed to connect to a database.
     case databaseConnectionFailed(dbName: String, status: Int32)
@@ -22,6 +22,9 @@ public enum CryoError: Error {
     
     /// A schema for a table was not initialized.
     case schemaNotInitialized(tableName: String)
+    
+    /// A foreign key constraint failed.
+    case foreignKeyConstraintFailed(tableName: String, message: String?)
     
     // MARK: SQLite
     
