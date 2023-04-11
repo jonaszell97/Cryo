@@ -50,5 +50,27 @@ final class CryoSQLiteRelationTests: XCTestCase {
         // Check valid insert
         try await adaptor.insert(a).execute()
         try await adaptor.insert(b).execute()
+        
+        // Check loading
+        let loadedB = try await adaptor.select(id: b.id, from: ModelB.self).execute().first
+        XCTAssertEqual(loadedB?.x, b.x)
+        XCTAssertEqual(loadedB?.buddy.x, a.x)
+        XCTAssertEqual(loadedB?.buddy.y, a.y)
+        
+        // Check deletion error
+        do {
+            try await adaptor.delete(id: a.id, from: ModelA.self).execute()
+            XCTAssert(false, "should throw an error")
+        }
+        catch let e as CryoError {
+            guard case .foreignKeyConstraintFailed = e else {
+                XCTAssert(false, "expected error to be foreignKeyConstraintFailed")
+                return
+            }
+        }
+        
+        // Check correct deletion
+        try await adaptor.delete(id: b.id, from: ModelB.self).execute()
+        try await adaptor.delete(id: a.id, from: ModelA.self).execute()
     }
 }

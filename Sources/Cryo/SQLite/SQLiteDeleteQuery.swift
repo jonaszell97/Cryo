@@ -151,6 +151,17 @@ extension UntypedSQLiteDeleteQuery {
         
         let executeStatus = sqlite3_step(queryStatement)
         guard executeStatus == SQLITE_DONE else {
+            // Check if FOREIGN KEY constraint failed
+            if executeStatus == SQLITE_CONSTRAINT {
+                if let errorPointer = sqlite3_errmsg(connection) {
+                    let message = String(cString: errorPointer)
+                    if message.contains("FOREIGN") {
+                        throw CryoError.foreignKeyConstraintFailed(tableName: modelType.tableName,
+                                                                   message: message)
+                    }
+                }
+            }
+            
             var message: String? = nil
             if let errorPointer = sqlite3_errmsg(connection) {
                 message = String(cString: errorPointer)

@@ -254,6 +254,10 @@ fileprivate struct CryoModelSingleValueDecodingContainer: SingleValueDecodingCon
     func decode(_ type: UInt64.Type) throws -> UInt64 { fatalError("UInt64 cannot be represented") }
 
     func decode<T>(_ type: T.Type) throws -> T where T: Decodable {
+        if let value = value as? T {
+            return value
+        }
+        
         if T.self == URL.self { return try self.decode(URL.self) as! T }
         if T.self == Data.self { return try self.decode(Data.self) as! T }
         if T.self == Date.self { return try self.decode(Date.self) as! T }
