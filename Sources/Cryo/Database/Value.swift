@@ -212,20 +212,20 @@ extension URL: CryoColumnStringValue {
     public init (stringValue: String) { self.init(string: stringValue)! }
 }
 
-extension Decimal: CryoColumnStringValue {
-    /// The string value of this instance.
-    public var stringValue: String { self.description }
-    
-    /// Initialize from a string value.
-    public init (stringValue: String) { self = Decimal(string: stringValue) ?? 0 }
-}
-
 extension UUID: CryoColumnStringValue {
     /// The string value of this instance.
     public var stringValue: String { self.uuidString }
     
     /// Initialize from a string value.
     public init (stringValue: String) { self = .init(uuidString: stringValue) ?? UUID(uuidString: "00000000-0000-0000-0000-000000000000")! }
+}
+
+extension Decimal: CryoColumnStringValue {
+    /// The string value of this instance.
+    public var stringValue: String { self.description }
+    
+    /// Initialize from a string value.
+    public init (stringValue: String) { self = (try? .init(stringValue, format: .number)) ?? 0 }
 }
 
 extension RawRepresentable where RawValue: CryoColumnStringValue, Self: CaseIterable {

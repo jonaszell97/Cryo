@@ -258,16 +258,20 @@ fileprivate struct CryoModelSingleValueDecodingContainer: SingleValueDecodingCon
             return value
         }
         
-        if T.self == URL.self { return try self.decode(URL.self) as! T }
-        if T.self == Data.self { return try self.decode(Data.self) as! T }
-        if T.self == Date.self { return try self.decode(Date.self) as! T }
-        
         if let dataType = T.self as? CryoColumnDataValue.Type {
             guard let value = value as? CryoColumnDataValue else {
                 throw DecodingError.typeMismatch(T.self, .init(codingPath: codingPath, debugDescription: "unexpected CryoPersistable: \(value)"))
             }
             
             return try dataType.init(dataValue: value.dataValue) as! T
+        }
+        
+        if let stringType = T.self as? CryoColumnStringValue.Type {
+            guard let value = value as? CryoColumnStringValue else {
+                throw DecodingError.typeMismatch(T.self, .init(codingPath: codingPath, debugDescription: "unexpected CryoPersistable: \(value)"))
+            }
+            
+            return stringType.init(stringValue: value.stringValue) as! T
         }
         
         return try T(from: CryoModelValueDecoder(value: value))
