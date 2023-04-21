@@ -177,12 +177,12 @@ extension ResilientStoreImpl {
 
 extension ResilientStoreImpl where Backend == CloudKitAdaptor {
     func select<Model: CryoModel>(id: String? = nil, from model: Model.Type) async throws -> any CryoSelectQuery<Model> {
-        try await store.select(id: id, from: model)
+        try store.select(id: id, from: model)
     }
     
     func insert<Model: CryoModel>(_ value: Model,
                                   replace: Bool = true) async throws -> ResilientInsertQuery<CloudKitInsertQuery<Model>> {
-        let query = try await store.insert(value, replace: replace)
+        let query = try store.insert(value, replace: replace)
         return ResilientInsertQuery(query: query) {
             try await self.enqueueFailedOperation(query.operation)
             return false
@@ -192,7 +192,7 @@ extension ResilientStoreImpl where Backend == CloudKitAdaptor {
     func update<Model: CryoModel>(id: String? = nil, from modelType: Model.Type)
         async throws -> ResilientUpdateQuery<CloudKitUpdateQuery<Model>>
     {
-        let query = try await store.update(id: id, from: modelType)
+        let query = try store.update(id: id, from: modelType)
         return ResilientUpdateQuery(query: query) {
             try await self.enqueueFailedOperation(query.operation)
             return 0
@@ -202,7 +202,7 @@ extension ResilientStoreImpl where Backend == CloudKitAdaptor {
     func delete<Model: CryoModel>(id: String? = nil, from modelType: Model.Type)
         async throws -> ResilientDeleteQuery<CloudKitDeleteQuery<Model>>
     {
-        let query = try await store.delete(id: id, from: modelType)
+        let query = try store.delete(id: id, from: modelType)
         return ResilientDeleteQuery(query: query) {
             try await self.enqueueFailedOperation(query.operation)
             return 0

@@ -111,19 +111,19 @@ extension CloudKitAdaptor: CryoDatabaseAdaptor {
         return NoOpQuery(queryString: "", for: model)
     }
     
-    public func select<Model: CryoModel>(id: String? = nil, from: Model.Type) async throws -> any CryoSelectQuery<Model> {
+    public func select<Model: CryoModel>(id: String? = nil, from: Model.Type) throws -> CloudKitSelectQuery<Model> {
         try CloudKitSelectQuery(from: Model.self, id: id, database: database, config: config)
     }
     
-    public func insert<Model: CryoModel>(_ value: Model, replace: Bool = true) async throws -> CloudKitInsertQuery<Model> {
+    public func insert<Model: CryoModel>(_ value: Model, replace: Bool = true) throws -> CloudKitInsertQuery<Model> {
         try CloudKitInsertQuery(id: value.id, value: value, replace: replace, database: database, config: config)
     }
     
-    public func update<Model: CryoModel>(id: String? = nil, from: Model.Type) async throws -> CloudKitUpdateQuery<Model> {
+    public func update<Model: CryoModel>(id: String? = nil, from: Model.Type) throws -> CloudKitUpdateQuery<Model> {
         try CloudKitUpdateQuery(from: Model.self, id: id, database: database, config: config)
     }
     
-    public func delete<Model: CryoModel>(id: String? = nil, from: Model.Type) async throws -> CloudKitDeleteQuery<Model> {
+    public func delete<Model: CryoModel>(id: String? = nil, from: Model.Type) throws -> CloudKitDeleteQuery<Model> {
         try CloudKitDeleteQuery(from: Model.self, id: id, database: database, config: config)
     }
 }

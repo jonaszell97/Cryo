@@ -20,8 +20,8 @@ extension SQLiteInsertQuery: CryoInsertQuery {
         untypedQuery.queryString
     }
     
-    @discardableResult public func execute() async throws -> Bool {
-        try await untypedQuery.execute()
+    @discardableResult public func execute() throws -> Bool {
+        try untypedQuery.execute()
     }
 }
 
@@ -100,7 +100,7 @@ INSERT \(replace ? "OR REPLACE " : "")INTO \(modelType.tableName)(_cryo_created,
 
 extension UntypedSQLiteInsertQuery {
     /// Get the compiled query statement.
-    func compiledQuery() async throws -> OpaquePointer {
+    func compiledQuery() throws -> OpaquePointer {
         if let queryStatement {
             return queryStatement
         }
@@ -137,8 +137,8 @@ extension UntypedSQLiteInsertQuery {
 }
 
 extension UntypedSQLiteInsertQuery {
-    @discardableResult public func execute() async throws -> Bool {
-        let queryStatement = try await self.compiledQuery()
+    @discardableResult public func execute() throws -> Bool {
+        let queryStatement = try self.compiledQuery()
         defer {
             sqlite3_finalize(queryStatement)
         }

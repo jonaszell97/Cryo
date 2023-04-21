@@ -29,7 +29,7 @@ fileprivate final class SQLite3Connection {
 }
 
 /// Implementation of ``CryoDatabaseAdaptor`` using a local SQLite database.
-public final actor SQLiteAdaptor {
+public final class SQLiteAdaptor {
     /// The database connection object.
     fileprivate let db: SQLite3Connection
     
@@ -108,14 +108,18 @@ extension SQLiteAdaptor {
 extension SQLiteAdaptor: CryoDatabaseAdaptor {
     /// Create a table if it does not exist yet.
     public func createTable<Model: CryoModel>(for model: Model.Type) async throws -> any CryoCreateTableQuery<Model> {
-        try SQLiteCreateTableQuery(for: model, connection: db.connection, config: config)
+        // Initialize the CryoSchema
+        await CryoSchemaManager.shared.createSchema(for: model)
+        return try SQLiteCreateTableQuery(for: model, connection: db.connection, config: config)
     }
     
     func createTable(modelType: any CryoModel.Type) async throws -> UntypedSQLiteCreateTableQuery {
-        try UntypedSQLiteCreateTableQuery(for: modelType, connection: db.connection, config: config)
+        // Initialize the CryoSchema
+        await CryoSchemaManager.shared.createSchema(for: modelType)
+        return try UntypedSQLiteCreateTableQuery(for: modelType, connection: db.connection, config: config)
     }
     
-    public func select<Model: CryoModel>(id: String? = nil, from: Model.Type) async throws -> any CryoSelectQuery<Model> {
+    public func select<Model: CryoModel>(id: String? = nil, from: Model.Type) throws -> SQLiteSelectQuery<Model> {
         var query: SQLiteSelectQuery<Model> = try SQLiteSelectQuery(connection: db.connection, config: config)
         if let id {
             query = try query.where("id", operation: .equals, value: id)
@@ -124,15 +128,15 @@ extension SQLiteAdaptor: CryoDatabaseAdaptor {
         return query
     }
     
-    public func insert<Model: CryoModel>(_ value: Model, replace: Bool = true) async throws -> SQLiteInsertQuery<Model> {
+    public func insert<Model: CryoModel>(_ value: Model, replace: Bool = true) throws -> SQLiteInsertQuery<Model> {
         try SQLiteInsertQuery(id: value.id, value: value, replace: replace, connection: db.connection, config: config)
     }
     
-    public func update<Model: CryoModel>(id: String? = nil, from modelType: Model.Type) async throws -> SQLiteUpdateQuery<Model> {
+    public func update<Model: CryoModel>(id: String? = nil, from modelType: Model.Type) throws -> SQLiteUpdateQuery<Model> {
         try SQLiteUpdateQuery(from: modelType, id: id, connection: db.connection, config: config)
     }
     
-    public func delete<Model: CryoModel>(id: String? = nil, from: Model.Type) async throws -> SQLiteDeleteQuery<Model> {
+    public func delete<Model: CryoModel>(id: String? = nil, from: Model.Type) throws -> SQLiteDeleteQuery<Model> {
         try SQLiteDeleteQuery(id: id, connection: db.connection, config: config)
     }
 }
@@ -151,7 +155,7 @@ extension SQLiteAdaptor: ResilientStoreBackend {
             }
             
             let model = try schema.create(modelData)
-            _ = try await UntypedSQLiteInsertQuery(id: rowId, value: model, replace: false, connection: db.connection, config: config)
+            _ = try UntypedSQLiteInsertQuery(id: rowId, value: model, replace: false, connection: db.connection, config: config)
                 .execute()
         case .update(_, let tableName, let rowId, let setClauses, let whereClauses):
             guard let schema = CryoSchemaManager.shared.schema(tableName: tableName) else {
@@ -166,7 +170,7 @@ extension SQLiteAdaptor: ResilientStoreBackend {
                 _ = try query.where(whereClause.columnName, operation: whereClause.operation, value: whereClause.value.columnValue)
             }
             
-            _ = try await query.execute()
+            _ = try query.execute()
             break
         case .delete(_, let tableName, let rowId, let whereClauses):
             guard let schema = CryoSchemaManager.shared.schema(tableName: tableName) else {
@@ -178,7 +182,7 @@ extension SQLiteAdaptor: ResilientStoreBackend {
                 _ = try query.where(whereClause.columnName, operation: whereClause.operation, value: whereClause.value.columnValue)
             }
             
-            _ = try await query.execute()
+            _ = try query.execute()
         }
     }
     

@@ -42,19 +42,19 @@ public protocol CryoDatabaseAdaptor {
     /// Create a CREATE TABLE query.
     func createTable<Model: CryoModel>(for: Model.Type) async throws -> any CryoCreateTableQuery<Model>
     
-    /// Create a SELECT by ID query.
-    func select<Model: CryoModel>(id: String?, from: Model.Type) async throws -> any CryoSelectQuery<Model>
-    
     #if false
     
+    /// Create a SELECT by ID query.
+    func select<Model: CryoModel>(id: String?, from: Model.Type) throws -> any CryoSelectQuery<Model>
+    
     /// Create an INSERT query.
-    func insert<Model: CryoModel>(_ value: Model, replace: Bool) async throws -> any CryoInsertQuery<Model>
+    func insert<Model: CryoModel>(_ value: Model, replace: Bool) throws -> any CryoInsertQuery<Model>
     
     /// Create an UPDATE query.
-    func update<Model: CryoModel>(id: String?, from: Model.Type) async throws -> any CryoUpdateQuery<Model>
+    func update<Model: CryoModel>(id: String?, from: Model.Type) throws -> any CryoUpdateQuery<Model>
     
     /// Create a DELETE query.
-    func delete<Model: CryoModel>(id: String?, from: Model.Type) async throws -> any CryoDeleteQuery<Model>
+    func delete<Model: CryoModel>(id: String?, from: Model.Type) throws -> any CryoDeleteQuery<Model>
     
     #endif
     

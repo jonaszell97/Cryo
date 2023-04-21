@@ -17,8 +17,8 @@ extension SQLiteCreateTableQuery: CryoCreateTableQuery {
         untypedQuery.queryString
     }
     
-    public func execute() async throws {
-        try await untypedQuery.execute()
+    public func execute() throws {
+        try untypedQuery.execute()
     }
 }
 
@@ -90,7 +90,7 @@ CREATE TABLE IF NOT EXISTS \(modelType.tableName)(
 
 extension UntypedSQLiteCreateTableQuery {
     /// Get the compiled query statement.
-    func compiledQuery() async throws -> OpaquePointer {
+    func compiledQuery() throws -> OpaquePointer {
         if let queryStatement {
             return queryStatement
         }
@@ -116,11 +116,8 @@ extension UntypedSQLiteCreateTableQuery {
 extension UntypedSQLiteCreateTableQuery {
     public typealias Result = Void
     
-    public func execute() async throws {
-        // Initialize the CryoSchema
-        await CryoSchemaManager.shared.createSchema(for: modelType)
-        
-        let queryStatement = try await self.compiledQuery()
+    public func execute() throws {
+        let queryStatement = try self.compiledQuery()
         defer {
             sqlite3_finalize(queryStatement)
         }

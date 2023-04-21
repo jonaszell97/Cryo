@@ -606,18 +606,18 @@ extension MockCloudKitAdaptor: CryoDatabaseAdaptor {
         return NoOpQuery(queryString: "", for: model)
     }
     
-    public func select<Model: CryoModel>(id: String? = nil, from: Model.Type) async throws -> any CryoSelectQuery<Model> {
+    public func select<Model: CryoModel>(id: String? = nil, from: Model.Type) throws -> any CryoSelectQuery<Model> {
         MockSelectQuery(id: id, allRecords: self.allRecords(tableName: Model.tableName))
     }
     
-    public func insert<Model: CryoModel>(_ value: Model, replace: Bool = true) async throws -> MockInsertQuery<Model> {
+    public func insert<Model: CryoModel>(_ value: Model, replace: Bool = true) throws -> MockInsertQuery<Model> {
         MockInsertQuery(id: value.id, value: value, isAvailable: self.isAvailable,
                         updateHooks: { try await self.runUpdateHooks(tableName: Model.tableName) }) { id, record in
             self.insertRecord(id: id, record: record, tableName: Model.tableName)
         }
     }
     
-    public func update<Model: CryoModel>(id: String? = nil, from: Model.Type) async throws -> MockUpdateQuery<Model> {
+    public func update<Model: CryoModel>(id: String? = nil, from: Model.Type) throws -> MockUpdateQuery<Model> {
         MockUpdateQuery(from: Model.self, id: id, isAvailable: self.isAvailable,
                         allRecords: self.allRecords(tableName: Model.tableName),
                         updateHooks: { try await self.runUpdateHooks(tableName: Model.tableName) }) { id, record in
@@ -625,7 +625,7 @@ extension MockCloudKitAdaptor: CryoDatabaseAdaptor {
         }
     }
     
-    public func delete<Model: CryoModel>(id: String? = nil, from: Model.Type) async throws -> MockDeleteQuery<Model> {
+    public func delete<Model: CryoModel>(id: String? = nil, from: Model.Type) throws -> MockDeleteQuery<Model> {
         MockDeleteQuery(id: id, isAvailable: self.isAvailable,
                         allRecords: self.allRecords(tableName: Model.tableName),
                         updateHooks: { try await self.runUpdateHooks(tableName: Model.tableName) }) { id in
@@ -717,14 +717,14 @@ extension ResilientStoreImpl where Backend == MockCloudKitAdaptor {
         try await store.createTable(for: model)
     }
     
-    func select<Model: CryoModel>(id: String? = nil, from model: Model.Type) async throws -> any CryoSelectQuery<Model> {
-        try await store.select(id: id, from: model)
+    func select<Model: CryoModel>(id: String? = nil, from model: Model.Type) throws -> any CryoSelectQuery<Model> {
+        try store.select(id: id, from: model)
     }
     
     func insert<Model: CryoModel>(id: String = UUID().uuidString,
                                   _ value: Model,
-                                  replace: Bool = true) async throws -> ResilientInsertQuery<MockInsertQuery<Model>> {
-        let query = try await store.insert(value, replace: replace)
+                                  replace: Bool = true) throws -> ResilientInsertQuery<MockInsertQuery<Model>> {
+        let query = try store.insert(value, replace: replace)
         return ResilientInsertQuery(query: query) {
             try await self.enqueueFailedOperation(query.operation)
             return false
@@ -732,9 +732,9 @@ extension ResilientStoreImpl where Backend == MockCloudKitAdaptor {
     }
     
     func update<Model: CryoModel>(id: String? = nil, from modelType: Model.Type)
-        async throws -> ResilientUpdateQuery<MockUpdateQuery<Model>>
+        throws -> ResilientUpdateQuery<MockUpdateQuery<Model>>
     {
-        let query = try await store.update(id: id, from: modelType)
+        let query = try store.update(id: id, from: modelType)
         return ResilientUpdateQuery(query: query) {
             try await self.enqueueFailedOperation(query.operation)
             return 0
@@ -742,9 +742,9 @@ extension ResilientStoreImpl where Backend == MockCloudKitAdaptor {
     }
     
     func delete<Model: CryoModel>(id: String? = nil, from modelType: Model.Type)
-        async throws -> ResilientDeleteQuery<MockDeleteQuery<Model>>
+        throws -> ResilientDeleteQuery<MockDeleteQuery<Model>>
     {
-        let query = try await store.delete(id: id, from: modelType)
+        let query = try store.delete(id: id, from: modelType)
         return ResilientDeleteQuery(query: query) {
             try await self.enqueueFailedOperation(query.operation)
             return 0

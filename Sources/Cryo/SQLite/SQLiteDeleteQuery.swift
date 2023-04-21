@@ -20,8 +20,8 @@ extension SQLiteDeleteQuery: CryoDeleteQuery {
         untypedQuery.queryString
     }
     
-    @discardableResult public func execute() async throws -> Int {
-        try await untypedQuery.execute()
+    @discardableResult public func execute() throws -> Int {
+        try untypedQuery.execute()
     }
     
     public func `where`<Value: _AnyCryoColumnValue>(
@@ -101,7 +101,7 @@ internal class UntypedSQLiteDeleteQuery {
 
 extension UntypedSQLiteDeleteQuery {
     /// Get the compiled query statement.
-    func compiledQuery() async throws -> OpaquePointer {
+    func compiledQuery() throws -> OpaquePointer {
         if let queryStatement {
             return queryStatement
         }
@@ -135,8 +135,8 @@ extension UntypedSQLiteDeleteQuery {
 }
 
 extension UntypedSQLiteDeleteQuery {
-    @discardableResult public func execute() async throws -> Int {
-        let queryStatement = try await self.compiledQuery()
+    @discardableResult public func execute() throws -> Int {
+        let queryStatement = try self.compiledQuery()
         defer {
             sqlite3_finalize(queryStatement)
         }

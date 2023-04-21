@@ -29,14 +29,14 @@ internal protocol SynchronizedStoreBackend {
 extension SQLiteAdaptor: SynchronizedStoreBackend {
     /// Persist a sync operation.
     internal func persist(operation: SyncOperation) async throws {
-        try await self.insert(operation, replace: false).execute()
+        try self.insert(operation, replace: false).execute()
     }
     
     /// Load sync operations after a given date.
     internal func loadOperations(after date: Date,
                                  storeIdentifier: String,
-                                 deviceIdentifier: String) async throws -> [SyncOperation] {
-        try await self
+                                 deviceIdentifier: String) throws -> [SyncOperation] {
+        try self
             .select(from: SyncOperation.self)
             .where("date", isGreatherThan: date.timeIntervalSinceReferenceDate)
             .and("storeIdentifier", equals: storeIdentifier)
@@ -45,8 +45,8 @@ extension SQLiteAdaptor: SynchronizedStoreBackend {
     }
     
     /// Load a sync operation with the given ID.
-    internal func loadOperation(withId id: String) async throws -> SyncOperation? {
-        try await self.select(id: id, from: SyncOperation.self).execute().first
+    internal func loadOperation(withId id: String) throws -> SyncOperation? {
+        try self.select(id: id, from: SyncOperation.self).execute().first
     }
     
     /// Setup a subscription to be notified of record changes.

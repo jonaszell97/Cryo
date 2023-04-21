@@ -256,32 +256,32 @@ extension SynchronizedStoreImpl: CryoDatabaseAdaptor {
         try await localStore.createTable(for: model)
     }
     
-    internal func select<Model: CryoModel>(id: String? = nil, from model: Model.Type) async throws -> any CryoSelectQuery<Model> {
-        try await localStore.select(id: id, from: model)
+    internal func select<Model: CryoModel>(id: String? = nil, from model: Model.Type) throws -> any CryoSelectQuery<Model> {
+        try localStore.select(id: id, from: model)
     }
     
     internal func insert<Model: CryoModel>(_ value: Model, replace: Bool = true)
-        async throws -> SynchronizedInsertQuery<SQLiteInsertQuery<Model>>
+        throws -> SynchronizedInsertQuery<SQLiteInsertQuery<Model>>
     {
-        let query = try await localStore.insert(value, replace: replace)
+        let query = try localStore.insert(value, replace: replace)
         return .init(query: query) {
             try await self.didExecute(query)
         }
     }
     
     internal func update<Model: CryoModel>(id: String? = nil, from modelType: Model.Type)
-        async throws -> SynchronizedUpdateQuery<SQLiteUpdateQuery<Model>>
+        throws -> SynchronizedUpdateQuery<SQLiteUpdateQuery<Model>>
     {
-        let query = try await localStore.update(id: id, from: modelType)
+        let query = try localStore.update(id: id, from: modelType)
         return .init(query: query) {
             try await self.didExecute(query)
         }
     }
     
     internal func delete<Model: CryoModel>(id: String? = nil, from modelType: Model.Type)
-        async throws -> SynchronizedDeleteQuery<SQLiteDeleteQuery<Model>>
+        throws -> SynchronizedDeleteQuery<SQLiteDeleteQuery<Model>>
     {
-        let query = try await localStore.delete(id: id, from: modelType)
+        let query = try localStore.delete(id: id, from: modelType)
         return .init(query: query) {
             try await self.didExecute(query)
         }
