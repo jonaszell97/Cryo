@@ -17,9 +17,7 @@ extension SQLiteDeleteQuery: CryoDeleteQuery {
     public var whereClauses: [CryoQueryWhereClause] { untypedQuery.whereClauses }
     
     public var queryString: String {
-        get async {
-            await untypedQuery.queryString
-        }
+        untypedQuery.queryString
     }
     
     @discardableResult public func execute() async throws -> Int {
@@ -73,33 +71,31 @@ internal class UntypedSQLiteDeleteQuery {
     
     /// The complete query string.
     public var queryString: String {
-        get async {
-            if let completeQueryString {
-                return completeQueryString
-            }
-            
-            var result = "DELETE FROM \(modelType.tableName)"
-            let hasId = id != nil
-            
-            if hasId || !whereClauses.isEmpty {
-                result += " WHERE "
-            }
-            
-            if hasId {
-                result += "id = ?"
-            }
-            
-            for i in 0..<whereClauses.count {
-                if i > 0 || hasId {
-                    result += " AND "
-                }
-                
-                result += "\(whereClauses[i].columnName) \(SQLiteAdaptor.formatOperator(whereClauses[i].operation)) ?"
-            }
-            
-            self.completeQueryString = result
-            return result
+        if let completeQueryString {
+            return completeQueryString
         }
+        
+        var result = "DELETE FROM \(modelType.tableName)"
+        let hasId = id != nil
+        
+        if hasId || !whereClauses.isEmpty {
+            result += " WHERE "
+        }
+        
+        if hasId {
+            result += "id = ?"
+        }
+        
+        for i in 0..<whereClauses.count {
+            if i > 0 || hasId {
+                result += " AND "
+            }
+            
+            result += "\(whereClauses[i].columnName) \(SQLiteAdaptor.formatOperator(whereClauses[i].operation)) ?"
+        }
+        
+        self.completeQueryString = result
+        return result
     }
 }
 
@@ -110,7 +106,7 @@ extension UntypedSQLiteDeleteQuery {
             return queryStatement
         }
         
-        let queryString = await self.queryString
+        let queryString = self.queryString
         var queryStatement: OpaquePointer?
         
         let prepareStatus = sqlite3_prepare_v3(connection, queryString, -1, 0, &queryStatement, nil)
@@ -146,7 +142,7 @@ extension UntypedSQLiteDeleteQuery {
         }
         
         #if DEBUG
-        config?.log?(.debug, "[SQLite3Connection] query \(await queryString), bindings \(whereClauses.map { "\($0.value)" })")
+        config?.log?(.debug, "[SQLite3Connection] query \(queryString), bindings \(whereClauses.map { "\($0.value)" })")
         #endif
         
         let executeStatus = sqlite3_step(queryStatement)
@@ -167,7 +163,7 @@ extension UntypedSQLiteDeleteQuery {
                 message = String(cString: errorPointer)
             }
             
-            throw CryoError.queryExecutionFailed(query: await queryString,
+            throw CryoError.queryExecutionFailed(query: queryString,
                                                  status: executeStatus,
                                                  message: message)
         }

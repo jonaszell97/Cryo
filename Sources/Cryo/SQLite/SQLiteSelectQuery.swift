@@ -17,9 +17,7 @@ extension SQLiteSelectQuery: CryoSelectQuery {
     public var whereClauses: [CryoQueryWhereClause] { untypedQuery.whereClauses }
     
     public var queryString: String {
-        get async {
-            await untypedQuery.queryString
-        }
+        untypedQuery.queryString
     }
     
     @discardableResult public func execute() async throws -> [Model] {
@@ -92,47 +90,45 @@ internal class UntypedSQLiteSelectQuery {
     
     /// The complete query string.
     public var queryString: String {
-        get async {
-            if let completeQueryString {
-                return completeQueryString
-            }
-            
-            let columnsString: String
-            if let columns {
-                columnsString = columns.joined(separator: ",")
+        if let completeQueryString {
+            return completeQueryString
+        }
+        
+        let columnsString: String
+        if let columns {
+            columnsString = columns.joined(separator: ",")
+        }
+        else {
+            let schema = CryoSchemaManager.shared.schema(for: modelType)
+            columnsString = schema.columns.map { $0.columnName }.joined(separator: ",")
+        }
+        
+        var result = "SELECT \(columnsString) FROM \(modelType.tableName)"
+        for i in 0..<whereClauses.count {
+            if i == 0 {
+                result += " WHERE "
             }
             else {
-                let schema = await CryoSchemaManager.shared.schema(for: modelType)
-                columnsString = schema.columns.map { $0.columnName }.joined(separator: ",")
+                result += " AND "
             }
             
-            var result = "SELECT \(columnsString) FROM \(modelType.tableName)"
-            for i in 0..<whereClauses.count {
-                if i == 0 {
-                    result += " WHERE "
-                }
-                else {
-                    result += " AND "
-                }
-                
-                result += "\(whereClauses[i].columnName) \(SQLiteAdaptor.formatOperator(whereClauses[i].operation)) ?"
-            }
-            
-            if !sortingClauses.isEmpty {
-                result += " ORDER BY"
-                for (i, ordering) in sortingClauses.enumerated() {
-                    if i != 0 { result += "," }
-                    result += " \(ordering.0) \(ordering.1 == .ascending ? "ASC" : "DESC")"
-                }
-            }
-            
-            if let resultsLimit {
-                result += " LIMIT \(resultsLimit)"
-            }
-            
-            self.completeQueryString = result
-            return result
+            result += "\(whereClauses[i].columnName) \(SQLiteAdaptor.formatOperator(whereClauses[i].operation)) ?"
         }
+        
+        if !sortingClauses.isEmpty {
+            result += " ORDER BY"
+            for (i, ordering) in sortingClauses.enumerated() {
+                if i != 0 { result += "," }
+                result += " \(ordering.0) \(ordering.1 == .ascending ? "ASC" : "DESC")"
+            }
+        }
+        
+        if let resultsLimit {
+            result += " LIMIT \(resultsLimit)"
+        }
+        
+        self.completeQueryString = result
+        return result
     }
     
     /// Limit the number of results this query returns.
@@ -155,7 +151,7 @@ extension UntypedSQLiteSelectQuery {
             return queryStatement
         }
         
-        let queryString = await self.queryString
+        let queryString = self.queryString
         var queryStatement: OpaquePointer?
         
         let prepareStatus = sqlite3_prepare_v3(connection, queryString, -1, 0, &queryStatement, nil)
@@ -218,10 +214,10 @@ extension UntypedSQLiteSelectQuery {
         }
         
         #if DEBUG
-        config?.log?(.debug, "[SQLite3Connection] query \(await queryString), bindings \(whereClauses.map { "\($0.value)" })")
+        config?.log?(.debug, "[SQLite3Connection] query \(queryString), bindings \(whereClauses.map { "\($0.value)" })")
         #endif
         
-        let schema = await CryoSchemaManager.shared.schema(for: modelType)
+        let schema = CryoSchemaManager.shared.schema(for: modelType)
         
         var executeStatus = sqlite3_step(queryStatement)
         var rows = [[any _AnyCryoColumnValue]]()
@@ -248,7 +244,7 @@ extension UntypedSQLiteSelectQuery {
                 message = String(cString: errorPointer)
             }
             
-            throw CryoError.queryExecutionFailed(query: await queryString,
+            throw CryoError.queryExecutionFailed(query: queryString,
                                                  status: executeStatus,
                                                  message: message)
         }

@@ -24,9 +24,7 @@ extension CloudKitDeleteQuery: CryoDeleteQuery {
     public var whereClauses: [CryoQueryWhereClause] { untypedQuery.whereClauses }
     
     public var queryString: String {
-        get async {
-            await untypedQuery.queryString
-        }
+        untypedQuery.queryString
     }
     
     @discardableResult public func execute() async throws -> Int {
@@ -74,22 +72,20 @@ internal class UntypedCloudKitDeleteQuery {
     
     /// The complete query string.
     public var queryString: String {
-        get async {
-            var result = "DELETE FROM \(modelType.tableName)"
-            for i in 0..<whereClauses.count {
-                if i == 0 {
-                    result += " WHERE "
-                }
-                else {
-                    result += " AND "
-                }
-                
-                let clause = whereClauses[i]
-                result += "\(clause.columnName) \(CloudKitAdaptor.formatOperator(clause.operation)) \(CloudKitAdaptor.placeholderSymbol(for: clause.value))"
+        var result = "DELETE FROM \(modelType.tableName)"
+        for i in 0..<whereClauses.count {
+            if i == 0 {
+                result += " WHERE "
+            }
+            else {
+                result += " AND "
             }
             
-            return result
+            let clause = whereClauses[i]
+            result += "\(clause.columnName) \(CloudKitAdaptor.formatOperator(clause.operation)) \(CloudKitAdaptor.placeholderSymbol(for: clause.value))"
         }
+        
+        return result
     }
 }
 

@@ -28,7 +28,7 @@ extension CryoInsertQuery {
     internal var operation: DatabaseOperation {
         get async throws {
             var data = [DatabaseOperationValue]()
-            let schema = await CryoSchemaManager.shared.schema(for: Model.self)
+            let schema = CryoSchemaManager.shared.schema(for: Model.self)
             
             for column in schema.columns {
                 data.append(.init(columnName: column.columnName, value: try .init(value: column.getValue(self.value))))

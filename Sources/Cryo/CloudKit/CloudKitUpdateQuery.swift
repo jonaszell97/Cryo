@@ -18,9 +18,7 @@ extension CloudKitUpdateQuery: CryoUpdateQuery {
     public var setClauses: [CryoQuerySetClause] { untypedQuery.setClauses }
     
     public var queryString: String {
-        get async {
-            await untypedQuery.queryString
-        }
+        untypedQuery.queryString
     }
     
     @discardableResult public func execute() async throws -> Int {
@@ -81,45 +79,43 @@ internal class UntypedCloudKitUpdateQuery {
     
     /// The complete query string.
     public var queryString: String {
-        get async {
-            let hasId = id != nil
-            var result = "UPDATE \(modelType.tableName)"
-            
-            // Set clauses
-            
-            for i in 0..<setClauses.count {
-                if i == 0 {
-                    result += " SET "
-                }
-                else {
-                    result += ", "
-                }
-                
-                let clause = setClauses[i]
-                result += "\(clause.columnName) = \(CloudKitAdaptor.placeholderSymbol(for: clause.value))"
+        let hasId = id != nil
+        var result = "UPDATE \(modelType.tableName)"
+        
+        // Set clauses
+        
+        for i in 0..<setClauses.count {
+            if i == 0 {
+                result += " SET "
+            }
+            else {
+                result += ", "
             }
             
-            // Where clauses
-            
-            if hasId || !whereClauses.isEmpty {
-                result += " WHERE "
-            }
-            
-            if hasId {
-                result += "id == %@"
-            }
-            
-            for i in 0..<whereClauses.count {
-                if i > 0 || hasId {
-                    result += " AND "
-                }
-                
-                let clause = whereClauses[i]
-                result += "\(clause.columnName) \(CloudKitAdaptor.formatOperator(clause.operation)) \(CloudKitAdaptor.placeholderSymbol(for: clause.value))"
-            }
-            
-            return result
+            let clause = setClauses[i]
+            result += "\(clause.columnName) = \(CloudKitAdaptor.placeholderSymbol(for: clause.value))"
         }
+        
+        // Where clauses
+        
+        if hasId || !whereClauses.isEmpty {
+            result += " WHERE "
+        }
+        
+        if hasId {
+            result += "id == %@"
+        }
+        
+        for i in 0..<whereClauses.count {
+            if i > 0 || hasId {
+                result += " AND "
+            }
+            
+            let clause = whereClauses[i]
+            result += "\(clause.columnName) \(CloudKitAdaptor.formatOperator(clause.operation)) \(CloudKitAdaptor.placeholderSymbol(for: clause.value))"
+        }
+        
+        return result
     }
 }
 

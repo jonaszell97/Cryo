@@ -162,7 +162,7 @@ extension CryoAsset: Codable {
 
 // MARK: Model reflection
 
-internal final actor CryoSchemaManager {
+internal final class CryoSchemaManager {
     /// The schemas mapped by object type.
     var schemas: [ObjectIdentifier: CryoSchema]
     
@@ -178,16 +178,36 @@ internal final actor CryoSchemaManager {
         self.schemasByName = [:]
     }
     
-    /// Find or create a schema.
-    func schema<Model: CryoModel>(for model: Model.Type) -> CryoSchema {
+    /// Create a schema if it does not exist.
+    @MainActor func createSchema<Model: CryoModel>(for model: Model.Type) {
         let schemaKey = ObjectIdentifier(Model.self)
-        if let schema = self.schemas[schemaKey] {
-            return schema
+        guard self.schemas[schemaKey] == nil else {
+            return
         }
         
         let schema = Model.schema
         self.schemas[schemaKey] = schema
         self.schemasByName[Model.tableName] = schema
+    }
+    
+    /// Create a schema if it does not exist.
+    @MainActor func createSchema(for modelType: any CryoModel.Type) {
+        let schemaKey = ObjectIdentifier(modelType)
+        guard self.schemas[schemaKey] == nil else {
+            return
+        }
+        
+        let schema = modelType.schema
+        self.schemas[schemaKey] = schema
+        self.schemasByName[modelType.tableName] = schema
+    }
+    
+    /// Find a schema.
+    func schema<Model: CryoModel>(for model: Model.Type) -> CryoSchema {
+        let schemaKey = ObjectIdentifier(Model.self)
+        guard let schema = self.schemas[schemaKey] else {
+            fatalError("schema for model \(model.tableName) was not initialized, did you forget a Create Table operation?")
+        }
         
         return schema
     }
@@ -195,13 +215,9 @@ internal final actor CryoSchemaManager {
     /// Find or create a schema.
     func schema(for modelType: any CryoModel.Type) -> CryoSchema {
         let schemaKey = ObjectIdentifier(modelType)
-        if let schema = self.schemas[schemaKey] {
-            return schema
+        guard let schema = self.schemas[schemaKey] else {
+            fatalError("schema for model \(modelType.tableName) was not initialized, did you forget a Create Table operation?")
         }
-        
-        let schema = modelType.schema
-        self.schemas[schemaKey] = schema
-        self.schemasByName[modelType.tableName] = schema
         
         return schema
     }
@@ -211,17 +227,6 @@ internal final actor CryoSchemaManager {
         schemasByName[tableName]
     }
 }
-
-//internal struct CryoSchemaColumn {
-//    /// The name of the column.
-//    let columnName: String
-//
-//    /// The type of the column.
-//    let type: CryoColumnType
-//
-//    /// Function to extract the value of this column from a model value.
-//    let getValue: (any CryoModel) -> _AnyCryoColumnValue
-//}
 
 internal enum CryoSchemaColumn {
     /// A value column.

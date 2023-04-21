@@ -17,9 +17,7 @@ extension SQLiteInsertQuery: CryoInsertQuery {
     public var value: Model { untypedQuery.value as! Model }
     
     public var queryString: String {
-        get async {
-            await untypedQuery.queryString
-        }
+        untypedQuery.queryString
     }
     
     @discardableResult public func execute() async throws -> Bool {
@@ -68,39 +66,35 @@ internal class UntypedSQLiteInsertQuery {
     
     /// The complete query string.
     public var queryString: String {
-        get async {
-            if let completeQueryString {
-                return completeQueryString
-            }
-            
-            let modelType = type(of: value)
-            let schema = await CryoSchemaManager.shared.schema(for: modelType)
-            let columns: [String] = schema.columns.map { $0.columnName }
-            
-            let result = """
+        if let completeQueryString {
+            return completeQueryString
+        }
+        
+        let modelType = type(of: value)
+        let schema = CryoSchemaManager.shared.schema(for: modelType)
+        let columns: [String] = schema.columns.map { $0.columnName }
+        
+        let result = """
 INSERT \(replace ? "OR REPLACE " : "")INTO \(modelType.tableName)(_cryo_created,_cryo_modified,\(columns.joined(separator: ",")))
     VALUES (?,?,\(columns.map { _ in "?" }.joined(separator: ",")));
 """
-            
-            self.completeQueryString = result
-            return result
-        }
+        
+        self.completeQueryString = result
+        return result
     }
     
     fileprivate var logQueryString: String {
-        get async {
-            let modelType = type(of: value)
-            let schema = await CryoSchemaManager.shared.schema(for: modelType)
-            let columns: [String] = schema.columns.map { $0.columnName }
-            
-            let result = """
+        let modelType = type(of: value)
+        let schema = CryoSchemaManager.shared.schema(for: modelType)
+        let columns: [String] = schema.columns.map { $0.columnName }
+        
+        let result = """
 INSERT \(replace ? "OR REPLACE " : "")INTO \(modelType.tableName)(_cryo_created,_cryo_modified,\(columns.joined(separator: ",")))
     VALUES (?,?,\(columns.map { "\($0)" }.joined(separator: ",")));
 """
-            
-            self.completeQueryString = result
-            return result
-        }
+        
+        self.completeQueryString = result
+        return result
     }
 }
 
@@ -111,7 +105,7 @@ extension UntypedSQLiteInsertQuery {
             return queryStatement
         }
         
-        let queryString = await self.queryString
+        let queryString = self.queryString
         var queryStatement: OpaquePointer?
         
         let prepareStatus = sqlite3_prepare_v3(connection, queryString, -1, 0, &queryStatement, nil)
@@ -124,7 +118,7 @@ extension UntypedSQLiteInsertQuery {
             throw CryoError.queryCompilationFailed(query: queryString, status: prepareStatus, message: message)
         }
         
-        let schema = await CryoSchemaManager.shared.schema(for: type(of: value))
+        let schema = CryoSchemaManager.shared.schema(for: type(of: value))
         
         var bindings: [CryoQueryValue] = [.date(value: created), .date(value: created)]
         bindings.append(contentsOf: try schema.columns.map { try .init(value: $0.getValue(value)) })
@@ -170,7 +164,7 @@ extension UntypedSQLiteInsertQuery {
                 message = String(cString: errorPointer)
             }
             
-            throw CryoError.queryExecutionFailed(query: await queryString,
+            throw CryoError.queryExecutionFailed(query: queryString,
                                                  status: executeStatus,
                                                  message: message)
         }

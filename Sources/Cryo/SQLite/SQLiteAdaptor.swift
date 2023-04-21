@@ -118,7 +118,7 @@ extension SQLiteAdaptor: CryoDatabaseAdaptor {
     public func select<Model: CryoModel>(id: String? = nil, from: Model.Type) async throws -> any CryoSelectQuery<Model> {
         var query: SQLiteSelectQuery<Model> = try SQLiteSelectQuery(connection: db.connection, config: config)
         if let id {
-            query = try await query.where("id", operation: .equals, value: id)
+            query = try query.where("id", operation: .equals, value: id)
         }
         
         return query
@@ -141,7 +141,7 @@ extension SQLiteAdaptor: ResilientStoreBackend {
     func execute(operation: DatabaseOperation) async throws {
         switch operation {
         case .insert(_, let tableName, let rowId, let data):
-            guard let schema = await CryoSchemaManager.shared.schema(tableName: tableName) else {
+            guard let schema = CryoSchemaManager.shared.schema(tableName: tableName) else {
                 throw CryoError.schemaNotInitialized(tableName: tableName)
             }
             
@@ -154,28 +154,28 @@ extension SQLiteAdaptor: ResilientStoreBackend {
             _ = try await UntypedSQLiteInsertQuery(id: rowId, value: model, replace: false, connection: db.connection, config: config)
                 .execute()
         case .update(_, let tableName, let rowId, let setClauses, let whereClauses):
-            guard let schema = await CryoSchemaManager.shared.schema(tableName: tableName) else {
+            guard let schema = CryoSchemaManager.shared.schema(tableName: tableName) else {
                 throw CryoError.schemaNotInitialized(tableName: tableName)
             }
             
             let query = try UntypedSQLiteUpdateQuery(id: rowId, modelType: schema.`self`, connection: db.connection, config: config)
             for setClause in setClauses {
-                _ = try await query.set(setClause.columnName, to: setClause.value.columnValue)
+                _ = try query.set(setClause.columnName, to: setClause.value.columnValue)
             }
             for whereClause in whereClauses {
-                _ = try await query.where(whereClause.columnName, operation: whereClause.operation, value: whereClause.value.columnValue)
+                _ = try query.where(whereClause.columnName, operation: whereClause.operation, value: whereClause.value.columnValue)
             }
             
             _ = try await query.execute()
             break
         case .delete(_, let tableName, let rowId, let whereClauses):
-            guard let schema = await CryoSchemaManager.shared.schema(tableName: tableName) else {
+            guard let schema = CryoSchemaManager.shared.schema(tableName: tableName) else {
                 throw CryoError.schemaNotInitialized(tableName: tableName)
             }
             
             let query = try UntypedSQLiteDeleteQuery(id: rowId, modelType: schema.`self`, connection: db.connection, config: config)
             for whereClause in whereClauses {
-                _ = try await query.where(whereClause.columnName, operation: whereClause.operation, value: whereClause.value.columnValue)
+                _ = try query.where(whereClause.columnName, operation: whereClause.operation, value: whereClause.value.columnValue)
             }
             
             _ = try await query.execute()

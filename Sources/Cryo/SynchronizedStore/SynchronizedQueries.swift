@@ -24,7 +24,7 @@ extension SynchronizedInsertQuery: CryoInsertQuery {
     public typealias Model = QueryType.Model
     
     public var queryString: String {
-        get async { await query.queryString }
+        query.queryString
     }
     
     @discardableResult public func execute() async throws -> QueryType.Result {
@@ -59,7 +59,7 @@ extension SynchronizedUpdateQuery: CryoUpdateQuery {
     public typealias Model = QueryType.Model
     
     public var queryString: String {
-        get async { await query.queryString }
+        query.queryString
     }
     
     @discardableResult public func execute() async throws -> QueryType.Result {
@@ -108,7 +108,7 @@ extension SynchronizedDeleteQuery: CryoDeleteQuery {
     public typealias Model = QueryType.Model
     
     public var queryString: String {
-        get async { await query.queryString }
+        query.queryString
     }
     
     @discardableResult public func execute() async throws -> QueryType.Result {

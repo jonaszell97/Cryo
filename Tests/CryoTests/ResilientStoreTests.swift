@@ -53,6 +53,9 @@ final class ResilientStoreTests: XCTestCase {
         let databaseAdaptor = database ?? MockCloudKitAdaptor()
         databaseAdaptor.isAvailable = true
         
+        try await databaseAdaptor.createTable(for: TestModel.self).execute()
+        try await databaseAdaptor.createTable(for: TestModel2.self).execute()
+        
         let cryoConfig = CryoConfig { print("[\($0)] \($1)") }
         let config = ResilientCloudKitStoreConfig(identifier: "TestStore_resilient", maximumNumberOfRetries: 5, cryoConfig: cryoConfig)
         

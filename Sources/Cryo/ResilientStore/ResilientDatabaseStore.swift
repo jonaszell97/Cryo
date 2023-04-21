@@ -176,10 +176,6 @@ extension ResilientStoreImpl {
 }
 
 extension ResilientStoreImpl where Backend == CloudKitAdaptor {
-    func createTable<Model: CryoModel>(for model: Model.Type) async throws -> any CryoCreateTableQuery<Model> {
-        try await store.createTable(for: model)
-    }
-    
     func select<Model: CryoModel>(id: String? = nil, from model: Model.Type) async throws -> any CryoSelectQuery<Model> {
         try await store.select(id: id, from: model)
     }
@@ -215,6 +211,10 @@ extension ResilientStoreImpl where Backend == CloudKitAdaptor {
 }
 
 extension ResilientStoreImpl: SynchronizedStoreBackend {
+    func createTable<Model: CryoModel>(for model: Model.Type) async throws -> any CryoCreateTableQuery<Model> {
+        try await store.createTable(for: model)
+    }
+    
     func persist(operation: SyncOperation) async throws {
         _ = await execute(operation: try operation.operation, enqueueIfFailed: true)
     }

@@ -18,9 +18,7 @@ extension SQLiteUpdateQuery: CryoUpdateQuery {
     public var setClauses: [CryoQuerySetClause] { untypedQuery.setClauses }
     
     public var queryString: String {
-        get async {
-            await untypedQuery.queryString
-        }
+        untypedQuery.queryString
     }
     
     @discardableResult public func execute() async throws -> Int {
@@ -87,41 +85,39 @@ internal class UntypedSQLiteUpdateQuery {
     
     /// The complete query string.
     public var queryString: String {
-        get async {
-            if let completeQueryString {
-                return completeQueryString
-            }
-            
-            let hasId = id != nil
-            var result = "UPDATE \(modelType.tableName) SET _cryo_modified = ?"
-            
-            // Set clauses
-            
-            for i in 0..<setClauses.count {
-                result += ", \(setClauses[i].columnName) = ?"
-            }
-            
-            // Where clauses
-            
-            if hasId || !whereClauses.isEmpty {
-                result += " WHERE "
-            }
-            
-            if hasId {
-                result += "id == ?"
-            }
-            
-            for i in 0..<whereClauses.count {
-                if i > 0 || hasId {
-                    result += " AND "
-                }
-                
-                result += "\(whereClauses[i].columnName) \(SQLiteAdaptor.formatOperator(whereClauses[i].operation)) ?"
-            }
-            
-            self.completeQueryString = result
-            return result
+        if let completeQueryString {
+            return completeQueryString
         }
+        
+        let hasId = id != nil
+        var result = "UPDATE \(modelType.tableName) SET _cryo_modified = ?"
+        
+        // Set clauses
+        
+        for i in 0..<setClauses.count {
+            result += ", \(setClauses[i].columnName) = ?"
+        }
+        
+        // Where clauses
+        
+        if hasId || !whereClauses.isEmpty {
+            result += " WHERE "
+        }
+        
+        if hasId {
+            result += "id == ?"
+        }
+        
+        for i in 0..<whereClauses.count {
+            if i > 0 || hasId {
+                result += " AND "
+            }
+            
+            result += "\(whereClauses[i].columnName) \(SQLiteAdaptor.formatOperator(whereClauses[i].operation)) ?"
+        }
+        
+        self.completeQueryString = result
+        return result
     }
 }
 
@@ -132,7 +128,7 @@ extension UntypedSQLiteUpdateQuery {
             return queryStatement
         }
         
-        let queryString = await self.queryString
+        let queryString = self.queryString
         var queryStatement: OpaquePointer?
         
         let prepareStatus = sqlite3_prepare_v3(connection, queryString, -1, 0, &queryStatement, nil)
@@ -178,7 +174,7 @@ extension UntypedSQLiteUpdateQuery {
         }
         
         #if DEBUG
-        config?.log?(.debug, "[SQLite3Connection] query \(await queryString), bindings \(whereClauses.map { "\($0.value)" })")
+        config?.log?(.debug, "[SQLite3Connection] query \(queryString), bindings \(whereClauses.map { "\($0.value)" })")
         #endif
         
         let executeStatus = sqlite3_step(queryStatement)
@@ -188,7 +184,7 @@ extension UntypedSQLiteUpdateQuery {
                 message = String(cString: errorPointer)
             }
             
-            throw CryoError.queryExecutionFailed(query: await queryString,
+            throw CryoError.queryExecutionFailed(query: queryString,
                                                  status: executeStatus,
                                                  message: message)
         }

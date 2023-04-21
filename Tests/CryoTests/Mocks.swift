@@ -132,7 +132,7 @@ final class UntypedMockSelectQuery {
     }
     
     func execute() async throws -> [any CryoModel] {
-        let schema = await CryoSchemaManager.shared.schema(for: modelType)
+        let schema = CryoSchemaManager.shared.schema(for: modelType)
         
         var results = [any CryoModel]()
         for record in allRecords {
@@ -253,7 +253,7 @@ final class UntypedMockInsertQuery {
         
         let modelType = type(of: value)
         let record = CKRecord(recordType: modelType.tableName, recordID: id)
-        let schema = await CryoSchemaManager.shared.schema(for: modelType)
+        let schema = CryoSchemaManager.shared.schema(for: modelType)
         
         for columnDetails in schema.columns {
             record[columnDetails.columnName] = try CloudKitAdaptor.nsObject(from: columnDetails.getValue(value),
@@ -368,7 +368,7 @@ final class UntypedMockUpdateQuery {
             throw CryoError.backendNotAvailable
         }
         
-        let schema = await CryoSchemaManager.shared.schema(for: modelType)
+        let schema = CryoSchemaManager.shared.schema(for: modelType)
         
         var records = [CKRecord]()
         for record in allRecords {
@@ -499,7 +499,7 @@ final class UntypedMockDeleteQuery {
             throw CryoError.backendNotAvailable
         }
     
-        let schema = await CryoSchemaManager.shared.schema(for: modelType)
+        let schema = CryoSchemaManager.shared.schema(for: modelType)
         
         var deletedCount = 0
         for record in allRecords {
@@ -543,7 +543,7 @@ extension MockCloudKitAdaptor: ResilientStoreBackend {
     func execute(operation: DatabaseOperation) async throws {
         switch operation {
         case .insert(_, let tableName, let rowId, let data):
-            guard let schema = await CryoSchemaManager.shared.schema(tableName: tableName) else {
+            guard let schema = CryoSchemaManager.shared.schema(tableName: tableName) else {
                 throw CryoError.schemaNotInitialized(tableName: tableName)
             }
             
@@ -560,7 +560,7 @@ extension MockCloudKitAdaptor: ResilientStoreBackend {
             
             _ = try await query.execute()
         case .update(_, let tableName, let rowId, let setClauses, let whereClauses):
-            guard let schema = await CryoSchemaManager.shared.schema(tableName: tableName) else {
+            guard let schema = CryoSchemaManager.shared.schema(tableName: tableName) else {
                 throw CryoError.schemaNotInitialized(tableName: tableName)
             }
             
@@ -580,7 +580,7 @@ extension MockCloudKitAdaptor: ResilientStoreBackend {
             _ = try await query.execute()
             break
         case .delete(_, let tableName, let rowId, let whereClauses):
-            guard let schema = await CryoSchemaManager.shared.schema(tableName: tableName) else {
+            guard let schema = CryoSchemaManager.shared.schema(tableName: tableName) else {
                 throw CryoError.schemaNotInitialized(tableName: tableName)
             }
             
@@ -601,7 +601,9 @@ extension MockCloudKitAdaptor: ResilientStoreBackend {
 
 extension MockCloudKitAdaptor: CryoDatabaseAdaptor {
     public func createTable<Model: CryoModel>(for model: Model.Type) async throws -> any CryoCreateTableQuery<Model> {
-        NoOpQuery(queryString: "", for: model)
+        // Initialize the CryoSchema
+        await CryoSchemaManager.shared.createSchema(for: model)
+        return NoOpQuery(queryString: "", for: model)
     }
     
     public func select<Model: CryoModel>(id: String? = nil, from: Model.Type) async throws -> any CryoSelectQuery<Model> {

@@ -14,9 +14,7 @@ public final class SQLiteCreateTableQuery<Model: CryoModel> {
 
 extension SQLiteCreateTableQuery: CryoCreateTableQuery {
     public var queryString: String {
-        get async {
-            await untypedQuery.queryString
-        }
+        untypedQuery.queryString
     }
     
     public func execute() async throws {
@@ -53,42 +51,40 @@ internal class UntypedSQLiteCreateTableQuery {
     
     /// The complete query string.
     public var queryString: String {
-        get async {
-            if let completeQueryString {
-                return completeQueryString
-            }
-            
-            let schema = await CryoSchemaManager.shared.schema(for: modelType)
-            var columns = ""
-            
-            for columnDetails in schema.columns {
-                switch columnDetails {
-                case .value(let columnName, _, _):
-                    let specifiers: String
-                    if columnName == "id" {
-                        specifiers = " NOT NULL UNIQUE"
-                    }
-                    else {
-                        specifiers = ""
-                    }
-                    
-                    columns += ",\n    \(columnName) \(SQLiteAdaptor.sqliteTypeName(for: columnDetails))\(specifiers)"
-                case .oneToOneRelation(let columnName, let modelType, _):
-                    columns += ",\n    \(columnName) TEXT NOT NULL"
-                    columns += ",\n    FOREIGN KEY(\(columnName)) REFERENCES \(modelType.tableName)(id)"
+        if let completeQueryString {
+            return completeQueryString
+        }
+        
+        let schema = CryoSchemaManager.shared.schema(for: modelType)
+        var columns = ""
+        
+        for columnDetails in schema.columns {
+            switch columnDetails {
+            case .value(let columnName, _, _):
+                let specifiers: String
+                if columnName == "id" {
+                    specifiers = " NOT NULL UNIQUE"
                 }
+                else {
+                    specifiers = ""
+                }
+                
+                columns += ",\n    \(columnName) \(SQLiteAdaptor.sqliteTypeName(for: columnDetails))\(specifiers)"
+            case .oneToOneRelation(let columnName, let modelType, _):
+                columns += ",\n    \(columnName) TEXT NOT NULL"
+                columns += ",\n    FOREIGN KEY(\(columnName)) REFERENCES \(modelType.tableName)(id)"
             }
-            
-            let result = """
+        }
+        
+        let result = """
 CREATE TABLE IF NOT EXISTS \(modelType.tableName)(
     _cryo_created TEXT NOT NULL,
     _cryo_modified TEXT NOT NULL\(columns)
 );
 """
-            
-            self.completeQueryString = result
-            return result
-        }
+        
+        self.completeQueryString = result
+        return result
     }
 }
 
@@ -99,7 +95,7 @@ extension UntypedSQLiteCreateTableQuery {
             return queryStatement
         }
         
-        let queryString = await self.queryString
+        let queryString = self.queryString
         var queryStatement: OpaquePointer?
         
         let prepareStatus = sqlite3_prepare_v3(connection, queryString, -1, 0, &queryStatement, nil)
@@ -121,13 +117,16 @@ extension UntypedSQLiteCreateTableQuery {
     public typealias Result = Void
     
     public func execute() async throws {
+        // Initialize the CryoSchema
+        await CryoSchemaManager.shared.createSchema(for: modelType)
+        
         let queryStatement = try await self.compiledQuery()
         defer {
             sqlite3_finalize(queryStatement)
         }
         
         #if DEBUG
-        config?.log?(.debug, "[SQLite3Connection] query \(await queryString)")
+        config?.log?(.debug, "[SQLite3Connection] query \(queryString)")
         #endif
         
         let executeStatus = sqlite3_step(queryStatement)
@@ -137,12 +136,9 @@ extension UntypedSQLiteCreateTableQuery {
                 message = String(cString: errorPointer)
             }
             
-            throw CryoError.queryExecutionFailed(query: await queryString,
+            throw CryoError.queryExecutionFailed(query: queryString,
                                                  status: executeStatus,
                                                  message: message)
         }
-        
-        // Initialize the CryoSchema
-        _ = await CryoSchemaManager.shared.schema(for: modelType)
     }
 }

@@ -17,9 +17,7 @@ extension CloudKitInsertQuery: CryoInsertQuery {
     public var value: Model { untypedQuery.value as! Model }
     
     public var queryString: String {
-        get async {
-            await untypedQuery.queryString
-        }
+        untypedQuery.queryString
     }
     
     @discardableResult public func execute() async throws -> Bool {
@@ -62,18 +60,16 @@ internal class UntypedCloudKitInsertQuery {
     
     /// The complete query string.
     public var queryString: String {
-        get async {
-            let modelType = type(of: value)
-            let schema = await CryoSchemaManager.shared.schema(for: modelType)
-            let columns: [String] = schema.columns.map { $0.columnName }
-            
-            let result = """
+        let modelType = type(of: value)
+        let schema = CryoSchemaManager.shared.schema(for: modelType)
+        let columns: [String] = schema.columns.map { $0.columnName }
+        
+        let result = """
 INSERT \(replace ? "OR REPLACE " : "")INTO \(modelType.tableName)(\(columns.joined(separator: ",")))
     VALUES (\(columns.map { _ in "?" }.joined(separator: ",")));
 """
-            
-            return result
-        }
+        
+        return result
     }
 }
 
@@ -81,7 +77,7 @@ extension UntypedCloudKitInsertQuery {
     @discardableResult public func execute() async throws -> Bool {
         let modelType = type(of: value)
         let record = CKRecord(recordType: modelType.tableName, recordID: CKRecord.ID(recordName: id))
-        let schema = await CryoSchemaManager.shared.schema(for: modelType)
+        let schema = CryoSchemaManager.shared.schema(for: modelType)
         
         for columnDetails in schema.columns {
             record[columnDetails.columnName] = try CloudKitAdaptor.nsObject(from: columnDetails.getValue(value),

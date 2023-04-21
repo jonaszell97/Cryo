@@ -5,6 +5,9 @@ import Foundation
 // MARK: SynchronizedStoreBackend
 
 internal protocol SynchronizedStoreBackend {
+    /// Create a table.
+    func createTable<Model: CryoModel>(for model: Model.Type) async throws -> any CryoCreateTableQuery<Model>
+    
     /// Persist a sync operation.
     func persist(operation: SyncOperation) async throws
     

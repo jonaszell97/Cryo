@@ -23,7 +23,7 @@ public protocol CryoQuery<Result> {
     associatedtype Result
     
     /// The raw query string.
-    var queryString: String { get async }
+    var queryString: String { get }
     
     /// Execute the query and return the result.
     func execute() async throws -> Result
@@ -202,9 +202,7 @@ public struct MultiQuery<Result1, Result2>: CryoQuery {
     }
     
     public var queryString: String {
-        get async {
-            "MultiQuery(\(await first.queryString), \(await second.queryString))"
-        }
+        "MultiQuery(\(first.queryString), \(second.queryString))"
     }
     
     public func execute() async throws {

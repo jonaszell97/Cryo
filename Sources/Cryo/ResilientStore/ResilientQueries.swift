@@ -24,7 +24,7 @@ extension ResilientInsertQuery: CryoInsertQuery {
     public typealias Model = QueryType.Model
     
     public var queryString: String {
-        get async { await query.queryString }
+        query.queryString
     }
     
     @discardableResult public func execute() async throws -> QueryType.Result {
@@ -61,7 +61,7 @@ extension ResilientUpdateQuery: CryoUpdateQuery {
     public typealias Model = QueryType.Model
     
     public var queryString: String {
-        get async { await query.queryString }
+        query.queryString
     }
     
     @discardableResult public func execute() async throws -> QueryType.Result {
@@ -110,7 +110,7 @@ extension ResilientDeleteQuery: CryoDeleteQuery {
     public typealias Model = QueryType.Model
     
     public var queryString: String {
-        get async { await query.queryString }
+        query.queryString
     }
     
     @discardableResult public func execute() async throws -> QueryType.Result {

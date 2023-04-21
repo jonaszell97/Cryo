@@ -17,9 +17,7 @@ extension CloudKitSelectQuery: CryoSelectQuery {
     public var whereClauses: [CryoQueryWhereClause] { untypedQuery.whereClauses }
     
     public var queryString: String {
-        get async {
-            await untypedQuery.queryString
-        }
+        untypedQuery.queryString
     }
     
     @discardableResult public func execute() async throws -> [Model] {
@@ -86,22 +84,20 @@ internal class UntypedCloudKitSelectQuery {
     
     /// The complete query string.
     public var queryString: String {
-        get async {
-            var result = "SELECT * FROM \(modelType.tableName)"
-            for i in 0..<whereClauses.count {
-                if i == 0 {
-                    result += " WHERE "
-                }
-                else {
-                    result += " AND "
-                }
-                
-                let clause = whereClauses[i]
-                result += "\(clause.columnName) \(CloudKitAdaptor.formatOperator(clause.operation)) \(CloudKitAdaptor.placeholderSymbol(for: clause.value))"
+        var result = "SELECT * FROM \(modelType.tableName)"
+        for i in 0..<whereClauses.count {
+            if i == 0 {
+                result += " WHERE "
+            }
+            else {
+                result += " AND "
             }
             
-            return result
+            let clause = whereClauses[i]
+            result += "\(clause.columnName) \(CloudKitAdaptor.formatOperator(clause.operation)) \(CloudKitAdaptor.placeholderSymbol(for: clause.value))"
         }
+        
+        return result
     }
     
     /// Limit the number of results this query returns.
@@ -223,7 +219,7 @@ extension UntypedCloudKitSelectQuery {
         let records = try await Self.fetch(id: id, modelType: modelType, whereClauses: whereClauses,
                                            resultsLimit: resultsLimit, sortingClauses: sortingClauses,
                                            database: database)
-        let schema = await CryoSchemaManager.shared.schema(for: modelType)
+        let schema = CryoSchemaManager.shared.schema(for: modelType)
         
         var results = [any CryoModel]()
         for record in records {

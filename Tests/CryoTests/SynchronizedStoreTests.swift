@@ -38,7 +38,9 @@ final class SynchronizedStoreTests: XCTestCase {
                                              containerIdentifier: "",
                                              managedModels: [TestModel.self],
                                              cryoConfig: CryoConfig { print("[\($0)] \($1)") })
+        
         let backend = backend ?? MockCloudKitAdaptor()
+        try await backend.createTable(for: TestModel.self).execute()
         
         return try await StoreType(config: config, backend: backend, deviceIdentifier: deviceIdentifier)
     }

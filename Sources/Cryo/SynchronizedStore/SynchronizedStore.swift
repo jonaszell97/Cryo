@@ -154,6 +154,9 @@ internal final class SynchronizedStoreImpl<Backend: SynchronizedStoreBackend> {
 fileprivate extension SynchronizedStoreImpl {
     /// Initialize the store.
     func initialize() async throws {
+        // Create table
+        try await operationsStore.createTable(for: SyncOperation.self).execute()
+        
         // Set up change subscription if necessary
         if !self.changeSubscriptionSetup {
             try await operationsStore.setupRecordChangeSubscription(for: SyncOperation.tableName,
