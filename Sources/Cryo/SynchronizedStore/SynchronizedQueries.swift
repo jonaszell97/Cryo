@@ -72,15 +72,15 @@ extension SynchronizedUpdateQuery: CryoUpdateQuery {
     
     public func `where`<Value: _AnyCryoColumnValue>(_ columnName: String,
                                                     operation: CryoComparisonOperator,
-                                                    value: Value) async throws -> Self {
-        _ = try await query.where(columnName, operation: operation, value: value)
+                                                    value: Value) throws -> Self {
+        _ = try query.where(columnName, operation: operation, value: value)
         return self
     }
     
     
     public func set<Value: _AnyCryoColumnValue>(_ columnName: String,
-                                                to value: Value) async throws -> Self {
-        _ = try await query.set(columnName, to: value)
+                                                to value: Value) throws -> Self {
+        _ = try query.set(columnName, to: value)
         return self
     }
 }
@@ -121,8 +121,8 @@ extension SynchronizedDeleteQuery: CryoDeleteQuery {
     
     public func `where`<Value: _AnyCryoColumnValue>(_ columnName: String,
                                                     operation: CryoComparisonOperator,
-                                                    value: Value) async throws -> Self {
-        _ = try await query.where(columnName, operation: operation, value: value)
+                                                    value: Value) throws -> Self {
+        _ = try query.where(columnName, operation: operation, value: value)
         return self
     }
 }

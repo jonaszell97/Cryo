@@ -31,8 +31,8 @@ extension CloudKitSelectQuery: CryoSelectQuery {
         _ columnName: String,
         operation: CryoComparisonOperator,
         value: Value
-    ) async throws -> Self {
-        _ = try await untypedQuery.where(columnName, operation: operation, value: value)
+    ) throws -> Self {
+        _ = try untypedQuery.where(columnName, operation: operation, value: value)
         return self
     }
     
@@ -250,7 +250,7 @@ extension UntypedCloudKitSelectQuery {
         _ columnName: String,
         operation: CryoComparisonOperator,
         value: Value
-    ) async throws -> Self {
+    ) throws -> Self {
         self.whereClauses.append(.init(columnName: columnName,
                                        operation: operation,
                                        value: try .init(value: value)))

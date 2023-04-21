@@ -52,10 +52,10 @@ final class MockSelectQuery<Model: CryoModel>: CryoSelectQuery {
     
     func `where`<Value: _AnyCryoColumnValue>(_ columnName: String,
                                              operation: Cryo.CryoComparisonOperator,
-                                             value: Value) async throws
+                                             value: Value) throws
         -> Self
     {
-        _ = try await untypedQuery.where(columnName, operation: operation, value: value)
+        _ = try untypedQuery.where(columnName, operation: operation, value: value)
         return self
     }
     
@@ -100,7 +100,7 @@ final class UntypedMockSelectQuery {
     
     func `where`<Value: _AnyCryoColumnValue>(_ columnName: String,
                                              operation: Cryo.CryoComparisonOperator,
-                                             value: Value) async throws
+                                             value: Value) throws
         -> Self
     {
         self.whereClauses.append(.init(columnName: columnName, operation: operation,
@@ -293,15 +293,15 @@ final class MockUpdateQuery<Model: CryoModel>: CryoUpdateQuery {
     func set<Value: _AnyCryoColumnValue>(
         _ columnName: String,
         to value: Value
-    ) async throws -> Self {
-        _ = try await query.set(columnName, to: value)
+    ) throws -> Self {
+        _ = try query.set(columnName, to: value)
         return self
     }
     
     func `where`<Value: _AnyCryoColumnValue>(_ columnName: String,
                                              operation: Cryo.CryoComparisonOperator,
-                                             value: Value) async throws -> Self {
-        _ = try await query.where(columnName, operation: operation, value: value)
+                                             value: Value) throws -> Self {
+        _ = try query.where(columnName, operation: operation, value: value)
         return self
     }
 }
@@ -337,14 +337,14 @@ final class UntypedMockUpdateQuery {
     func set<Value: _AnyCryoColumnValue>(
         _ columnName: String,
         to value: Value
-    ) async throws -> Self {
+    ) throws -> Self {
         self.setClauses.append(.init(columnName: columnName, value: try .init(value: value)))
         return self
     }
     
     func `where`<Value: _AnyCryoColumnValue>(_ columnName: String,
                                              operation: Cryo.CryoComparisonOperator,
-                                             value: Value) async throws
+                                             value: Value) throws
         -> Self
     {
         self.whereClauses.append(.init(columnName: columnName, operation: operation,
@@ -435,8 +435,8 @@ final class MockDeleteQuery<Model: CryoModel>: CryoDeleteQuery {
     
     func `where`<Value: _AnyCryoColumnValue>(_ columnName: String,
                                              operation: Cryo.CryoComparisonOperator,
-                                             value: Value) async throws -> Self {
-        _ = try await query.where(columnName, operation: operation, value: value)
+                                             value: Value) throws -> Self {
+        _ = try query.where(columnName, operation: operation, value: value)
         return self
     }
     
@@ -476,7 +476,7 @@ final class UntypedMockDeleteQuery {
     
     func `where`<Value: _AnyCryoColumnValue>(_ columnName: String,
                                              operation: Cryo.CryoComparisonOperator,
-                                             value: Value) async throws -> Self
+                                             value: Value) throws -> Self
     {
         self.whereClauses.append(.init(columnName: columnName, operation: operation,
                                        value: try .init(value: value)))
@@ -571,10 +571,10 @@ extension MockCloudKitAdaptor: ResilientStoreBackend {
             }
             
             for setClause in setClauses {
-                _ = try await query.set(setClause.columnName, to: setClause.value.columnValue)
+                _ = try query.set(setClause.columnName, to: setClause.value.columnValue)
             }
             for whereClause in whereClauses {
-                _ = try await query.where(whereClause.columnName, operation: whereClause.operation, value: whereClause.value.columnValue)
+                _ = try query.where(whereClause.columnName, operation: whereClause.operation, value: whereClause.value.columnValue)
             }
             
             _ = try await query.execute()
@@ -591,7 +591,7 @@ extension MockCloudKitAdaptor: ResilientStoreBackend {
             }
             
             for whereClause in whereClauses {
-                _ = try await query.where(whereClause.columnName, operation: whereClause.operation, value: whereClause.value.columnValue)
+                _ = try query.where(whereClause.columnName, operation: whereClause.operation, value: whereClause.value.columnValue)
             }
             
             _ = try await query.execute()

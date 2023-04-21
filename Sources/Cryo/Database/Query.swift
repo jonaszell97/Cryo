@@ -93,7 +93,7 @@ public protocol CryoWhereClauseQuery<Model>: CryoModelQuery {
         _ columnName: String,
         operation: CryoComparisonOperator,
         value: Value
-    ) async throws -> Self
+    ) throws -> Self
 }
 
 // MARK: Set clauses
@@ -114,7 +114,7 @@ public protocol CryoSetClauseQuery<Model>: CryoModelQuery {
     func set<Value: _AnyCryoColumnValue>(
         _ columnName: String,
         to value: Value
-    ) async throws -> Self
+    ) throws -> Self
 }
 
 // MARK: Select
@@ -222,96 +222,96 @@ extension CryoWhereClauseQuery {
     public func `where`<Value: _AnyCryoColumnValue>(
         _ columnName: String,
         equals value: Value
-    ) async throws -> Self {
-        try await self.where(columnName, operation: .equals, value: value)
+    ) throws -> Self {
+        try self.where(columnName, operation: .equals, value: value)
     }
     
     /// Attach a WHERE clause to this query.
     public func `where`<Value: _AnyCryoColumnValue>(
         _ columnName: String,
         doesNotEqual value: Value
-    ) async throws -> Self {
-        try await self.where(columnName, operation: .doesNotEqual, value: value)
+    ) throws -> Self {
+        try self.where(columnName, operation: .doesNotEqual, value: value)
     }
     
     /// Attach a WHERE clause to this query.
     public func `where`<Value: _AnyCryoColumnValue>(
         _ columnName: String,
         isGreatherThan value: Value
-    ) async throws -> Self {
-        try await self.where(columnName, operation: .isGreatherThan, value: value)
+    ) throws -> Self {
+        try self.where(columnName, operation: .isGreatherThan, value: value)
     }
     
     /// Attach a WHERE clause to this query.
     public func `where`<Value: _AnyCryoColumnValue>(
         _ columnName: String,
         isGreatherThanOrEquals value: Value
-    ) async throws -> Self {
-        try await self.where(columnName, operation: .isGreatherThanOrEquals, value: value)
+    ) throws -> Self {
+        try self.where(columnName, operation: .isGreatherThanOrEquals, value: value)
     }
     
     /// Attach a WHERE clause to this query.
     public func `where`<Value: _AnyCryoColumnValue>(
         _ columnName: String,
         isLessThan value: Value
-    ) async throws -> Self {
-        try await self.where(columnName, operation: .isLessThan, value: value)
+    ) throws -> Self {
+        try self.where(columnName, operation: .isLessThan, value: value)
     }
     
     /// Attach a WHERE clause to this query.
     public func `where`<Value: _AnyCryoColumnValue>(
         _ columnName: String,
         isLessThanOrEquals value: Value
-    ) async throws -> Self {
-        try await self.where(columnName, operation: .isLessThanOrEquals, value: value)
+    ) throws -> Self {
+        try self.where(columnName, operation: .isLessThanOrEquals, value: value)
     }
     
     /// Attach a WHERE clause to this query.
     public func and<Value: _AnyCryoColumnValue>(
         _ columnName: String,
         equals value: Value
-    ) async throws -> Self {
-        try await self.where(columnName, operation: .equals, value: value)
+    ) throws -> Self {
+        try self.where(columnName, operation: .equals, value: value)
     }
     
     /// Attach a WHERE clause to this query.
     public func and<Value: _AnyCryoColumnValue>(
         _ columnName: String,
         doesNotEqual value: Value
-    ) async throws -> Self {
-        try await self.where(columnName, operation: .doesNotEqual, value: value)
+    ) throws -> Self {
+        try self.where(columnName, operation: .doesNotEqual, value: value)
     }
     
     /// Attach a WHERE clause to this query.
     public func and<Value: _AnyCryoColumnValue>(
         _ columnName: String,
         isGreatherThan value: Value
-    ) async throws -> Self {
-        try await self.where(columnName, operation: .isGreatherThan, value: value)
+    ) throws -> Self {
+        try self.where(columnName, operation: .isGreatherThan, value: value)
     }
     
     /// Attach a WHERE clause to this query.
     public func and<Value: _AnyCryoColumnValue>(
         _ columnName: String,
         isGreatherThanOrEquals value: Value
-    ) async throws -> Self {
-        try await self.where(columnName, operation: .isGreatherThanOrEquals, value: value)
+    ) throws -> Self {
+        try self.where(columnName, operation: .isGreatherThanOrEquals, value: value)
     }
     
     /// Attach a WHERE clause to this query.
     public func and<Value: _AnyCryoColumnValue>(
         _ columnName: String,
         isLessThan value: Value
-    ) async throws -> Self {
-        try await self.where(columnName, operation: .isLessThan, value: value)
+    ) throws -> Self {
+        try self.where(columnName, operation: .isLessThan, value: value)
     }
     
     /// Attach a WHERE clause to this query.
     public func and<Value: _AnyCryoColumnValue>(
         _ columnName: String,
         isLessThanOrEquals value: Value
-    ) async throws -> Self {
-        try await self.where(columnName, operation: .isLessThanOrEquals, value: value)
+    ) throws -> Self {
+        try self.where(columnName, operation: .isLessThanOrEquals, value: value)
     }
 }
 

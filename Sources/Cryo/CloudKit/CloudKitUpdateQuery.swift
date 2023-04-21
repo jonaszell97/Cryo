@@ -31,8 +31,8 @@ extension CloudKitUpdateQuery: CryoUpdateQuery {
     public func set<Value: _AnyCryoColumnValue>(
         _ columnName: String,
         to value: Value
-    ) async throws -> Self {
-        _ = try await untypedQuery.set(columnName, to: value)
+    ) throws -> Self {
+        _ = try untypedQuery.set(columnName, to: value)
         return self
     }
     
@@ -40,8 +40,8 @@ extension CloudKitUpdateQuery: CryoUpdateQuery {
         _ columnName: String,
         operation: CryoComparisonOperator,
         value: Value
-    ) async throws -> Self {
-        _ = try await untypedQuery.where(columnName, operation: operation, value: value)
+    ) throws -> Self {
+        _ = try untypedQuery.where(columnName, operation: operation, value: value)
         return self
     }
 }
@@ -243,7 +243,7 @@ extension UntypedCloudKitUpdateQuery {
     public func set<Value: _AnyCryoColumnValue>(
         _ columnName: String,
         to value: Value
-    ) async throws -> Self {
+    ) throws -> Self {
         self.setClauses.append(.init(columnName: columnName, value: try .init(value: value)))
         return self
     }
@@ -252,7 +252,7 @@ extension UntypedCloudKitUpdateQuery {
         _ columnName: String,
         operation: CryoComparisonOperator,
         value: Value
-    ) async throws -> Self {
+    ) throws -> Self {
         self.whereClauses.append(.init(columnName: columnName,
                                        operation: operation,
                                        value: try .init(value: value)))

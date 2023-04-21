@@ -30,8 +30,8 @@ extension SQLiteDeleteQuery: CryoDeleteQuery {
         _ columnName: String,
         operation: CryoComparisonOperator,
         value: Value
-    ) async throws -> Self {
-        _ = try await untypedQuery.where(columnName, operation: operation, value: value)
+    ) throws -> Self {
+        _ = try untypedQuery.where(columnName, operation: operation, value: value)
         return self
     }
 }
@@ -180,7 +180,7 @@ extension UntypedSQLiteDeleteQuery {
         _ columnName: String,
         operation: CryoComparisonOperator,
         value: Value
-    ) async throws -> Self {
+    ) throws -> Self {
         guard self.queryStatement == nil else {
             throw CryoError.modifyingFinalizedQuery
         }

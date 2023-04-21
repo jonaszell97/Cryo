@@ -31,8 +31,8 @@ extension SQLiteUpdateQuery: CryoUpdateQuery {
     public func set<Value: _AnyCryoColumnValue>(
         _ columnName: String,
         to value: Value
-    ) async throws -> Self {
-        _ = try await untypedQuery.set(columnName, to: value)
+    ) throws -> Self {
+        _ = try untypedQuery.set(columnName, to: value)
         return self
     }
     
@@ -40,8 +40,8 @@ extension SQLiteUpdateQuery: CryoUpdateQuery {
         _ columnName: String,
         operation: CryoComparisonOperator,
         value: Value
-    ) async throws -> Self {
-        _ = try await untypedQuery.where(columnName, operation: operation, value: value)
+    ) throws -> Self {
+        _ = try untypedQuery.where(columnName, operation: operation, value: value)
         return self
     }
 }
@@ -199,7 +199,7 @@ extension UntypedSQLiteUpdateQuery {
     public func set<Value: _AnyCryoColumnValue>(
         _ columnName: String,
         to value: Value
-    ) async throws -> Self {
+    ) throws -> Self {
         guard self.queryStatement == nil else {
             throw CryoError.modifyingFinalizedQuery
         }
@@ -212,7 +212,7 @@ extension UntypedSQLiteUpdateQuery {
         _ columnName: String,
         operation: CryoComparisonOperator,
         value: Value
-    ) async throws -> Self {
+    ) throws -> Self {
         guard self.queryStatement == nil else {
             throw CryoError.modifyingFinalizedQuery
         }
