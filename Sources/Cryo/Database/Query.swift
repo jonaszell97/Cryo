@@ -49,6 +49,14 @@ public enum CryoComparisonOperator: String, Codable {
     case isLessThanOrEquals
 }
 
+public enum CryoSortingOrder: String, Codable {
+    /// Sort in ascending order.
+    case ascending
+    
+    /// Sort in descending order.
+    case descending
+}
+
 // MARK: Model query
 
 public protocol CryoModelQuery<Model>: CryoQuery {
@@ -116,6 +124,12 @@ public protocol CryoSelectQuery<Model>: CryoWhereClauseQuery
 {
     /// The optional ID of the query.
     var id: String? { get }
+    
+    /// Limit the number of results this query returns.
+    func limit(_ limit: Int) -> Self
+    
+    /// Define a sorting for the results of this query.
+    func sort(by: String, _ order: CryoSortingOrder) -> Self
 }
 
 // MARK: Insert

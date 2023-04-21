@@ -62,6 +62,18 @@ final class MockSelectQuery<Model: CryoModel>: CryoSelectQuery {
     func execute() async throws -> [Model] {
         try await untypedQuery.execute() as! [Model]
     }
+    
+    /// Limit the number of results this query returns.
+    public func limit(_ limit: Int) -> Self {
+        _ = untypedQuery.limit(limit)
+        return self
+    }
+    
+    /// Define a sorting for the results of this query.
+    public func sort(by columnName: String, _ order: CryoSortingOrder) -> Self {
+        _ = untypedQuery.sort(by: columnName, order)
+        return self
+    }
 }
 
 final class UntypedMockSelectQuery {
@@ -69,6 +81,13 @@ final class UntypedMockSelectQuery {
     let modelType: any CryoModel.Type
     var whereClauses: [CryoQueryWhereClause]
     let allRecords: [CKRecord]
+    
+    /// The query results limit.
+    var resultsLimit: Int? = nil
+    
+    /// The sorting clauses.
+    var sortingClauses: [(String, CryoSortingOrder)] = []
+    
     
     init(id: String?, modelType: any CryoModel.Type, allRecords: [CKRecord]) {
         self.id = id
@@ -89,6 +108,18 @@ final class UntypedMockSelectQuery {
         return self
     }
     
+    /// Limit the number of results this query returns.
+    public func limit(_ limit: Int) -> Self {
+        self.resultsLimit = limit
+        return self
+    }
+    
+    /// Define a sorting for the results of this query.
+    public func sort(by columnName: String, _ order: CryoSortingOrder) -> Self {
+        self.sortingClauses.append((columnName, order))
+        return self
+    }
+    
     func decodeValue(from value: __CKRecordObjCValue, column: CryoSchemaColumn) async throws -> _AnyCryoColumnValue? {
         switch column {
         case .value(_, let type, _):
@@ -105,6 +136,12 @@ final class UntypedMockSelectQuery {
         
         var results = [any CryoModel]()
         for record in allRecords {
+            if let resultsLimit {
+                guard results.count < resultsLimit else {
+                    break
+                }
+            }
+            
             if let id {
                 guard record.recordID.recordName == id else {
                     continue
@@ -137,6 +174,32 @@ final class UntypedMockSelectQuery {
             }
             
             results.append(try schema.create(data))
+        }
+        
+        if !sortingClauses.isEmpty {
+            try results.sort { one, two in
+                for sortingClause in sortingClauses {
+                    guard let column = (schema.columns.first { $0.columnName == sortingClause.0 }) else {
+                        continue
+                    }
+                    
+                    let left = column.getValue(one)
+                    let right = column.getValue(two)
+                    
+                    let equalClause = CryoQueryWhereClause(columnName: sortingClause.0, operation: .equals, value: try .init(value: left))
+                    let lessThanClause = CryoQueryWhereClause(columnName: sortingClause.0, operation: .isLessThan, value: try .init(value: left))
+                    
+                    let equal = try CloudKitAdaptor.check(clause: equalClause, object: right)
+                    if equal {
+                        continue
+                    }
+                    
+                    let lessThan = try CloudKitAdaptor.check(clause: lessThanClause, object: right)
+                    return sortingClause.1 == .ascending ? lessThan : !lessThan
+                }
+                
+                return true
+            }
         }
         
         return results

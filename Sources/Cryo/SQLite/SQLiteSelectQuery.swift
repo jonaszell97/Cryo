@@ -35,6 +35,18 @@ extension SQLiteSelectQuery: CryoSelectQuery {
         _ = try await untypedQuery.where(columnName, operation: operation, value: value)
         return self
     }
+    
+    /// Limit the number of results this query returns.
+    public func limit(_ limit: Int) -> Self {
+        _ = untypedQuery.limit(limit)
+        return self
+    }
+    
+    /// Define a sorting for the results of this query.
+    public func sort(by columnName: String, _ order: CryoSortingOrder) -> Self {
+        _ = untypedQuery.sort(by: columnName, order)
+        return self
+    }
 }
 
 internal class UntypedSQLiteSelectQuery {
@@ -46,6 +58,12 @@ internal class UntypedSQLiteSelectQuery {
     
     /// The where clauses.
     public private(set) var whereClauses: [CryoQueryWhereClause]
+    
+    /// The query results limit.
+    var resultsLimit: Int? = nil
+    
+    /// The sorting clauses.
+    var sortingClauses: [(String, CryoSortingOrder)] = []
     
     /// The compiled query statement.
     var queryStatement: OpaquePointer? = nil
@@ -100,9 +118,33 @@ internal class UntypedSQLiteSelectQuery {
                 result += "\(whereClauses[i].columnName) \(SQLiteAdaptor.formatOperator(whereClauses[i].operation)) ?"
             }
             
+            if !sortingClauses.isEmpty {
+                result += " ORDER BY"
+                for (i, ordering) in sortingClauses.enumerated() {
+                    if i != 0 { result += "," }
+                    result += " \(ordering.0) \(ordering.1 == .ascending ? "ASC" : "DESC")"
+                }
+            }
+            
+            if let resultsLimit {
+                result += " LIMIT \(resultsLimit)"
+            }
+            
             self.completeQueryString = result
             return result
         }
+    }
+    
+    /// Limit the number of results this query returns.
+    public func limit(_ limit: Int) -> Self {
+        self.resultsLimit = limit
+        return self
+    }
+    
+    /// Define a sorting for the results of this query.
+    public func sort(by columnName: String, _ order: CryoSortingOrder) -> Self {
+        self.sortingClauses.append((columnName, order))
+        return self
     }
 }
 

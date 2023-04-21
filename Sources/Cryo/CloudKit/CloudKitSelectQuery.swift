@@ -35,6 +35,18 @@ extension CloudKitSelectQuery: CryoSelectQuery {
         _ = try await untypedQuery.where(columnName, operation: operation, value: value)
         return self
     }
+    
+    /// Limit the number of results this query returns.
+    public func limit(_ limit: Int) -> Self {
+        _ = untypedQuery.limit(limit)
+        return self
+    }
+    
+    /// Define a sorting for the results of this query.
+    public func sort(by columnName: String, _ order: CryoSortingOrder) -> Self {
+        _ = untypedQuery.sort(by: columnName, order)
+        return self
+    }
 }
 
 internal class UntypedCloudKitSelectQuery {
@@ -46,6 +58,12 @@ internal class UntypedCloudKitSelectQuery {
     
     /// The where clauses.
     var whereClauses: [CryoQueryWhereClause]
+    
+    /// The query results limit.
+    var resultsLimit: Int? = nil
+    
+    /// The sorting clauses.
+    var sortingClauses: [(String, CryoSortingOrder)] = []
     
     /// The database to store to.
     let database: CKDatabase
@@ -85,10 +103,26 @@ internal class UntypedCloudKitSelectQuery {
             return result
         }
     }
+    
+    /// Limit the number of results this query returns.
+    public func limit(_ limit: Int) -> Self {
+        self.resultsLimit = limit
+        return self
+    }
+    
+    /// Define a sorting for the results of this query.
+    public func sort(by columnName: String, _ order: CryoSortingOrder) -> Self {
+        self.sortingClauses.append((columnName, order))
+        return self
+    }
 }
 
 extension UntypedCloudKitSelectQuery {
-    static func fetch(id: String?, modelType: any CryoModel.Type, whereClauses: [CryoQueryWhereClause],
+    static func fetch(id: String?,
+                      modelType: any CryoModel.Type,
+                      whereClauses: [CryoQueryWhereClause],
+                      resultsLimit: Int?,
+                      sortingClauses: [(String, CryoSortingOrder)],
                       database: CKDatabase) async throws -> [CKRecord] {
         if let id {
             // Fetch single record
@@ -134,9 +168,10 @@ extension UntypedCloudKitSelectQuery {
         }
         
         let query = CKQuery(recordType: modelType.tableName, predicate: predicate)
+        query.sortDescriptors = sortingClauses.map { .init(key: $0.0, ascending: $0.1 == .ascending) }
         
         var operation: CKQueryOperation? = CKQueryOperation(query: query)
-        operation?.resultsLimit = CKQueryOperation.maximumResults
+        operation?.resultsLimit = resultsLimit ?? CKQueryOperation.maximumResults
         
         var data = [CKRecord]()
         while let nextOperation = operation {
@@ -185,7 +220,9 @@ extension UntypedCloudKitSelectQuery {
 
 extension UntypedCloudKitSelectQuery {
     public func execute() async throws -> [any CryoModel] {
-        let records = try await Self.fetch(id: id, modelType: modelType, whereClauses: whereClauses, database: database)
+        let records = try await Self.fetch(id: id, modelType: modelType, whereClauses: whereClauses,
+                                           resultsLimit: resultsLimit, sortingClauses: sortingClauses,
+                                           database: database)
         let schema = await CryoSchemaManager.shared.schema(for: modelType)
         
         var results = [any CryoModel]()

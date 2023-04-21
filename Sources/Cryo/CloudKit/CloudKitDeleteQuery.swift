@@ -97,6 +97,8 @@ extension UntypedCloudKitDeleteQuery {
     @discardableResult public func execute() async throws -> Int {
         let records = try await UntypedCloudKitSelectQuery.fetch(id: id, modelType: modelType,
                                                                  whereClauses: whereClauses,
+                                                                 resultsLimit: nil,
+                                                                 sortingClauses: [],
                                                                  database: database)
         
         return try await withCheckedThrowingContinuation { continuation in

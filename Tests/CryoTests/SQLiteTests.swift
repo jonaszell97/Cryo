@@ -247,4 +247,59 @@ CREATE TABLE IF NOT EXISTS TestModel(
             }
         }
     }
+    
+    func testSorting() async throws {
+        let adaptor = try SQLiteAdaptor(databaseUrl: self.databaseUrl!, config: CryoConfig { print("[\($0)] \($1)") })
+        try await adaptor.createTable(for: TestModel.self).execute()
+        
+        var models = [TestModel]()
+        for i in 0..<100 {
+            let id = "id\(i)"
+            let model = TestModel.random(id: id)
+            models.append(model)
+            
+            _ = try await adaptor.insert(model).execute()
+        }
+        
+        models.sort { $0.x <= $1.x }
+        
+        let ascending = try await adaptor.select(from: TestModel.self)
+            .sort(by: "x", .ascending)
+            .execute()
+        
+        XCTAssertEqual(models, ascending)
+        
+        models.sort { $0.x >= $1.x }
+        
+        let descending = try await adaptor.select(from: TestModel.self)
+            .sort(by: "x", .descending)
+            .execute()
+        
+        XCTAssertEqual(models, descending)
+    }
+    
+    func testLimit() async throws {
+        let adaptor = try SQLiteAdaptor(databaseUrl: self.databaseUrl!, config: CryoConfig { print("[\($0)] \($1)") })
+        try await adaptor.createTable(for: TestModel.self).execute()
+        
+        var models = [TestModel]()
+        for i in 0..<100 {
+            let id = "id\(i)"
+            let model = TestModel.random(id: id)
+            models.append(model)
+            
+            _ = try await adaptor.insert(model).execute()
+        }
+        
+        let limited = try await adaptor.select(from: TestModel.self)
+            .limit(15)
+            .execute()
+        
+        XCTAssertEqual(limited.count, 15)
+        
+        let all = try await adaptor.select(from: TestModel.self)
+            .execute()
+        
+        XCTAssertEqual(all.count, 100)
+    }
 }
