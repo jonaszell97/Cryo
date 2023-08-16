@@ -72,9 +72,8 @@ internal class UntypedSQLiteSelectQuery {
     /// The SQLite connection.
     let connection: OpaquePointer
     
-    #if DEBUG
+    /// The cryo config.
     let config: CryoConfig?
-    #endif
     
     /// Create a SELECT query.
     internal init(columns: [String]? = nil, modelType: any CryoModel.Type, connection: OpaquePointer, config: CryoConfig?) throws {
@@ -82,10 +81,7 @@ internal class UntypedSQLiteSelectQuery {
         self.modelType = modelType
         self.columns = columns
         self.whereClauses = []
-        
-        #if DEBUG
         self.config = config
-        #endif
     }
     
     /// The complete query string.

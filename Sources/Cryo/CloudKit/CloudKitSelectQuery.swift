@@ -66,9 +66,8 @@ internal class UntypedCloudKitSelectQuery {
     /// The database to store to.
     let database: CKDatabase
     
-    #if DEBUG
+    /// The cryo config.
     let config: CryoConfig?
-    #endif
     
     /// Create a SELECT query.
     internal init(for modelType: any CryoModel.Type, id: String?, database: CKDatabase, config: CryoConfig?) throws {
@@ -76,10 +75,7 @@ internal class UntypedCloudKitSelectQuery {
         self.database = database
         self.modelType = modelType
         self.whereClauses = []
-        
-        #if DEBUG
         self.config = config
-        #endif
     }
     
     /// The complete query string.
