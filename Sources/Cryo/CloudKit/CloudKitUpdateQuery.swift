@@ -218,16 +218,16 @@ extension UntypedCloudKitUpdateQuery {
             operation.recordsToSave = records
             operation.savePolicy = .allKeys
             
-            var savedRecordCount = 0
+            var recordCount = 0
             operation.perRecordSaveBlock = { id, result in
                 guard case .success = result else {
                     return
                 }
                 
-                savedRecordCount += 1
+                recordCount += 1
             }
             
-            
+            let savedRecordCount = recordCount
             operation.completionBlock = {
                 continuation.resume(returning: savedRecordCount)
             }

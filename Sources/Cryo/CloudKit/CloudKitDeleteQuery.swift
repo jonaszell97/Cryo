@@ -101,15 +101,16 @@ extension UntypedCloudKitDeleteQuery {
             let operation = CKModifyRecordsOperation()
             operation.recordIDsToDelete = records.map { $0.recordID }
             
-            var deletedRecordCount: Int = 0
+            var recordCount: Int = 0
             operation.perRecordDeleteBlock = { id, result in
                 guard case .success = result else {
                     return
                 }
                 
-                deletedRecordCount += 1
+                recordCount += 1
             }
             
+            let deletedRecordCount = recordCount
             operation.completionBlock = {
                 continuation.resume(returning: deletedRecordCount)
             }
