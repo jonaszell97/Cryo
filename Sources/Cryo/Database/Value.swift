@@ -221,11 +221,17 @@ extension UUID: CryoColumnStringValue {
 }
 
 extension Decimal: CryoColumnStringValue {
+    /// The locale used for encoding and decoding decimals.
+    fileprivate static let codingLocale = Locale(identifier: "en_US")
+    
     /// The string value of this instance.
-    public var stringValue: String { self.description }
+    public var stringValue: String {
+        var copy = self
+        return NSDecimalString(&copy, Self.codingLocale)
+    }
     
     /// Initialize from a string value.
-    public init (stringValue: String) { self = (try? .init(stringValue, format: .number)) ?? 0 }
+    public init (stringValue: String) { self = Decimal(string: stringValue, locale: Self.codingLocale) ?? 0 }
 }
 
 extension RawRepresentable where RawValue: CryoColumnStringValue, Self: CaseIterable {
