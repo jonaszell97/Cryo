@@ -38,7 +38,7 @@ extension SQLiteAdaptor: SynchronizedStoreBackend {
                                  deviceIdentifier: String) throws -> [SyncOperation] {
         try self
             .select(from: SyncOperation.self)
-            .where("date", isGreatherThan: date.timeIntervalSinceReferenceDate)
+            .where("date", isGreatherThan: date)
             .and("storeIdentifier", equals: storeIdentifier)
             .and("deviceIdentifier", doesNotEqual: deviceIdentifier)
             .execute()
@@ -72,7 +72,7 @@ extension CloudKitAdaptor: SynchronizedStoreBackend {
                                  deviceIdentifier: String) async throws -> [SyncOperation] {
         try await self
             .select(from: SyncOperation.self)
-            .where("date", isGreatherThan: date.timeIntervalSinceReferenceDate)
+            .where("date", isGreatherThan: date)
             .and("storeIdentifier", equals: storeIdentifier)
             .and("deviceIdentifier", doesNotEqual: deviceIdentifier)
             .execute()
