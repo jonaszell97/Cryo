@@ -111,6 +111,8 @@ extension CloudKitAdaptor: SynchronizedStoreBackend {
                     continuation.resume(throwing: error)
                     return
                 }
+                
+                continuation.resume()
             }
             
             operation.qualityOfService = .background
