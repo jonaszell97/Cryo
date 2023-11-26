@@ -249,7 +249,7 @@ fileprivate extension SynchronizedStoreImpl {
     }
 }
 
-// MARK: Queries
+// MARK: CryoDatabaseAdaptor for SynchronizedStoreImpl
 
 extension SynchronizedStoreImpl: CryoDatabaseAdaptor {
     internal func createTable<Model: CryoModel>(for model: Model.Type) async throws -> any CryoCreateTableQuery<Model> {
@@ -285,6 +285,30 @@ extension SynchronizedStoreImpl: CryoDatabaseAdaptor {
         return .init(query: query) {
             try await self.didExecute(query)
         }
+    }
+}
+
+// MARK: CryoDatabaseAdaptor for SyncronizedStore
+
+extension SynchronizedStore: CryoDatabaseAdaptor {
+    public func createTable<Model: CryoModel>(for model: Model.Type) async throws -> any CryoCreateTableQuery<Model> {
+        try await store.createTable(for: model)
+    }
+    
+    public func select<Model: CryoModel>(id: String? = nil, from model: Model.Type) throws -> any CryoSelectQuery<Model> {
+        try store.select(id: id, from: model)
+    }
+    
+    public func insert<Model: CryoModel>(_ value: Model, replace: Bool = true) throws -> any CryoInsertQuery<Model> {
+        try store.insert(value, replace: replace)
+    }
+    
+    public func update<Model: CryoModel>(id: String? = nil, from modelType: Model.Type) throws -> any CryoUpdateQuery<Model> {
+        try store.update(id: id, from: modelType)
+    }
+    
+    public func delete<Model: CryoModel>(id: String? = nil, from model: Model.Type) throws -> any CryoDeleteQuery<Model> {
+        try store.delete(id: id, from: model)
     }
 }
 
