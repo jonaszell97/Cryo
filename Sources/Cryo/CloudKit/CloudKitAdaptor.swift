@@ -108,7 +108,7 @@ extension CloudKitAdaptor: CryoDatabaseAdaptor {
     public func createTable<Model: CryoModel>(for model: Model.Type) async throws -> any CryoCreateTableQuery<Model> {
         // Initialize the CryoSchema
         await CryoSchemaManager.shared.createSchema(for: model)
-        return NoOpQuery(queryString: "", for: model)
+        return try CloudKitCreateTableQuery(from: model, database: database, config: config)
     }
     
     public func select<Model: CryoModel>(id: String? = nil, from: Model.Type) throws -> CloudKitSelectQuery<Model> {
@@ -127,6 +127,8 @@ extension CloudKitAdaptor: CryoDatabaseAdaptor {
         try CloudKitDeleteQuery(from: Model.self, id: id, database: database, config: config)
     }
 }
+
+// MARK: Schema initialization
 
 extension CloudKitAdaptor: ResilientStoreBackend {
     func execute(operation: DatabaseOperation) async throws {
