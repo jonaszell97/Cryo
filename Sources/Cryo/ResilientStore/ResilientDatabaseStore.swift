@@ -216,7 +216,7 @@ extension ResilientStoreImpl: SynchronizedStoreBackend {
     }
     
     func persist(operation: SyncOperation) async throws {
-        _ = await execute(operation: try operation.operation, enqueueIfFailed: true)
+        try await store.persist(operation: operation)
     }
     
     func loadOperations(after: Date, storeIdentifier: String, deviceIdentifier: String) async throws -> [SyncOperation] {
