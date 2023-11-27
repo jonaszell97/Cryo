@@ -142,7 +142,7 @@ extension UntypedSQLiteDeleteQuery {
         }
         
         #if DEBUG
-        config?.log?(.debug, "[SQLite3Connection] query \(queryString), bindings \(whereClauses.map { "\($0.value)" })")
+        config?.log?(.debug, "[SQLite3Connection] \(queryString), bindings \(whereClauses.map { "\($0.value)" })")
         #endif
         
         let executeStatus = sqlite3_step(queryStatement)

@@ -128,7 +128,7 @@ extension UntypedSQLiteInsertQuery {
         }
         
         #if DEBUG
-        config?.log?(.debug, "[SQLite3Connection] query \(queryString), bindings \(bindings.map { "\($0)" }.joined(separator: ", "))")
+        config?.log?(.debug, "[SQLite3Connection] \(queryString), bindings \(bindings.map { "\($0)" }.joined(separator: ", "))")
         #endif
         
         self.queryStatement = queryStatement

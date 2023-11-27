@@ -213,6 +213,10 @@ extension UntypedCloudKitUpdateQuery {
             }
         }
         
+        #if DEBUG
+        config?.log?(.debug, "[CloudKitAdaptor] \(queryString), SET \(setClauses.map { "\($0.value)" }), WHERE \(whereClauses.map { "\($0.value)" })")
+        #endif
+        
         return try await withCheckedThrowingContinuation { continuation in
             let operation = CKModifyRecordsOperation()
             operation.recordsToSave = records

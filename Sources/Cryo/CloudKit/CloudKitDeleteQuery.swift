@@ -97,6 +97,10 @@ extension UntypedCloudKitDeleteQuery {
                                                                  sortingClauses: [],
                                                                  database: database)
         
+        #if DEBUG
+        config?.log?(.debug, "[CloudKitAdaptor] \(queryString), WHERE \(whereClauses.map { "\($0.value)" })")
+        #endif
+        
         return try await withCheckedThrowingContinuation { continuation in
             let operation = CKModifyRecordsOperation()
             operation.recordIDsToDelete = records.map { $0.recordID }

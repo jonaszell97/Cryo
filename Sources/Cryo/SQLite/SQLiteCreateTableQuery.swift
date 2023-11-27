@@ -123,7 +123,7 @@ extension UntypedSQLiteCreateTableQuery {
         }
         
         #if DEBUG
-        config?.log?(.debug, "[SQLite3Connection] query \(queryString)")
+        config?.log?(.debug, "[SQLite3Connection] \(queryString)")
         #endif
         
         let executeStatus = sqlite3_step(queryStatement)

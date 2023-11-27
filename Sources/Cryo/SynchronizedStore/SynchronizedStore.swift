@@ -80,8 +80,8 @@ public final class SynchronizedStore {
     /// Create a synchronized store.
     public init(config: SynchronizedStoreConfig) async throws {
         let cloudKitStore = await CloudKitAdaptor(config: config.cryoConfig,
-                                            containerIdentifier: config.containerIdentifier,
-                                            database: \.privateCloudDatabase)
+                                                  containerIdentifier: config.containerIdentifier,
+                                                  database: \.privateCloudDatabase)
         
         let backend = try await ResilientCloudKitStore(store: cloudKitStore,
                                                        config: .init(identifier: "\(config.storeIdentifier)_resilient",
@@ -127,7 +127,7 @@ internal final class SynchronizedStoreImpl<Backend: SynchronizedStoreBackend> {
          backend: Backend,
          deviceIdentifier: String? = nil) async throws {
         self.config = config
-        self.localStore = try SQLiteAdaptor(databaseUrl: config.localDatabaseUrl)
+        self.localStore = try SQLiteAdaptor(databaseUrl: config.localDatabaseUrl, config: config.cryoConfig)
         self.operationsStore = backend
         
         let deviceIdentifier = deviceIdentifier ?? Self.deviceIdentifier()
@@ -245,6 +245,7 @@ fileprivate extension SynchronizedStoreImpl {
                                               deviceIdentifier: deviceIdentifier,
                                               date: .now, operation: operation)
         
+        config.cryoConfig.log?(.debug, "[SynchronizedStore \(config.storeIdentifier)] publishing operation \(syncOperation)")
         try await operationsStore.persist(operation: syncOperation)
     }
 }

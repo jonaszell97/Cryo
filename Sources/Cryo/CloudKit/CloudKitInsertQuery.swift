@@ -84,6 +84,10 @@ extension UntypedCloudKitInsertQuery {
                                                                             column: columnDetails)
         }
         
+        #if DEBUG
+        config?.log?(.debug, "[CloudKitAdaptor] \(queryString)")
+        #endif
+        
         return try await withCheckedThrowingContinuation { continuation in
             let saveRecordsOperation = CKModifyRecordsOperation()
             saveRecordsOperation.recordsToSave = [record]

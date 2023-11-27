@@ -212,6 +212,10 @@ extension UntypedCloudKitSelectQuery {
 
 extension UntypedCloudKitSelectQuery {
     public func execute() async throws -> [any CryoModel] {
+        #if DEBUG
+        config?.log?(.debug, "[CloudKitAdaptor] \(queryString), WHERE \(whereClauses.map { "\($0.value)" })")
+        #endif
+        
         let records = try await Self.fetch(id: id, modelType: modelType, whereClauses: whereClauses,
                                            resultsLimit: resultsLimit, sortingClauses: sortingClauses,
                                            database: database)
