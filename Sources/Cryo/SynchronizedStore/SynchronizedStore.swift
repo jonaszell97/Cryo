@@ -199,10 +199,10 @@ extension SynchronizedStoreImpl {
             do {
                 try await self.execute(operation: operation)
                 self.lastSynchronizationDate = operation.date
-                config.cryoConfig.log?(.debug, "[SynchronizedStore \(config.storeIdentifier)] successfully synchronized operation \(operation)")
+                config.cryoConfig.log?(.debug, "[SynchronizedStore \(config.storeIdentifier)] successfully synchronized operation \(operation) \(try operation.operation.description)")
             }
             catch {
-                config.cryoConfig.log?(.error, "[SynchronizedStore \(config.storeIdentifier)] failed to synchronize operation \(operation)")
+                config.cryoConfig.log?(.error, "[SynchronizedStore \(config.storeIdentifier)] failed to synchronize operation \(operation) \(try operation.operation.description)")
                 
             }
         }

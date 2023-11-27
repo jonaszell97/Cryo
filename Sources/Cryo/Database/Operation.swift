@@ -60,6 +60,19 @@ extension CryoDeleteQuery {
 
 // MARK: Conformances
 
+extension DatabaseOperation: CustomStringConvertible {
+    public var description: String {
+        switch self {
+        case .insert(_, let tableName, _, let data):
+            return "INSERT INTO \(tableName) (\(data.map(\.columnName).joined(separator: ", "))) VALUES (\(data.map { "\($0.value)" }.joined(separator: ", ")))"
+        case .update(_, let tableName, _, let setClauses, let whereClauses):
+            return "UPDATE \(tableName) SET \(setClauses.map { "\($0.value)" }.joined(separator: ", ")) WHERE \(whereClauses.map { "\($0.value)" }.joined(separator: ", "))"
+        case .delete(_, let tableName, _, let whereClauses):
+            return "DELETE FROM \(tableName) WHERE \(whereClauses.map { "\($0.value)" }.joined(separator: ", "))"
+        }
+    }
+}
+
 extension DatabaseOperation: Codable {
     enum CodingKeys: String, CodingKey {
         case insert, update, delete
