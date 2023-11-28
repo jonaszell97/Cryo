@@ -58,6 +58,11 @@ extension ResilientCloudKitStore: SynchronizedStoreBackend {
         try await store.loadOperations(after: after, storeIdentifier: storeIdentifier, deviceIdentifier: deviceIdentifier)
     }
     
+    /// Delete all operations.
+    func clearOperations() async throws {
+        try await store.clearOperations()
+    }
+    
     func loadOperation(withId id: String) async throws -> SyncOperation? {
         try await store.loadOperation(withId: id)
     }
@@ -225,6 +230,11 @@ extension ResilientStoreImpl: SynchronizedStoreBackend {
     
     func loadOperation(withId id: String) async throws -> SyncOperation? {
         try await store.loadOperation(withId: id)
+    }
+    
+    /// Delete all operations.
+    internal func clearOperations() async throws {
+        try await store.clearOperations()
     }
     
     func setupRecordChangeSubscription(for tableName: String,

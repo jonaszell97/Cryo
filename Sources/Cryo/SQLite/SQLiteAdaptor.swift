@@ -103,6 +103,15 @@ extension SQLiteAdaptor {
     }
 }
 
+// MARK: Resetting
+
+extension SQLiteAdaptor {
+    /// Clear the database.
+    func clearTable(modelType: any CryoModel.Type) throws {
+        try UntypedSQLiteDeleteQuery(id: nil, modelType: modelType, connection: db.connection, config: config).execute()
+    }
+}
+
 // MARK: Queries
 
 extension SQLiteAdaptor: CryoDatabaseAdaptor {

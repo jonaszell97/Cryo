@@ -19,6 +19,9 @@ internal protocol SynchronizedStoreBackend {
     /// Load a sync operation with the given ID.
     func loadOperation(withId id: String) async throws -> SyncOperation?
     
+    /// Delete all operations.
+    func clearOperations() async throws
+    
     /// Setup a subscription to be notified of record changes.
     func setupRecordChangeSubscription(for tableName: String,
                                        storeIdentifier: String,
@@ -47,6 +50,11 @@ extension SQLiteAdaptor: SynchronizedStoreBackend {
     /// Load a sync operation with the given ID.
     internal func loadOperation(withId id: String) throws -> SyncOperation? {
         try self.select(id: id, from: SyncOperation.self).execute().first
+    }
+    
+    /// Delete all operations.
+    internal func clearOperations() async throws {
+        try self.delete(from: SyncOperation.self).execute()
     }
     
     /// Setup a subscription to be notified of record changes.
@@ -83,6 +91,11 @@ extension CloudKitAdaptor: SynchronizedStoreBackend {
         try await self.select(id: id, from: SyncOperation.self).execute().first
     }
     
+    /// Delete all operations.
+    internal func clearOperations() async throws {
+        try await self.delete(from: SyncOperation.self).execute()
+    }
+    
     /// Setup a subscription to be notified of record changes.
     internal func setupRecordChangeSubscription(for tableName: String,
                                                 storeIdentifier: String,
@@ -105,18 +118,30 @@ extension CloudKitAdaptor: SynchronizedStoreBackend {
         let operation = CKModifySubscriptionsOperation(subscriptionsToSave: [subscription],
                                                        subscriptionIDsToDelete: nil)
         
+        #if DEBUG
+        config.log?(.debug, "setting up change subscription for \(tableName) with predicate \(predicate) 'storeIdentifier == \(storeIdentifier) AND deviceIdentifier != \(deviceIdentifier)'")
+        #endif
+        
         return try await withCheckedThrowingContinuation { continuation in
             operation.modifySubscriptionsResultBlock = { result in
                 if case .failure(let error) = result {
+                    #if DEBUG
+                    self.config.log?(.error, "setting up change subscription failed for \(tableName): \(error.localizedDescription)")
+                    #endif
+                    
                     continuation.resume(throwing: error)
                     return
                 }
                 
+                #if DEBUG
+                self.config.log?(.debug, "successfully set up change subscription for \(tableName)")
+                #endif
+                
                 continuation.resume()
             }
             
-            operation.qualityOfService = .background
-            CKContainer.default().privateCloudDatabase.add(operation)
+            operation.qualityOfService = .utility
+            self.container.privateCloudDatabase.add(operation)
         }
     }
     

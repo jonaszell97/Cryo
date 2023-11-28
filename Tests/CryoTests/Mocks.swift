@@ -702,6 +702,11 @@ extension MockCloudKitAdaptor: SynchronizedStoreBackend {
         try await self.select(id: id, from: SyncOperation.self).execute().first
     }
     
+    /// Delete all operations.
+    internal func clearOperations() async throws {
+        try await self.delete(from: SyncOperation.self).execute()
+    }
+    
     internal func setupRecordChangeSubscription(for tableName: String,
                                                 storeIdentifier: String,
                                                 deviceIdentifier: String,

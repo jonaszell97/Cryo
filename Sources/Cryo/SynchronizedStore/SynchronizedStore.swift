@@ -89,6 +89,21 @@ public final class SynchronizedStore {
         
         self.store = try await SynchronizedStoreImpl(config: config, backend: backend)
     }
+    
+    /// Force a synchronization of the database.
+    public func synchronize() async throws {
+        try await store.externalChangeNotificationReceived()
+    }
+    
+    /// Clear the store.
+    public func clear() async throws {
+        try await store.clear()
+    }
+    
+    /// Reset the store to the state in CloudKit.
+    public func reset() async throws {
+        try await store.reset()
+    }
 }
 
 public extension SynchronizedStore {
@@ -170,6 +185,31 @@ fileprivate extension SynchronizedStoreImpl {
         
         // Perform initial synchronization
         try await self.externalChangeNotificationReceived()
+    }
+    
+    /// Clear the store.
+    func clear() async throws {
+        for model in config.managedModels {
+            try localStore.clearTable(modelType: model)
+        }
+        
+        try await operationsStore.clearOperations()
+        self.lastModificationDate = .distantPast
+        self.lastSynchronizationDate = .distantPast
+        self.changeSubscriptionSetup = false
+    }
+    
+    /// Reset the store to the synchronized state.
+    func reset() async throws {
+        for model in config.managedModels {
+            try localStore.clearTable(modelType: model)
+        }
+        
+        self.lastModificationDate = .distantPast
+        self.lastSynchronizationDate = .distantPast
+        self.changeSubscriptionSetup = false
+        
+        try await self.initialize()
     }
 }
 
