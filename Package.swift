@@ -1,6 +1,7 @@
-// swift-tools-version: 5.7
+// swift-tools-version: 5.9
 // The swift-tools-version declares the minimum version of Swift required to build this package.
 
+import CompilerPluginSupport
 import PackageDescription
 
 let package = Package(
@@ -15,13 +16,23 @@ let package = Package(
             targets: ["Cryo"]),
     ],
     dependencies: [
+        .package(url: "https://github.com/apple/swift-syntax", from: "509.0.0")
     ],
     targets: [
+        .macro(
+            name: "CryoMacros",
+            dependencies: [
+                .product(name: "SwiftSyntaxMacros", package: "swift-syntax"),
+                .product(name: "SwiftCompilerPlugin", package: "swift-syntax")
+            ]),
         .target(
             name: "Cryo",
-            dependencies: []),
+            dependencies: ["CryoMacros"]),
         .testTarget(
             name: "CryoTests",
-            dependencies: ["Cryo"]),
+            dependencies: [
+                "Cryo", "CryoMacros",
+                .product(name: "SwiftSyntaxMacrosTestSupport", package: "swift-syntax"),
+            ]),
     ]
 )
