@@ -1,7 +1,7 @@
 
 import Foundation
 
-internal enum CryoColumnType {
+public enum CryoColumnType {
     /// Data type for integers. Stored as an NSNumber.
     case integer
     

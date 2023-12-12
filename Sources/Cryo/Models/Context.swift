@@ -110,3 +110,50 @@ public extension CryoContext {
     /// Create a default `Codable` value.
     func defaultValue<T>(for: T.Type) -> T where T: Codable { try! T(from: EmptyDecoder()) }
 }
+
+// MARK: Column types
+
+extension CryoContext {
+    /// Create a default `Int` value.
+    func columnType(for: Int.Type) -> CryoColumnType { .integer }
+    
+    /// Create a default `UInt` value.
+    func columnType(for: UInt.Type) -> CryoColumnType { .integer }
+    
+    /// Create a default `Boolean` value.
+    func columnType(for: Bool.Type) -> CryoColumnType { .integer }
+    
+    /// Create a default `Double` value.
+    func columnType(for: Double.Type) -> CryoColumnType { .double }
+    
+    /// Create a default `String` value.
+    func columnType(for: String.Type) -> CryoColumnType { .text }
+    
+    /// Create a default `Date` value.
+    func columnType(for: Date.Type) -> CryoColumnType { .date }
+    
+    /// Create a default `Data` value.
+    func columnType(for: Data.Type) -> CryoColumnType { .data }
+    
+    /// Create a default `URL` value.
+    func columnType(for: URL.Type) -> CryoColumnType { .text }
+    
+    /// Create a default `Optional` value.
+    func columnType<T>(for: Optional<T>.Type) -> CryoColumnType { self.columnType(for: T.self) }
+    
+    /// Create a default `Codable` value.
+    func columnType<T>(for: T.Type) -> CryoColumnType where T: Codable { .data }
+    
+    /// Create a default `Codable` value.
+    func columnType<T>(for: T.Type) -> CryoColumnType {
+        if T.self == URL.self { return .text }
+        if T.self == Data.self { return .data }
+        if let intType = T.self as? CryoColumnIntValue.Type { return .integer }
+        if let doubleType = T.self as? CryoColumnDoubleValue.Type { return .double }
+        if let stringType = T.self as? CryoColumnStringValue.Type { return .text }
+        if let dateType = T.self as? CryoColumnDateValue.Type { return .date }
+        if let dataType = T.self as? CryoColumnDataValue.Type { return .data }
+        
+        fatalError("unsupported type \(T.self)")
+    }
+}

@@ -69,8 +69,18 @@ extension CryoColumnMacro {
     /// Create the setter.
     static func createSetter(for declaration: PatternBindingSyntax) -> AccessorDeclSyntax {
         """
-        set async throws {
-            try await context.update(self.id, from: Self.self).set("\(declaration.pattern)", newValue).execute()
+        set {
+            Task {
+                do {
+                    try await context.update(self.id.uuidString, from: Self.self)
+                        .set("\(declaration.pattern)", newValue)
+                        .execute()
+                }
+                catch {
+                    context.handlePropertyUpdateError(error)
+                }
+            }
+            
             self._\(declaration.pattern) = newValue
             self.objectWillChange.send()
         }
@@ -80,7 +90,7 @@ extension CryoColumnMacro {
     /// Create the unsafe setter.
     static func createUnsafeSetter(for declaration: PatternBindingSyntax, _ accessModifier: String) -> DeclSyntax {
         """
-        \(raw: accessModifier)func _set_\(declaration.pattern)(to newValue: \(declaration.typeAnnotation!)) {
+        \(raw: accessModifier)func _set_\(declaration.pattern)(to newValue\(declaration.typeAnnotation!)) {
             self._\(declaration.pattern) = newValue
             self.objectWillChange.send()
         }

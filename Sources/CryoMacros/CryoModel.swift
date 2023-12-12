@@ -29,6 +29,7 @@ public struct CryoModelMacro: ExtensionMacro, MemberMacro {
         
         let syntax: DeclSyntax = """
         extension \(type): CryoClassModel {
+            \(createSchemaProperty(for: classDecl))
         }
         """
         
@@ -110,7 +111,7 @@ extension CryoModelMacro {
         var initializerDecls: [ExprSyntax] = []
         for prop in properties {
             if let initializer = prop.initializerExpression {
-                initializerDecls.append("self.\(prop.name) = \(initializer)")
+                initializerDecls.append("self.\(prop.name) \(initializer)")
             }
             else {
                 initializerDecls.append("self.\(prop.name) = context.defaultValue(for: \(prop.type).self)")
@@ -135,11 +136,31 @@ extension CryoModelMacro {
 extension CryoModelMacro {
     /// Create the `schema` property.
     static func createSchemaProperty(for declaration: ClassDeclSyntax) -> DeclSyntax {
-"""
-static let _schema: CryoSchema = {
+        let properties = getPropertyDeclarations(of: declaration.memberBlock)
+        let accessModifier = getAccessModifier(for: declaration.modifiers)
+        
+        var columnExpressions: [ExprSyntax] = []
+        for property in properties {
+            switch property.kind {
+            case PropertyKind.persisted:
+                columnExpressions.append("""
+                try schema.columns.append(columnName: "\(property.name)", type: \(property.type).self) { this in
+                        this._\(property.name).wrappedValue
+                    }
+                """)
+            default:
+                continue
+            }
+        }
+return """
+\(raw: accessModifier)static let schema: CryoSchema = {
     var schema = CryoSchema(self: Self.self) {
         try Self(from: CryoModelDecoder(data: $0))
     }
+
+    \(raw: columnExpressions.map { $0.description }.joined(separator: "\n    ") )
+
+    return schema
 }()
 """
     }

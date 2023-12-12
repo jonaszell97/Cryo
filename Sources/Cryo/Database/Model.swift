@@ -228,7 +228,7 @@ internal final class CryoSchemaManager {
     }
 }
 
-internal enum CryoSchemaColumn {
+public enum CryoSchemaColumn {
     /// A value column.
     case value(columnName: String, type: CryoColumnType, getValue: (any CryoModel) -> _AnyCryoColumnValue)
     
@@ -256,27 +256,32 @@ extension CryoSchemaColumn {
     }
 }
 
-internal struct CryoSchema {
+public struct CryoSchema {
     /// The meta type.
-    let `self`: any CryoModel.Type
+    public let `self`: any CryoModel.Type
     
     /// The columns of this type.
-    var columns: [CryoSchemaColumn] = []
+    public let columns: [CryoSchemaColumn]
     
     /// Create a value of this model type from the given data dictionary.
-    let create: ([String: _AnyCryoColumnValue]) throws -> any CryoModel
+    public let create: ([String: _AnyCryoColumnValue]) throws -> any CryoModel
+    
+    public init(self this: any CryoModel.Type, columns: [CryoSchemaColumn],
+                create: @escaping ([String : _AnyCryoColumnValue]) throws -> any CryoModel) {
+        self.`self` = this
+        self.columns = columns
+        self.create = create
+    }
 }
 
 internal extension CryoModel {
     static var schema: CryoSchema {
-        var schema = CryoSchema(self: Self.self) {
-            try Self(from: CryoModelDecoder(data: $0))
-        }
         
         // Create an empty instance and find columns from it
         let emptyInstance = try! Self(from: EmptyDecoder())
         let mirror = Mirror(reflecting: emptyInstance)
         var foundId = false
+        var columns: [CryoSchemaColumn] = []
         
         for child in mirror.children {
             guard
@@ -353,13 +358,15 @@ internal extension CryoModel {
                 column = .value(columnName: name, type: columnType, getValue: extractValue)
             }
             
-            schema.columns.append(column)
+            columns.append(column)
         }
         
         guard foundId else {
             fatalError("CryoModel must contain property `@CryoColumn var id: String`")
         }
         
-        return schema
+        return CryoSchema(self: Self.self, columns: columns) {
+            try Self(from: CryoModelDecoder(data: $0))
+        }
     }
 }
