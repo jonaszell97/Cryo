@@ -20,8 +20,8 @@ extension SQLiteInsertQuery: CryoInsertQuery {
         untypedQuery.queryString
     }
     
-    @discardableResult public func execute() throws -> Bool {
-        try untypedQuery.execute()
+    @discardableResult public func execute() async throws -> Bool {
+        try await untypedQuery.execute()
     }
 }
 
@@ -137,7 +137,7 @@ extension UntypedSQLiteInsertQuery {
 }
 
 extension UntypedSQLiteInsertQuery {
-    @discardableResult public func execute() throws -> Bool {
+    @discardableResult public func execute() async throws -> Bool {
         let queryStatement = try self.compiledQuery()
         defer {
             sqlite3_finalize(queryStatement)

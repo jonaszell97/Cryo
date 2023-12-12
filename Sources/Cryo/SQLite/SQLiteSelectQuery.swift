@@ -20,8 +20,8 @@ extension SQLiteSelectQuery: CryoSelectQuery {
         untypedQuery.queryString
     }
     
-    @discardableResult public func execute() throws -> [Model] {
-        try untypedQuery.execute() as! [Model]
+    @discardableResult public func execute() async throws -> [Model] {
+        try await untypedQuery.execute() as! [Model]
     }
     
     
@@ -170,7 +170,7 @@ extension UntypedSQLiteSelectQuery {
     
     /// Get a result value from the given query.
     func columnValue(_ queryStatement: OpaquePointer, connection: OpaquePointer,
-                     column: CryoSchemaColumn, index: Int32) throws -> _AnyCryoColumnValue? {
+                     column: CryoSchemaColumn, index: Int32) async throws -> _AnyCryoColumnValue? {
         switch column {
         case .value(let columnName, let type, _):
             return try SQLiteAdaptor.columnValue(queryStatement,
@@ -184,7 +184,7 @@ extension UntypedSQLiteSelectQuery {
                                                    columnName: columnName,
                                                    type: .text,
                                                    index: index) as! String
-            return try UntypedSQLiteSelectQuery(modelType: modelType, connection: connection, config: config)
+            return try await UntypedSQLiteSelectQuery(modelType: modelType, connection: connection, config: config)
                 .where("id", operation: .equals, value: id)
                 .execute().first
         }
@@ -203,7 +203,7 @@ extension UntypedSQLiteSelectQuery {
         return id
     }
     
-    public func execute() throws -> [any CryoModel] {
+    public func execute() async throws -> [any CryoModel] {
         let queryStatement = try self.compiledQuery()
         defer {
             sqlite3_finalize(queryStatement)
@@ -222,10 +222,10 @@ extension UntypedSQLiteSelectQuery {
             var row = [any _AnyCryoColumnValue]()
             
             for i in 0..<schema.columns.count {
-                let value = try self.columnValue(queryStatement,
-                                                 connection: connection,
-                                                 column: schema.columns[i],
-                                                 index: Int32(i))
+                let value = try await self.columnValue(queryStatement,
+                                                       connection: connection,
+                                                       column: schema.columns[i],
+                                                       index: Int32(i))
                 
                 row.append(value!)
             }

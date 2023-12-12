@@ -50,6 +50,9 @@ public final class CloudKitAdaptor {
     /// The unique iCloud record ID for the user.
     var iCloudRecordID: String?
     
+    /// The registered change notification listeners.
+    var changeListeners: [String: [(String?) async throws -> Void]] = [:]
+    
     /// Default initializer.
     public init(config: CryoConfig, containerIdentifier: String, database: KeyPath<CKContainer, CKDatabase>) async {
         self.config = config
@@ -101,6 +104,17 @@ extension CloudKitAdaptor {
     
     public func observeAvailabilityChanges(_ callback: @escaping (Bool) -> Void) {
         // TODO: implement this
+    }
+    
+    /// Register a change callback.
+    public func registerChangeListener(tableName: String, listener: @escaping (String?) async throws -> Void) {
+        if var hooks = changeListeners[tableName] {
+            hooks.append(listener)
+            changeListeners[tableName] = hooks
+        }
+        else {
+            changeListeners[tableName] = [listener]
+        }
     }
 }
 

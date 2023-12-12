@@ -606,7 +606,7 @@ extension MockCloudKitAdaptor: CryoDatabaseAdaptor {
         return NoOpQuery(queryString: "", for: model)
     }
     
-    public func select<Model: CryoModel>(id: String? = nil, from: Model.Type) throws -> any CryoSelectQuery<Model> {
+    public func select<Model: CryoModel>(id: String? = nil, from: Model.Type) throws -> MockSelectQuery<Model> {
         MockSelectQuery(id: id, allRecords: self.allRecords(tableName: Model.tableName))
     }
     
@@ -709,8 +709,11 @@ extension MockCloudKitAdaptor: SynchronizedStoreBackend {
     
     internal func setupRecordChangeSubscription(for tableName: String,
                                                 storeIdentifier: String,
-                                                deviceIdentifier: String,
-                                                callback: @escaping (String?) async throws -> Void) async throws {
+                                                deviceIdentifier: String) async throws {
+    }
+    
+    func registerExternalChangeNotificationListener(for tableName: String, storeIdentifier: String, 
+                                                    deviceIdentifier: String, callback: @escaping (String?) async throws -> Void) async throws {
         self.registerChangeListener(tableName: tableName) {
             try await callback(nil)
         }

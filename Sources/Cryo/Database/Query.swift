@@ -68,7 +68,6 @@ public protocol CryoModelQuery<Model>: CryoQuery {
 
 public protocol CryoCreateTableQuery<Model>: CryoModelQuery
     where Result == Void {
-    
 }
 
 // MARK: WHERE clause
@@ -84,7 +83,7 @@ public struct CryoQueryWhereClause: Codable {
     let value: CryoQueryValue
 }
 
-public protocol CryoWhereClauseQuery<Model>: CryoModelQuery {
+public protocol CryoWhereClauseQuery {
     /// Get the attached where clauses.
     var whereClauses: [CryoQueryWhereClause] { get }
     
@@ -106,7 +105,7 @@ public struct CryoQuerySetClause: Codable {
     let value: CryoQueryValue
 }
 
-public protocol CryoSetClauseQuery<Model>: CryoModelQuery {
+public protocol CryoSetClauseQuery {
     /// Get the attached set clauses.
     var setClauses: [CryoQuerySetClause] { get }
     
@@ -119,7 +118,7 @@ public protocol CryoSetClauseQuery<Model>: CryoModelQuery {
 
 // MARK: Select
 
-public protocol CryoSelectQuery<Model>: CryoWhereClauseQuery
+public protocol CryoSelectQuery<Model>: CryoModelQuery, CryoWhereClauseQuery
     where Self.Result == [Model]
 {
     /// The optional ID of the query.
@@ -149,7 +148,7 @@ public protocol CryoInsertQuery<Model>: CryoModelQuery
 
 // MARK: Update
 
-public protocol CryoUpdateQuery<Model>: CryoWhereClauseQuery, CryoSetClauseQuery
+public protocol CryoUpdateQuery<Model>: CryoModelQuery, CryoWhereClauseQuery, CryoSetClauseQuery
     where Self.Result == Int
 {
     /// The optional ID of the query.
@@ -161,7 +160,7 @@ public protocol CryoUpdateQuery<Model>: CryoWhereClauseQuery, CryoSetClauseQuery
 
 // MARK: Delete
 
-public protocol CryoDeleteQuery<Model>: CryoWhereClauseQuery
+public protocol CryoDeleteQuery<Model>: CryoModelQuery, CryoWhereClauseQuery
     where Self.Result == Int
 {
     /// The optional ID of the query.

@@ -11,8 +11,10 @@ public struct CryoColumnMacro: PeerMacro, AccessorMacro {
             return result
         }
         
+        let accessModifier = getAccessModifier(for: variableDecl.modifiers)
         for binding in variableDecl.bindings {
             result.append(createStoredProperty(for: binding))
+            result.append(createUnsafeSetter(for: binding, accessModifier))
         }
         
         return result
@@ -42,7 +44,7 @@ extension CryoColumnMacro {
     static func createStoredProperty(for declaration: PatternBindingSyntax) -> DeclSyntax {
         if let typeAnnotation = declaration.typeAnnotation {
             return """
-            var _\(declaration.pattern)\(declaration.typeAnnotation!)
+            var _\(declaration.pattern)\(typeAnnotation)
             """
         }
         
@@ -69,6 +71,16 @@ extension CryoColumnMacro {
         """
         set async throws {
             try await context.update(self.id, from: Self.self).set("\(declaration.pattern)", newValue).execute()
+            self._\(declaration.pattern) = newValue
+            self.objectWillChange.send()
+        }
+        """
+    }
+    
+    /// Create the unsafe setter.
+    static func createUnsafeSetter(for declaration: PatternBindingSyntax, _ accessModifier: String) -> DeclSyntax {
+        """
+        \(raw: accessModifier)func _set_\(declaration.pattern)(to newValue: \(declaration.typeAnnotation!)) {
             self._\(declaration.pattern) = newValue
             self.objectWillChange.send()
         }

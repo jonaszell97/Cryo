@@ -72,16 +72,16 @@ CREATE TABLE IF NOT EXISTS TestModel(
     }
     
     private func persistAndLoadTest(_ value: TestModel, to store: SQLiteAdaptor) async throws {
-        try store.insert(value).execute()
+        try await store.insert(value).execute()
         
-        var loadedValue = try store.select(id: value.id, from: TestModel.self).execute()
+        var loadedValue = try await store.select(id: value.id, from: TestModel.self).execute()
         XCTAssertEqual(loadedValue.first, value)
         
-        try store.delete(from: TestModel.self)
+        try await store.delete(from: TestModel.self)
             .where("x", equals: value.x)
             .execute()
         
-        loadedValue = try store.select(id: value.id, from: TestModel.self).execute()
+        loadedValue = try await store.select(id: value.id, from: TestModel.self).execute()
         XCTAssertEqual(loadedValue.count, 0)
     }
     
@@ -89,7 +89,7 @@ CREATE TABLE IF NOT EXISTS TestModel(
         let operation = try await store.insert(value).operation
         try await store.execute(operation: operation)
         
-        var loadedValue = try store.select(id: value.id, from: TestModel.self).execute()
+        var loadedValue = try await store.select(id: value.id, from: TestModel.self).execute()
         XCTAssertEqual(loadedValue.first, value)
         
         let deleteOperation = try await store.delete(from: TestModel.self)
@@ -97,7 +97,7 @@ CREATE TABLE IF NOT EXISTS TestModel(
             .operation
         try await store.execute(operation: deleteOperation)
         
-        loadedValue = try store.select(id: value.id, from: TestModel.self).execute()
+        loadedValue = try await store.select(id: value.id, from: TestModel.self).execute()
         XCTAssertEqual(loadedValue.count, 0)
     }
     
@@ -111,24 +111,24 @@ CREATE TABLE IF NOT EXISTS TestModel(
         XCTAssertEqual(TestModel.schema.columns.map { $0.columnName }, ["id", "x", "y", "z"])
         
         do {
-            _ = try adaptor.insert(value).execute()
+            _ = try await adaptor.insert(value).execute()
             
-            let loadedValue = try adaptor.select(id: value.id, from: TestModel.self).execute().first
+            let loadedValue = try await adaptor.select(id: value.id, from: TestModel.self).execute().first
             XCTAssertEqual(value, loadedValue)
             
-            _ = try adaptor.insert(value2).execute()
+            _ = try await adaptor.insert(value2).execute()
             
-            let allValues = try adaptor.select(from: TestModel.self).execute()
+            let allValues = try await adaptor.select(from: TestModel.self).execute()
             XCTAssertNotNil(allValues)
             XCTAssertEqual(Set(allValues), Set([value, value2]))
             
-            _ = try adaptor.delete(id: value2.id, from: TestModel.self).execute()
-            let count = try adaptor.select(from: TestModel.self).execute().count
+            _ = try await adaptor.delete(id: value2.id, from: TestModel.self).execute()
+            let count = try await adaptor.select(from: TestModel.self).execute().count
             XCTAssertEqual(count, 1)
             
-            _ = try adaptor.delete(from: TestModel.self).execute()
+            _ = try await adaptor.delete(from: TestModel.self).execute()
             
-            let allValues2 = try adaptor.select(from: TestModel.self).execute()
+            let allValues2 = try await adaptor.select(from: TestModel.self).execute()
             XCTAssertEqual(allValues2.count, 0)
             
             for _ in 0..<100 {
@@ -149,23 +149,23 @@ CREATE TABLE IF NOT EXISTS TestModel(
         do {
             let value = TestModel(x: 123, y: "Hello there", z: .a)
 
-            let inserted = try adaptor.insert(value).execute()
+            let inserted = try await adaptor.insert(value).execute()
             XCTAssertEqual(inserted, true)
 
-            let result0 = try adaptor
+            let result0 = try await adaptor
                 .select(from: TestModel.self)
                 .execute()
 
             XCTAssertEqual(result0, [value])
 
-            let result1 = try adaptor
+            let result1 = try await adaptor
                 .select(from: TestModel.self)
                 .where("x", equals: 123)
                 .execute()
 
             XCTAssertEqual(result1, [value])
 
-            let result2 = try adaptor
+            let result2 = try await adaptor
                 .select(from: TestModel.self)
                 .where("x", equals: 123)
                 .where("y", equals: "Hmmm")
@@ -173,7 +173,7 @@ CREATE TABLE IF NOT EXISTS TestModel(
 
             XCTAssertEqual(result2.count, 0)
 
-            let result3 = try adaptor
+            let result3 = try await adaptor
                 .select(from: TestModel.self)
                 .where("x", isGreatherThan: 50)
                 .where("x", isLessThan: 200)
@@ -193,11 +193,11 @@ CREATE TABLE IF NOT EXISTS TestModel(
         do {
             let value = TestModel(x: 123, y: "Hello there", z: .a)
             
-            let inserted = try adaptor.insert(value, replace: true).execute()
+            let inserted = try await adaptor.insert(value, replace: true).execute()
             XCTAssertEqual(inserted, true)
 
             do {
-                _ = try adaptor.insert(value, replace: false).execute()
+                _ = try await adaptor.insert(value, replace: false).execute()
                 XCTFail("should not be reached")
             }
             catch let e as CryoError {
@@ -227,18 +227,18 @@ CREATE TABLE IF NOT EXISTS TestModel(
             let model = TestModel.random(id: id)
             models.append(model)
             
-            _ = try adaptor.insert(model).execute()
+            _ = try await adaptor.insert(model).execute()
         }
         
         let idsToDelete = Set((0..<10).map { _ in (0..<100).randomElement()! })
         for i in idsToDelete {
             let id = "id\(i)"
-            _ = try adaptor.delete(id: id, from: TestModel.self).execute()
+            _ = try await adaptor.delete(id: id, from: TestModel.self).execute()
         }
         
         for i in 0..<100 {
             let id = "id\(i)"
-            let value = try adaptor.select(id: id, from: TestModel.self).execute()
+            let value = try await adaptor.select(id: id, from: TestModel.self).execute()
             
             if idsToDelete.contains(i) {
                 XCTAssertEqual(value.count, 0)
@@ -260,12 +260,12 @@ CREATE TABLE IF NOT EXISTS TestModel(
             let model = TestModel.random(id: id)
             models.append(model)
             
-            _ = try adaptor.insert(model).execute()
+            _ = try await adaptor.insert(model).execute()
         }
         
         models.sort { $0.x <= $1.x }
         
-        let ascending = try adaptor.select(from: TestModel.self)
+        let ascending = try await adaptor.select(from: TestModel.self)
             .sort(by: "x", .ascending)
             .execute()
         
@@ -273,7 +273,7 @@ CREATE TABLE IF NOT EXISTS TestModel(
         
         models.sort { $0.x >= $1.x }
         
-        let descending = try adaptor.select(from: TestModel.self)
+        let descending = try await adaptor.select(from: TestModel.self)
             .sort(by: "x", .descending)
             .execute()
         
@@ -290,16 +290,16 @@ CREATE TABLE IF NOT EXISTS TestModel(
             let model = TestModel.random(id: id)
             models.append(model)
             
-            _ = try adaptor.insert(model).execute()
+            _ = try await adaptor.insert(model).execute()
         }
         
-        let limited = try adaptor.select(from: TestModel.self)
+        let limited = try await adaptor.select(from: TestModel.self)
             .limit(15)
             .execute()
         
         XCTAssertEqual(limited.count, 15)
         
-        let all = try adaptor.select(from: TestModel.self)
+        let all = try await adaptor.select(from: TestModel.self)
             .execute()
         
         XCTAssertEqual(all.count, 100)

@@ -21,8 +21,8 @@ extension SQLiteUpdateQuery: CryoUpdateQuery {
         untypedQuery.queryString
     }
     
-    @discardableResult public func execute() throws -> Int {
-        try untypedQuery.execute()
+    @discardableResult public func execute() async throws -> Int {
+        try await untypedQuery.execute()
     }
     
     
@@ -167,7 +167,7 @@ extension UntypedSQLiteUpdateQuery {
 }
 
 extension UntypedSQLiteUpdateQuery {
-    @discardableResult public func execute() throws -> Int {
+    @discardableResult public func execute() async throws -> Int {
         let queryStatement = try self.compiledQuery()
         defer {
             sqlite3_finalize(queryStatement)

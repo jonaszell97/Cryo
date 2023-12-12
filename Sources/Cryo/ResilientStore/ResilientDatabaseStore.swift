@@ -69,10 +69,15 @@ extension ResilientCloudKitStore: SynchronizedStoreBackend {
     
     func setupRecordChangeSubscription(for tableName: String,
                                        storeIdentifier: String,
-                                       deviceIdentifier: String,
-                                       callback: @escaping (String?) async throws -> Void) async throws {
+                                       deviceIdentifier: String) async throws {
         try await store.setupRecordChangeSubscription(for: tableName, storeIdentifier: storeIdentifier,
-                                                      deviceIdentifier: deviceIdentifier, callback: callback)
+                                                      deviceIdentifier: deviceIdentifier)
+    }
+    
+    func registerExternalChangeNotificationListener(for tableName: String, storeIdentifier: String, 
+                                                    deviceIdentifier: String, callback: @escaping (String?) async throws -> Void) async throws {
+        try await store.registerExternalChangeNotificationListener(for: tableName, storeIdentifier: storeIdentifier,
+                                                                   deviceIdentifier: deviceIdentifier, callback: callback)
     }
 }
 
@@ -81,7 +86,7 @@ extension ResilientCloudKitStore {
         try await store.createTable(for: model)
     }
     
-    func select<Model: CryoModel>(id: String? = nil, from model: Model.Type) async throws -> any CryoSelectQuery<Model> {
+    func select<Model: CryoModel>(id: String? = nil, from model: Model.Type) async throws -> CloudKitSelectQuery<Model> {
         try await store.select(id: id, from: model)
     }
     
@@ -181,13 +186,13 @@ extension ResilientStoreImpl {
 }
 
 extension ResilientStoreImpl where Backend == CloudKitAdaptor {
-    func select<Model: CryoModel>(id: String? = nil, from model: Model.Type) async throws -> any CryoSelectQuery<Model> {
+    func select<Model: CryoModel>(id: String? = nil, from model: Model.Type) async throws -> CloudKitSelectQuery<Model> {
         try store.select(id: id, from: model)
     }
     
     func insert<Model: CryoModel>(_ value: Model,
                                   replace: Bool = true) async throws -> ResilientInsertQuery<CloudKitInsertQuery<Model>> {
-        let query = try store.insert(value, replace: replace)
+        let query = try store.insert(value, replace: replace) as! CloudKitInsertQuery<Model>
         return ResilientInsertQuery(query: query) {
             try await self.enqueueFailedOperation(query.operation)
             return false
@@ -197,7 +202,7 @@ extension ResilientStoreImpl where Backend == CloudKitAdaptor {
     func update<Model: CryoModel>(id: String? = nil, from modelType: Model.Type)
         async throws -> ResilientUpdateQuery<CloudKitUpdateQuery<Model>>
     {
-        let query = try store.update(id: id, from: modelType)
+        let query = try store.update(id: id, from: modelType) as! CloudKitUpdateQuery<Model>
         return ResilientUpdateQuery(query: query) {
             try await self.enqueueFailedOperation(query.operation)
             return 0
@@ -207,7 +212,7 @@ extension ResilientStoreImpl where Backend == CloudKitAdaptor {
     func delete<Model: CryoModel>(id: String? = nil, from modelType: Model.Type)
         async throws -> ResilientDeleteQuery<CloudKitDeleteQuery<Model>>
     {
-        let query = try store.delete(id: id, from: modelType)
+        let query = try store.delete(id: id, from: modelType) as! CloudKitDeleteQuery<Model>
         return ResilientDeleteQuery(query: query) {
             try await self.enqueueFailedOperation(query.operation)
             return 0
@@ -239,9 +244,14 @@ extension ResilientStoreImpl: SynchronizedStoreBackend {
     
     func setupRecordChangeSubscription(for tableName: String,
                                        storeIdentifier: String,
-                                       deviceIdentifier: String,
-                                       callback: @escaping (String?) async throws -> Void) async throws {
+                                       deviceIdentifier: String) async throws {
         try await store.setupRecordChangeSubscription(for: tableName, storeIdentifier: storeIdentifier,
-                                                      deviceIdentifier: deviceIdentifier, callback: callback)
+                                                      deviceIdentifier: deviceIdentifier)
+    }
+    
+    func registerExternalChangeNotificationListener(for tableName: String, storeIdentifier: String,
+                                                    deviceIdentifier: String, callback: @escaping (String?) async throws -> Void) async throws {
+        try await store.registerExternalChangeNotificationListener(for: tableName, storeIdentifier: storeIdentifier,
+                                                                   deviceIdentifier: deviceIdentifier, callback: callback)
     }
 }

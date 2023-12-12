@@ -77,6 +77,9 @@ public final class SynchronizedStore {
     /// The store implementation.
     let store: SynchronizedStoreImpl<ResilientCloudKitStore>
     
+    /// Callbacks to be invoked when external changes are received.
+    var externalChangeListeners: [UUID: (String?) async throws -> Void] = [:]
+    
     /// Create a synchronized store.
     public init(config: SynchronizedStoreConfig) async throws {
         let cloudKitStore = await CloudKitAdaptor(config: config.cryoConfig,
@@ -110,6 +113,18 @@ public extension SynchronizedStore {
     /// Needs to be invoked when a change notification was received.
     func externalChangeNotificationReceived(recordId: String? = nil) async throws {
         try await store.externalChangeNotificationReceived(recordId: recordId)
+        
+        for (_, listener) in externalChangeListeners {
+            try await listener(recordId)
+        }
+    }
+    
+    /// Register an external change listener.
+    func registerExternalChangeListener(_ callback: @escaping (String?) async throws -> Void) -> UUID {
+        let id = UUID()
+        externalChangeListeners[id] = callback
+        
+        return id
     }
 }
 
@@ -176,11 +191,16 @@ fileprivate extension SynchronizedStoreImpl {
         if !self.changeSubscriptionSetup {
             try await operationsStore.setupRecordChangeSubscription(for: SyncOperation.tableName,
                                                                     storeIdentifier: config.storeIdentifier,
-                                                                    deviceIdentifier: deviceIdentifier) { recordId in
-                try await self.externalChangeNotificationReceived(recordId: recordId)
-            }
+                                                                    deviceIdentifier: deviceIdentifier)
             
             self.changeSubscriptionSetup = true
+        }
+        
+        // Register listener
+        try await operationsStore.registerExternalChangeNotificationListener(for: SyncOperation.tableName,
+                                                                             storeIdentifier: config.storeIdentifier,
+                                                                             deviceIdentifier: deviceIdentifier) { recordId in
+            try await self.externalChangeNotificationReceived(recordId: recordId)
         }
         
         // Perform initial synchronization
@@ -190,7 +210,7 @@ fileprivate extension SynchronizedStoreImpl {
     /// Clear the store.
     func clear() async throws {
         for model in config.managedModels {
-            try localStore.clearTable(modelType: model)
+            try await localStore.clearTable(modelType: model)
         }
         
         try await operationsStore.clearOperations()
@@ -202,7 +222,7 @@ fileprivate extension SynchronizedStoreImpl {
     /// Reset the store to the synchronized state.
     func reset() async throws {
         for model in config.managedModels {
-            try localStore.clearTable(modelType: model)
+            try await localStore.clearTable(modelType: model)
         }
         
         self.lastModificationDate = .distantPast
@@ -297,15 +317,15 @@ extension SynchronizedStoreImpl: CryoDatabaseAdaptor {
         try await localStore.createTable(for: model)
     }
     
-    internal func select<Model: CryoModel>(id: String? = nil, from model: Model.Type) throws -> any CryoSelectQuery<Model> {
+    internal func select<Model: CryoModel>(id: String? = nil, from model: Model.Type) throws -> SQLiteSelectQuery<Model> {
         try localStore.select(id: id, from: model)
     }
     
     internal func insert<Model: CryoModel>(_ value: Model, replace: Bool = true)
         throws -> SynchronizedInsertQuery<SQLiteInsertQuery<Model>>
     {
-        let query = try localStore.insert(value, replace: replace)
-        return .init(query: query) {
+        let query = try localStore.insert(value, replace: replace) as! SQLiteInsertQuery<Model>
+        return SynchronizedInsertQuery<SQLiteInsertQuery<Model>>(query: query) {
             try await self.didExecute(query)
         }
     }
@@ -313,8 +333,8 @@ extension SynchronizedStoreImpl: CryoDatabaseAdaptor {
     internal func update<Model: CryoModel>(id: String? = nil, from modelType: Model.Type)
         throws -> SynchronizedUpdateQuery<SQLiteUpdateQuery<Model>>
     {
-        let query = try localStore.update(id: id, from: modelType)
-        return .init(query: query) {
+        let query = try localStore.update(id: id, from: modelType) as! SQLiteUpdateQuery<Model>
+        return SynchronizedUpdateQuery<SQLiteUpdateQuery<Model>>(query: query) {
             try await self.didExecute(query)
         }
     }
@@ -322,8 +342,8 @@ extension SynchronizedStoreImpl: CryoDatabaseAdaptor {
     internal func delete<Model: CryoModel>(id: String? = nil, from modelType: Model.Type)
         throws -> SynchronizedDeleteQuery<SQLiteDeleteQuery<Model>>
     {
-        let query = try localStore.delete(id: id, from: modelType)
-        return .init(query: query) {
+        let query = try localStore.delete(id: id, from: modelType) as! SQLiteDeleteQuery<Model>
+        return SynchronizedDeleteQuery<SQLiteDeleteQuery<Model>>(query: query) {
             try await self.didExecute(query)
         }
     }
@@ -336,19 +356,19 @@ extension SynchronizedStore: CryoDatabaseAdaptor {
         try await store.createTable(for: model)
     }
     
-    public func select<Model: CryoModel>(id: String? = nil, from model: Model.Type) throws -> any CryoSelectQuery<Model> {
+    public func select<Model: CryoModel>(id: String? = nil, from model: Model.Type) throws -> SQLiteSelectQuery<Model> {
         try store.select(id: id, from: model)
     }
     
-    public func insert<Model: CryoModel>(_ value: Model, replace: Bool = true) throws -> any CryoInsertQuery<Model> {
+    public func insert<Model: CryoModel>(_ value: Model, replace: Bool = true) throws -> SynchronizedInsertQuery<SQLiteInsertQuery<Model>> {
         try store.insert(value, replace: replace)
     }
     
-    public func update<Model: CryoModel>(id: String? = nil, from modelType: Model.Type) throws -> any CryoUpdateQuery<Model> {
+    public func update<Model: CryoModel>(id: String? = nil, from modelType: Model.Type) throws -> SynchronizedUpdateQuery<SQLiteUpdateQuery<Model>> {
         try store.update(id: id, from: modelType)
     }
     
-    public func delete<Model: CryoModel>(id: String? = nil, from model: Model.Type) throws -> any CryoDeleteQuery<Model> {
+    public func delete<Model: CryoModel>(id: String? = nil, from model: Model.Type) throws -> SynchronizedDeleteQuery<SQLiteDeleteQuery<Model>> {
         try store.delete(id: id, from: model)
     }
 }

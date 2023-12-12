@@ -42,13 +42,14 @@ public protocol CryoDatabaseAdaptor {
     /// Create a CREATE TABLE query.
     func createTable<Model: CryoModel>(for: Model.Type) async throws -> any CryoCreateTableQuery<Model>
     
+    // FIXME: As of Swift 5.9.2, uncommenting this code this causes a compiler crash
     #if false
-    
     /// Create a SELECT by ID query.
     func select<Model: CryoModel>(id: String?, from: Model.Type) throws -> any CryoSelectQuery<Model>
     
     /// Create an INSERT query.
     func insert<Model: CryoModel>(_ value: Model, replace: Bool) throws -> any CryoInsertQuery<Model>
+    
     
     /// Create an UPDATE query.
     func update<Model: CryoModel>(id: String?, from: Model.Type) throws -> any CryoUpdateQuery<Model>

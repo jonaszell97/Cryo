@@ -107,8 +107,8 @@ extension SQLiteAdaptor {
 
 extension SQLiteAdaptor {
     /// Clear the database.
-    func clearTable(modelType: any CryoModel.Type) throws {
-        try UntypedSQLiteDeleteQuery(id: nil, modelType: modelType, connection: db.connection, config: config).execute()
+    func clearTable(modelType: any CryoModel.Type) async throws {
+        try await UntypedSQLiteDeleteQuery(id: nil, modelType: modelType, connection: db.connection, config: config).execute()
     }
 }
 
@@ -164,7 +164,7 @@ extension SQLiteAdaptor: ResilientStoreBackend {
             }
             
             let model = try schema.create(modelData)
-            _ = try UntypedSQLiteInsertQuery(id: rowId, value: model, replace: false, connection: db.connection, config: config)
+            _ = try await UntypedSQLiteInsertQuery(id: rowId, value: model, replace: false, connection: db.connection, config: config)
                 .execute()
         case .update(_, let tableName, let rowId, let setClauses, let whereClauses):
             guard let schema = CryoSchemaManager.shared.schema(tableName: tableName) else {
@@ -179,7 +179,7 @@ extension SQLiteAdaptor: ResilientStoreBackend {
                 _ = try query.where(whereClause.columnName, operation: whereClause.operation, value: whereClause.value.columnValue)
             }
             
-            _ = try query.execute()
+            _ = try await query.execute()
             break
         case .delete(_, let tableName, let rowId, let whereClauses):
             guard let schema = CryoSchemaManager.shared.schema(tableName: tableName) else {
@@ -191,7 +191,7 @@ extension SQLiteAdaptor: ResilientStoreBackend {
                 _ = try query.where(whereClause.columnName, operation: whereClause.operation, value: whereClause.value.columnValue)
             }
             
-            _ = try query.execute()
+            _ = try await query.execute()
         }
     }
     

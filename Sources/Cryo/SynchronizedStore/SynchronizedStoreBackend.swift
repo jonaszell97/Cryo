@@ -25,21 +25,26 @@ internal protocol SynchronizedStoreBackend {
     /// Setup a subscription to be notified of record changes.
     func setupRecordChangeSubscription(for tableName: String,
                                        storeIdentifier: String,
-                                       deviceIdentifier: String,
-                                       callback: @escaping (String?) async throws -> Void) async throws
+                                       deviceIdentifier: String) async throws
+    
+    /// Register an external change notification listener.
+    func registerExternalChangeNotificationListener(for tableName: String,
+                                                    storeIdentifier: String,
+                                                    deviceIdentifier: String,
+                                                    callback: @escaping (String?) async throws -> Void) async throws
 }
 
 extension SQLiteAdaptor: SynchronizedStoreBackend {
     /// Persist a sync operation.
     internal func persist(operation: SyncOperation) async throws {
-        try self.insert(operation, replace: false).execute()
+        try await self.insert(operation, replace: false).execute()
     }
     
     /// Load sync operations after a given date.
     internal func loadOperations(after date: Date,
                                  storeIdentifier: String,
-                                 deviceIdentifier: String) throws -> [SyncOperation] {
-        try self
+                                 deviceIdentifier: String) async throws -> [SyncOperation] {
+        try await self
             .select(from: SyncOperation.self)
             .where("date", isGreatherThan: date)
             .and("storeIdentifier", equals: storeIdentifier)
@@ -48,20 +53,27 @@ extension SQLiteAdaptor: SynchronizedStoreBackend {
     }
     
     /// Load a sync operation with the given ID.
-    internal func loadOperation(withId id: String) throws -> SyncOperation? {
-        try self.select(id: id, from: SyncOperation.self).execute().first
+    internal func loadOperation(withId id: String) async throws -> SyncOperation? {
+        try await self.select(id: id, from: SyncOperation.self).execute().first
     }
     
     /// Delete all operations.
     internal func clearOperations() async throws {
-        try self.delete(from: SyncOperation.self).execute()
+        try await self.delete(from: SyncOperation.self).execute()
     }
     
     /// Setup a subscription to be notified of record changes.
     internal func setupRecordChangeSubscription(for tableName: String,
                                                 storeIdentifier: String,
-                                                deviceIdentifier: String,
-                                                callback: @escaping (String?) async throws -> Void) async throws {
+                                                deviceIdentifier: String) async throws {
+        
+    }
+    
+    /// Register an external change notification listener.
+    internal func registerExternalChangeNotificationListener(for tableName: String,
+                                                             storeIdentifier: String,
+                                                             deviceIdentifier: String,
+                                                             callback: @escaping (String?) async throws -> Void) async throws {
         self.registerChangeListener(tableName: tableName) {
             try await callback(nil)
         }
@@ -99,8 +111,7 @@ extension CloudKitAdaptor: SynchronizedStoreBackend {
     /// Setup a subscription to be notified of record changes.
     internal func setupRecordChangeSubscription(for tableName: String,
                                                 storeIdentifier: String,
-                                                deviceIdentifier: String,
-                                                callback: @escaping (String?) async throws -> Void) async throws {
+                                                deviceIdentifier: String) async throws {
         // Subscribe to changes from other devices for this store
         let predicate = NSPredicate(format: "storeIdentifier == %@ AND deviceIdentifier != %@",
                                     storeIdentifier, deviceIdentifier)
@@ -145,13 +156,31 @@ extension CloudKitAdaptor: SynchronizedStoreBackend {
         }
     }
     
+    /// Register an external change notification listener.
+    internal func registerExternalChangeNotificationListener(for tableName: String,
+                                                             storeIdentifier: String,
+                                                             deviceIdentifier: String,
+                                                             callback: @escaping (String?) async throws -> Void) async throws {
+        self.registerChangeListener(tableName: tableName) { recordId in
+            try await callback(recordId)
+        }
+    }
+    
     /// Callback invoked when a CloudKit notification is received.
-    public func receivedCloudKitNotification(_ notification: CKQueryNotification, store: SynchronizedStore) async throws {
+    public func receivedCloudKitNotification(_ notification: CKQueryNotification) async throws {
         guard case .recordCreated = notification.queryNotificationReason else {
             config.log?(.debug, "received non-created notification: \(notification.queryNotificationReason.rawValue)")
             return
         }
         
-        try await store.externalChangeNotificationReceived(recordId: notification.recordID?.recordName)
+        for (key, listeners) in changeListeners {
+            guard key == notification.className else {
+                continue
+            }
+         
+            for listener in listeners {
+                try await listener(notification.recordID?.recordName)
+            }
+        }
     }
 }

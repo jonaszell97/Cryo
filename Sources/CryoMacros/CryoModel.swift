@@ -11,6 +11,7 @@ public struct CryoModelMacro: ExtensionMacro, MemberMacro {
         }
         
         return [
+            createIdProperty(for: classDecl),
             createContextProperty(for: classDecl),
             createTableNameProperty(for: classDecl, node: node),
             createDefaultInitializer(for: classDecl),
@@ -47,6 +48,13 @@ extension CryoModelMacro {
         let context: CryoContext
         """
     }
+    
+    /// Create the `id` property.
+    static func createIdProperty(for declaration: ClassDeclSyntax) -> DeclSyntax {
+        """
+        public let id: UUID
+        """
+    }
 }
 
 // MARK: tableName
@@ -57,7 +65,7 @@ extension CryoModelMacro {
         let customName = getCustomTableName(node: node)
         
         return """
-        static let tableName: String = "\(raw: customName ?? declaration.name.text)"
+        public static let tableName: String = "\(raw: customName ?? declaration.name.text)"
         """
     }
     
@@ -110,11 +118,13 @@ extension CryoModelMacro {
         }
         
         return """
-        \(raw: accessModifier)init(context: CryoContext) {
+        \(raw: accessModifier)init(context: CryoContext) async throws {
+            self.id = UUID()
             self.context = context
+            
             \(raw: initializerDecls.map { $0.description }.joined(separator: "\n    ") )
             
-            context.register(self)
+            try await context.manage(self)
         }
         """
     }

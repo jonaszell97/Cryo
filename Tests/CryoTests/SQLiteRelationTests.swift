@@ -37,7 +37,7 @@ final class CryoSQLiteRelationTests: XCTestCase {
         
         // Check foreign key constraint error
         do {
-            try adaptor.insert(b).execute()
+            try await adaptor.insert(b).execute()
             XCTAssert(false, "should throw an error")
         }
         catch let e as CryoError {
@@ -48,18 +48,18 @@ final class CryoSQLiteRelationTests: XCTestCase {
         }
         
         // Check valid insert
-        try adaptor.insert(a).execute()
-        try adaptor.insert(b).execute()
+        try await adaptor.insert(a).execute()
+        try await adaptor.insert(b).execute()
         
         // Check loading
-        let loadedB = try adaptor.select(id: b.id, from: ModelB.self).execute().first
+        let loadedB = try await adaptor.select(id: b.id, from: ModelB.self).execute().first
         XCTAssertEqual(loadedB?.x, b.x)
         XCTAssertEqual(loadedB?.buddy.x, a.x)
         XCTAssertEqual(loadedB?.buddy.y, a.y)
         
         // Check deletion error
         do {
-            try adaptor.delete(id: a.id, from: ModelA.self).execute()
+            try await adaptor.delete(id: a.id, from: ModelA.self).execute()
             XCTAssert(false, "should throw an error")
         }
         catch let e as CryoError {
@@ -70,7 +70,7 @@ final class CryoSQLiteRelationTests: XCTestCase {
         }
         
         // Check correct deletion
-        try adaptor.delete(id: b.id, from: ModelB.self).execute()
-        try adaptor.delete(id: a.id, from: ModelA.self).execute()
+        try await adaptor.delete(id: b.id, from: ModelB.self).execute()
+        try await adaptor.delete(id: a.id, from: ModelA.self).execute()
     }
 }
