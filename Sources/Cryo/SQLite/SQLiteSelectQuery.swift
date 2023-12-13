@@ -179,14 +179,15 @@ extension UntypedSQLiteSelectQuery {
                                                  type: type,
                                                  index: index)
         case .oneToOneRelation(let columnName, let modelType, _):
-            let id = try SQLiteAdaptor.columnValue(queryStatement,
-                                                   connection: connection,
-                                                   columnName: columnName,
-                                                   type: .text,
-                                                   index: index) as! String
-            return try await UntypedSQLiteSelectQuery(modelType: modelType, connection: connection, config: config)
-                .where("id", operation: .equals, value: id)
-                .execute().first
+            fatalError("relationships not implemented")
+//            let id = try SQLiteAdaptor.columnValue(queryStatement,
+//                                                   connection: connection,
+//                                                   columnName: columnName,
+//                                                   type: .text,
+//                                                   index: index) as! String
+//            return try await UntypedSQLiteSelectQuery(modelType: modelType, connection: connection, config: config)
+//                .where("id", operation: .equals, value: id)
+//                .execute().first
         }
     }
 }

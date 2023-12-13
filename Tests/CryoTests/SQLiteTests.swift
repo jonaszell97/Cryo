@@ -34,7 +34,7 @@ extension TestModel: Hashable {
 }
 
 final class CryoSQLiteTests: XCTestCase {
-    struct AnyKey<Value: CryoModel>: CryoKey {
+    struct AnyKey<Value: CryoModel & Codable>: CryoKey {
         let id: String
         
         init(id: String, for: Value.Type) {

@@ -35,7 +35,7 @@ import Foundation
 /// | 1   | "Hello"  | YYYY-MM-DD | /... |
 /// | 2   | "Hi"  | YYYY-MM-DD | /... |
 /// | 3   | "How are you?"  | YYYY-MM-DD | /... |
-public protocol CryoModel: Codable, _AnyCryoColumnValue {
+public protocol CryoModel {
     /// The name of the table representing this model.
     ///
     /// By default, the type name is used as the table name.
@@ -74,17 +74,17 @@ extension CryoModel {
     }
 }
 
-extension CryoColumn: Codable {
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.singleValueContainer()
-        try container.encode(wrappedValue)
-    }
-    
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        self.init(wrappedValue: try container.decode(Value.self))
-    }
-}
+//extension CryoColumn: Codable {
+//    public func encode(to encoder: Encoder) throws {
+//        var container = encoder.singleValueContainer()
+//        try container.encode(wrappedValue)
+//    }
+//    
+//    public init(from decoder: Decoder) throws {
+//        let container = try decoder.singleValueContainer()
+//        self.init(wrappedValue: try container.decode(Value.self))
+//    }
+//}
 
 @propertyWrapper public struct CryoOneToOne<Value: CryoModel> {
     /// The wrapped value that is referenced by this column.
@@ -96,17 +96,17 @@ extension CryoColumn: Codable {
     }
 }
 
-extension CryoOneToOne: Codable {
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.singleValueContainer()
-        try container.encode(wrappedValue)
-    }
-    
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        self.init(wrappedValue: try container.decode(Value.self))
-    }
-}
+//extension CryoOneToOne: Codable {
+//    public func encode(to encoder: Encoder) throws {
+//        var container = encoder.singleValueContainer()
+//        try container.encode(wrappedValue)
+//    }
+//    
+//    public init(from decoder: Decoder) throws {
+//        let container = try decoder.singleValueContainer()
+//        self.init(wrappedValue: try container.decode(Value.self))
+//    }
+//}
 
 @propertyWrapper public struct CryoOneToMany<Value: CryoModel> {
     /// The wrapped value that is referenced by this column.
@@ -118,17 +118,17 @@ extension CryoOneToOne: Codable {
     }
 }
 
-extension CryoOneToMany: Codable {
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.singleValueContainer()
-        try container.encode(wrappedValue)
-    }
-    
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        self.init(wrappedValue: try container.decode([Value].self))
-    }
-}
+//extension CryoOneToMany: Codable {
+//    public func encode(to encoder: Encoder) throws {
+//        var container = encoder.singleValueContainer()
+//        try container.encode(wrappedValue)
+//    }
+//    
+//    public init(from decoder: Decoder) throws {
+//        let container = try decoder.singleValueContainer()
+//        self.init(wrappedValue: try container.decode([Value].self))
+//    }
+//}
 
 /// Property wrapper for assets in a ``CryoModel``.
 ///
@@ -276,7 +276,8 @@ public struct CryoSchema {
 
 internal extension CryoModel {
     static var schema: CryoSchema {
-        
+        fatalError()
+        /*
         // Create an empty instance and find columns from it
         let emptyInstance = try! Self(from: EmptyDecoder())
         let mirror = Mirror(reflecting: emptyInstance)
@@ -368,5 +369,6 @@ internal extension CryoModel {
         return CryoSchema(self: Self.self, columns: columns) {
             try Self(from: CryoModelDecoder(data: $0))
         }
+         */
     }
 }

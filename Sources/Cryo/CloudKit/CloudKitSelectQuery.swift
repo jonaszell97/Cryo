@@ -203,9 +203,10 @@ extension UntypedCloudKitSelectQuery {
         case .value(_, let type, _):
             return CloudKitAdaptor.decodeValue(from: value, as: type)
         case .oneToOneRelation(_, let modelType, _):
-            let id = (value as! NSString) as String
-            return try await UntypedCloudKitSelectQuery(for: modelType, id: id, database: database, config: config)
-                .execute().first
+            fatalError("relationships not implemented")
+//            let id = (value as! NSString) as String
+//            return try await UntypedCloudKitSelectQuery(for: modelType, id: id, database: database, config: config)
+//                .execute().first
         }
     }
 }

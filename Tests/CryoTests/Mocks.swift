@@ -125,9 +125,10 @@ final class UntypedMockSelectQuery {
         case .value(_, let type, _):
             return CloudKitAdaptor.decodeValue(from: value, as: type)
         case .oneToOneRelation(_, let modelType, _):
-            let id = (value as! NSString) as String
-            return try await UntypedMockSelectQuery(id: id, modelType: modelType, allRecords: allRecords)
-                .execute().first
+            fatalError("relationships not implemented")
+//            let id = (value as! NSString) as String
+//            return try await UntypedMockSelectQuery(id: id, modelType: modelType, allRecords: allRecords)
+//                .execute().first
         }
     }
     
@@ -357,9 +358,10 @@ final class UntypedMockUpdateQuery {
         case .value(_, let type, _):
             return CloudKitAdaptor.decodeValue(from: value, as: type)
         case .oneToOneRelation(_, let modelType, _):
-            let id = (value as! NSString) as String
-            return try await UntypedMockSelectQuery(id: id, modelType: modelType, allRecords: allRecords)
-                .execute().first
+            fatalError("relationships not implemented")
+//            let id = (value as! NSString) as String
+//            return try await UntypedMockSelectQuery(id: id, modelType: modelType, allRecords: allRecords)
+//                .execute().first
         }
     }
     
@@ -488,9 +490,10 @@ final class UntypedMockDeleteQuery {
         case .value(_, let type, _):
             return CloudKitAdaptor.decodeValue(from: value, as: type)
         case .oneToOneRelation(_, let modelType, _):
-            let id = (value as! NSString) as String
-            return try await UntypedMockSelectQuery(id: id, modelType: modelType, allRecords: allRecords)
-                .execute().first
+            fatalError("relationships not implemented")
+//            let id = (value as! NSString) as String
+//            return try await UntypedMockSelectQuery(id: id, modelType: modelType, allRecords: allRecords)
+//                .execute().first
         }
     }
     

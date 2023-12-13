@@ -67,7 +67,7 @@ extension CryoContext: CryoDatabaseAdaptor {
     }
 }
 
-public protocol CryoClassModel: AnyObject, CryoModel, Codable, ObservableObject {
+public protocol CryoClassModel: AnyObject, CryoModel, ObservableObject {
     /// The name of the table representing this model.
     ///
     /// By default, the type name is used as the table name.

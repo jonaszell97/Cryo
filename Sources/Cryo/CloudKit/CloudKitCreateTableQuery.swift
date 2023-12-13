@@ -51,7 +51,8 @@ extension UntypedCloudKitCreateTableQuery {
     public typealias Result = Void
     
     public func execute() async throws {
-        #if DEBUG
+        // FIXME
+        #if false
         let id = UUID().uuidString
         let value = try! modelType.init(from: EmptyDecoder())
         
