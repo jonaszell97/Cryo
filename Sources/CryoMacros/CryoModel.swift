@@ -145,7 +145,7 @@ extension CryoModelMacro {
             case PropertyKind.persisted:
                 columnExpressions.append("""
                 try columns.append(.value(columnName: "\(property.name)", type: \(property.type).self) { this in
-                        this._\(property.name).wrappedValue
+                        this._\(property.name)
                     })
                 """)
             default:
