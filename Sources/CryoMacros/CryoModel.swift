@@ -53,7 +53,7 @@ extension CryoModelMacro {
     /// Create the `id` property.
     static func createIdProperty(for declaration: ClassDeclSyntax) -> DeclSyntax {
         """
-        public let id: UUID
+        public let id: String
         """
     }
 }
@@ -120,7 +120,7 @@ extension CryoModelMacro {
         
         return """
         \(raw: accessModifier)init(context: CryoContext) async throws {
-            self.id = UUID()
+            self.id = UUID().uuidString
             self.context = context
             
             \(raw: initializerDecls.map { $0.description }.joined(separator: "\n    ") )

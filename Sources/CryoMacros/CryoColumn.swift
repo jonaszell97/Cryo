@@ -72,7 +72,7 @@ extension CryoColumnMacro {
         set {
             Task {
                 do {
-                    try await context.update(self.id.uuidString, from: Self.self)
+                    try await context.update(self.id, from: Self.self)
                         .set("\(declaration.pattern)", newValue)
                         .execute()
                 }

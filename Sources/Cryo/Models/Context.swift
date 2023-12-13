@@ -26,6 +26,11 @@ extension CryoContext {
     public func manage<Model: CryoClassModel>(_ value: Model) async throws {
         try await adaptor.insert(value, replace: false).execute()
     }
+    
+    /// Handle an error.
+    public func handlePropertyUpdateError(_ error: Error) {
+        fatalError("property update failed: \(error)")
+    }
 }
 
 // MARK: Private API
