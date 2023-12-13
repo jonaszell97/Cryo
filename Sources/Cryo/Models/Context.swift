@@ -118,7 +118,7 @@ public extension CryoContext {
 
 // MARK: Column types
 
-extension CryoContext {
+public extension CryoContext {
     /// Create a default `Int` value.
     static func columnType(for: Int.Type) -> CryoColumnType { .integer }
     
