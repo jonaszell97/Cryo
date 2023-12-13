@@ -147,7 +147,7 @@ extension CryoModelMacro {
                 let type_\(property.name) = CryoContext.columnType(for: \(property.type).self)
                 try columns.append(.value(columnName: "\(property.name)", type: type_\(property.name)) { this in
                         return (this as! \(declaration.name))._\(property.name)
-                    }))
+                    })
                 """)
             default:
                 continue
