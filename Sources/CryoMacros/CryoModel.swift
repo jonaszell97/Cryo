@@ -114,7 +114,7 @@ extension CryoModelMacro {
                 initializerDecls.append("self.\(prop.name) \(initializer)")
             }
             else {
-                initializerDecls.append("self.\(prop.name) = context.defaultValue(for: \(prop.type).self)")
+                initializerDecls.append("self.\(prop.name) = CryoContext.defaultValue(for: \(prop.type).self)")
             }
         }
         
@@ -144,8 +144,9 @@ extension CryoModelMacro {
             switch property.kind {
             case PropertyKind.persisted:
                 columnExpressions.append("""
-                try columns.append(.value(columnName: "\(property.name)", type: \(property.type).self) { this in
-                        this._\(property.name)
+                let type_\(property.name) = CryoContext.columnType(for: \(property.type).self)
+                try columns.append(.value(columnName: "\(property.name)", type: type_\(property.name)) { this in
+                        return (this as! \(declaration.name)._\(property.name)
                     })
                 """)
             default:

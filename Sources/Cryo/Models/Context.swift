@@ -86,71 +86,71 @@ public protocol CryoClassModel: AnyObject, CryoModel, ObservableObject {
 
 public extension CryoContext {
     /// Create a default `Int` value.
-    func defaultValue(for: Int.Type) -> Int { 0 }
+    static func defaultValue(for: Int.Type) -> Int { 0 }
     
     /// Create a default `UInt` value.
-    func defaultValue(for: UInt.Type) -> UInt { 0 }
+    static func defaultValue(for: UInt.Type) -> UInt { 0 }
     
     /// Create a default `Boolean` value.
-    func defaultValue(for: Bool.Type) -> Bool { false }
+    static func defaultValue(for: Bool.Type) -> Bool { false }
     
     /// Create a default `Double` value.
-    func defaultValue(for: Double.Type) -> Double { 0 }
+    static func defaultValue(for: Double.Type) -> Double { 0 }
     
     /// Create a default `String` value.
-    func defaultValue(for: String.Type) -> String { "" }
+    static func defaultValue(for: String.Type) -> String { "" }
     
     /// Create a default `Date` value.
-    func defaultValue(for: Date.Type) -> Date { Date() }
+    static func defaultValue(for: Date.Type) -> Date { Date() }
     
     /// Create a default `Data` value.
-    func defaultValue(for: Data.Type) -> Data { Data() }
+    static func defaultValue(for: Data.Type) -> Data { Data() }
     
     /// Create a default `URL` value.
-    func defaultValue(for: URL.Type) -> URL { URL(fileURLWithPath: "") }
+    static func defaultValue(for: URL.Type) -> URL { URL(fileURLWithPath: "") }
     
     /// Create a default `Optional` value.
-    func defaultValue<T>(for: Optional<T>.Type) -> Optional<T> { nil }
+    static func defaultValue<T>(for: Optional<T>.Type) -> Optional<T> { nil }
     
     /// Create a default `Codable` value.
-    func defaultValue<T>(for: T.Type) -> T where T: Codable { try! T(from: EmptyDecoder()) }
+    static func defaultValue<T>(for: T.Type) -> T where T: Codable { try! T(from: EmptyDecoder()) }
 }
 
 // MARK: Column types
 
 extension CryoContext {
     /// Create a default `Int` value.
-    func columnType(for: Int.Type) -> CryoColumnType { .integer }
+    static func columnType(for: Int.Type) -> CryoColumnType { .integer }
     
     /// Create a default `UInt` value.
-    func columnType(for: UInt.Type) -> CryoColumnType { .integer }
+    static func columnType(for: UInt.Type) -> CryoColumnType { .integer }
     
     /// Create a default `Boolean` value.
-    func columnType(for: Bool.Type) -> CryoColumnType { .integer }
+    static func columnType(for: Bool.Type) -> CryoColumnType { .integer }
     
     /// Create a default `Double` value.
-    func columnType(for: Double.Type) -> CryoColumnType { .double }
+    static func columnType(for: Double.Type) -> CryoColumnType { .double }
     
     /// Create a default `String` value.
-    func columnType(for: String.Type) -> CryoColumnType { .text }
+    static func columnType(for: String.Type) -> CryoColumnType { .text }
     
     /// Create a default `Date` value.
-    func columnType(for: Date.Type) -> CryoColumnType { .date }
+    static func columnType(for: Date.Type) -> CryoColumnType { .date }
     
     /// Create a default `Data` value.
-    func columnType(for: Data.Type) -> CryoColumnType { .data }
+    static func columnType(for: Data.Type) -> CryoColumnType { .data }
     
     /// Create a default `URL` value.
-    func columnType(for: URL.Type) -> CryoColumnType { .text }
+    static func columnType(for: URL.Type) -> CryoColumnType { .text }
     
     /// Create a default `Optional` value.
-    func columnType<T>(for: Optional<T>.Type) -> CryoColumnType { self.columnType(for: T.self) }
+    static func columnType<T>(for: Optional<T>.Type) -> CryoColumnType { self.columnType(for: T.self) }
     
     /// Create a default `Codable` value.
-    func columnType<T>(for: T.Type) -> CryoColumnType where T: Codable { .data }
+    static func columnType<T>(for: T.Type) -> CryoColumnType where T: Codable { .data }
     
     /// Create a default `Codable` value.
-    func columnType<T>(for: T.Type) -> CryoColumnType {
+    static func columnType<T>(for: T.Type) -> CryoColumnType {
         if T.self == URL.self { return .text }
         if T.self == Data.self { return .data }
         if let intType = T.self as? CryoColumnIntValue.Type { return .integer }
