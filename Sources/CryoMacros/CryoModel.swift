@@ -144,7 +144,7 @@ extension CryoModelMacro {
             switch property.kind {
             case PropertyKind.persisted:
                 columnExpressions.append("""
-                try columns.append(.init(columnName: "\(property.name)", type: \(property.type).self) { this in
+                try columns.append(.value(columnName: "\(property.name)", type: \(property.type).self) { this in
                         this._\(property.name).wrappedValue
                     })
                 """)
@@ -157,7 +157,7 @@ return """
     var columns: [CryoSchemaColumn] = []
     \(raw: columnExpressions.map { $0.description }.joined(separator: "\n    ") )
 
-    return CryoSchema(self: Self.self) { try Self(from: CryoModelDecoder(data: $0)) }
+    return CryoSchema(self: Self.self) { try Self(context: $0) }
 }()
 """
     }
