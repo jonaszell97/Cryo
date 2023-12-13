@@ -158,7 +158,7 @@ return """
     var columns: [CryoSchemaColumn] = []
     \(raw: columnExpressions.map { $0.description }.joined(separator: "\n    ") )
 
-    return CryoSchema(self: Self.self) { try Self(context: $0) }
+    return CryoSchema(self: \(declaration.name).self, columns: columns) { try \(declaration.name)(context: $0) }
 }()
 """
     }
