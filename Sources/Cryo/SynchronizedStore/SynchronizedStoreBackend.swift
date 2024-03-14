@@ -174,7 +174,7 @@ extension CloudKitAdaptor: SynchronizedStoreBackend {
         }
         
         for (key, listeners) in changeListeners {
-            guard key == notification.className else {
+            guard key == notification.recordID?.recordName else {
                 continue
             }
          

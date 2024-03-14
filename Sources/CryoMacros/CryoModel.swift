@@ -11,6 +11,7 @@ public struct CryoModelMacro: ExtensionMacro, MemberMacro {
         }
         
         return [
+            createDataStruct(for: classDecl),
             createIdProperty(for: classDecl),
             createContextProperty(for: classDecl),
             createTableNameProperty(for: classDecl, node: node),
@@ -54,6 +55,43 @@ extension CryoModelMacro {
     static func createIdProperty(for declaration: ClassDeclSyntax) -> DeclSyntax {
         """
         public let id: String
+        """
+    }
+    
+    /// Create the `data` property.
+    static func createDataProperty(for declaration: ClassDeclSyntax) -> DeclSyntax {
+        """
+        public var data: Self.ModelData
+        """
+    }
+    
+    /// Create the data type.
+    static func createDataStruct(for declaration: ClassDeclSyntax) -> DeclSyntax {
+        let properties = getPropertyDeclarations(of: declaration.memberBlock)
+        
+        var decls: [DeclSyntax] = []
+        for prop in properties {
+            switch prop.kind {
+            case .computed:
+                break
+            case .transient:
+                break
+            case .persisted:
+                decls.append("var \(prop.name): \(prop.type)")
+            case .relationship(let type):
+                switch type {
+                case .oneToTone:
+                    decls.append("var \(prop.name): String")
+                case .oneToMany:
+                    decls.append("var \(prop.name): [String]")
+                }
+            }
+        }
+        
+        return """
+        struct ModelData {
+            \(raw: decls.map(\.description).joined(separator: "\n        "))
+        }
         """
     }
 }
@@ -145,6 +183,8 @@ extension CryoModelMacro {
             case PropertyKind.persisted:
                 columnExpressions.append("""
                 let type_\(property.name) = CryoContext.columnType(for: \(property.type).self)
+                """)
+                columnExpressions.append("""
                 try columns.append(.value(columnName: "\(property.name)", type: type_\(property.name)) { this in
                         return (this as! \(declaration.name))._\(property.name)
                     })
