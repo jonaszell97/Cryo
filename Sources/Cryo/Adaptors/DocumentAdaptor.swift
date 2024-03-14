@@ -57,24 +57,14 @@ public struct DocumentAdaptor {
     ///
     /// - Parameter fileManager: The file manager instance to use for file operations.
     /// - Returns: A document adaptor using the iCloud documents URL, or `nil` if iCloud is not available.
-    public static func cloud(fileManager: FileManager = .default) async -> DocumentAdaptor? {
-        guard FileManager.default.ubiquityIdentityToken != nil else {
+    public static func cloud(fileManager: FileManager = .default) -> DocumentAdaptor? {
+        guard fileManager.ubiquityIdentityToken != nil else {
             return nil
         }
         
-        let containerUrl: URL? = await withCheckedContinuation { continuation in
-            Task.detached {
-                guard let containerUrl = FileManager.default.url(forUbiquityContainerIdentifier: nil)?
-                        .appendingPathComponent("Documents")
-                        .appendingPathComponent(".cryo")
-                else {
-                    continuation.resume(returning: nil)
-                    return
-                }
-                
-                continuation.resume(returning: containerUrl)
-            }
-        }
+        let containerUrl: URL? = fileManager.url(forUbiquityContainerIdentifier: nil)?
+            .appendingPathComponent("Documents")
+            .appendingPathComponent(".cryo")
         
         guard let containerUrl else {
             return nil
@@ -95,38 +85,19 @@ extension DocumentAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
         }
     }
     
-    public func persist<Key: CryoKey>(_ value: Key.Value?, for key: Key) async throws {
-        return try await withCheckedThrowingContinuation { continuation in
-            do {
-                let documentUrl = self.documentUrl(for: key)
-                if let value {
-                    let data = try JSONEncoder().encode(value)
-                    try data.write(to: documentUrl)
-                }
-                else {
-                    try self.fileManager.removeItem(at: documentUrl)
-                }
-                
-                continuation.resume()
-            }
-            catch {
-                continuation.resume(throwing: error)
-            }
+    public func persist<Key: CryoKey>(_ value: Key.Value?, for key: Key) throws {
+        let documentUrl = self.documentUrl(for: key)
+        if let value {
+            let data = try JSONEncoder().encode(value)
+            try data.write(to: documentUrl)
+        }
+        else {
+            try self.fileManager.removeItem(at: documentUrl)
         }
     }
     
-    public func load<Key: CryoKey>(with key: Key) async throws -> Key.Value? {
-        return try await withCheckedThrowingContinuation { continuation in
-            Task.detached {
-                do {
-                    let value = try self.loadSynchronously(with: key)
-                    continuation.resume(returning: value)
-                }
-                catch {
-                    continuation.resume(throwing: error)
-                }
-            }
-        }
+    public func load<Key: CryoKey>(with key: Key) throws -> Key.Value? {
+        try self.loadSynchronously(with: key)
     }
     
     public func loadSynchronously<Key: CryoKey>(with key: Key) throws -> Key.Value? {
@@ -146,36 +117,18 @@ extension DocumentAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
         }
     }
     
-    public func removeAll() async throws {
-        return try await withCheckedThrowingContinuation { continuation in
-            do {
-                let urls = try FileManager.default.contentsOfDirectory(at: self.url, includingPropertiesForKeys: nil)
-                for url in urls {
-                    try self.fileManager.removeItem(at: url)
-                }
-                
-                continuation.resume()
-            }
-            catch {
-                continuation.resume(throwing: error)
-            }
+    public func removeAll() throws {
+        let urls = try FileManager.default.contentsOfDirectory(at: self.url, includingPropertiesForKeys: nil)
+        for url in urls {
+            try self.fileManager.removeItem(at: url)
         }
     }
     
-    public func removeAll(matching condition: (URL) -> Bool) async throws {
-        return try await withCheckedThrowingContinuation { continuation in
-            do {
-                let urls = try FileManager.default.contentsOfDirectory(at: self.url, includingPropertiesForKeys: nil)
-                for url in urls {
-                    guard condition(url) else { continue }
-                    try self.fileManager.removeItem(at: url)
-                }
-                
-                continuation.resume()
-            }
-            catch {
-                continuation.resume(throwing: error)
-            }
+    public func removeAll(matching condition: (URL) -> Bool) throws {
+        let urls = try FileManager.default.contentsOfDirectory(at: self.url, includingPropertiesForKeys: nil)
+        for url in urls {
+            guard condition(url) else { continue }
+            try self.fileManager.removeItem(at: url)
         }
     }
 }

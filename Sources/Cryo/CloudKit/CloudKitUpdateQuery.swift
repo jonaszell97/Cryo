@@ -123,23 +123,8 @@ extension UntypedCloudKitUpdateQuery {
     func fetch() async throws -> [CKRecord] {
         if let id {
             // Fetch single record
-            
             let recordId = CKRecord.ID(recordName: id)
-            return try await withCheckedThrowingContinuation { continuation in
-                database.fetch(withRecordID: recordId) { record, error in
-                    if let error {
-                        continuation.resume(throwing: error)
-                        return
-                    }
-                    
-                    guard let record else {
-                        continuation.resume(returning: [])
-                        return
-                    }
-                    
-                    continuation.resume(returning: [record])
-                }
-            }
+            return [try await database.record(for: recordId)]
         }
         
         // Fetch all records matching WHERE clauses
@@ -167,37 +152,29 @@ extension UntypedCloudKitUpdateQuery {
         
         let query = CKQuery(recordType: modelType.tableName, predicate: predicate)
         
-        var operation: CKQueryOperation? = CKQueryOperation(query: query)
-        operation?.resultsLimit = CKQueryOperation.maximumResults
-        
         var data = [CKRecord]()
-        while let nextOperation = operation {
-            var encounteredError = false
-            
-            let cursor: CKQueryOperation.Cursor? = try await withCheckedThrowingContinuation { continuation in
-                nextOperation.queryResultBlock =  {
-                    guard !encounteredError else { return }
-                    continuation.resume(with: $0)
+        var (batch, cursor) =  try await database.records(matching: query)
+        data.append(contentsOf: try batch.map { recordId, recordResult in
+            switch recordResult {
+            case .success(let record):
+                return record
+            case .failure(let error):
+                throw error
+            }
+        })
+        
+        while cursor != nil {
+            let (nextBatch, nextCursor) =  try await database.records(continuingMatchFrom: cursor!)
+            data.append(contentsOf: try nextBatch.map { recordId, recordResult in
+                switch recordResult {
+                case .success(let record):
+                    return record
+                case .failure(let error):
+                    throw error
                 }
-                nextOperation.recordMatchedBlock = { _, result in
-                    switch result {
-                    case .success(let record):
-                        data.append(record)
-                    case .failure(let error):
-                        encounteredError = true
-                        continuation.resume(throwing: error)
-                    }
-                }
-                
-                self.database.add(nextOperation)
-            }
+            })
             
-            if let cursor = cursor {
-                operation = CKQueryOperation(cursor: cursor)
-            }
-            else {
-                break
-            }
+            cursor = nextCursor
         }
         
         return data
@@ -217,27 +194,11 @@ extension UntypedCloudKitUpdateQuery {
         config?.log?(.debug, "[CloudKitAdaptor] \(queryString), SET \(setClauses.map { "\($0.value)" }), WHERE \(whereClauses.map { "\($0.value)" })")
         #endif
         
-        return try await withCheckedThrowingContinuation { continuation in
-            let operation = CKModifyRecordsOperation()
-            operation.recordsToSave = records
-            operation.savePolicy = .allKeys
-            
-            var recordCount = 0
-            operation.perRecordSaveBlock = { id, result in
-                guard case .success = result else {
-                    return
-                }
-                
-                recordCount += 1
-            }
-            
-            let savedRecordCount = recordCount
-            operation.completionBlock = {
-                continuation.resume(returning: savedRecordCount)
-            }
-            
-            database.add(operation)
+        for r in records {
+            try await database.save(r)
         }
+        
+        return records.count
     }
     
     public func set<Value: _AnyCryoColumnValue>(

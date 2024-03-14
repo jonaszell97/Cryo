@@ -117,23 +117,7 @@ extension UntypedCloudKitSelectQuery {
                       sortingClauses: [(String, CryoSortingOrder)],
                       database: CKDatabase) async throws -> [CKRecord] {
         if let id {
-            // Fetch single record
-            let recordId = CKRecord.ID(recordName: id)
-            return try await withCheckedThrowingContinuation { continuation in
-                database.fetch(withRecordID: recordId) { record, error in
-                    if let error {
-                        continuation.resume(throwing: error)
-                        return
-                    }
-                    
-                    guard let record else {
-                        continuation.resume(returning: [])
-                        return
-                    }
-                    
-                    continuation.resume(returning: [record])
-                }
-            }
+            return try [await database.record(for: .init(recordName: id))]
         }
         
         // Fetch all records matching WHERE clauses
@@ -162,37 +146,34 @@ extension UntypedCloudKitSelectQuery {
         let query = CKQuery(recordType: modelType.tableName, predicate: predicate)
         query.sortDescriptors = sortingClauses.map { .init(key: $0.0, ascending: $0.1 == .ascending) }
         
-        var operation: CKQueryOperation? = CKQueryOperation(query: query)
-        operation?.resultsLimit = resultsLimit ?? CKQueryOperation.maximumResults
-        
         var data = [CKRecord]()
-        while let nextOperation = operation {
-            var encounteredError = false
-            
-            let cursor: CKQueryOperation.Cursor? = try await withCheckedThrowingContinuation { continuation in
-                nextOperation.queryResultBlock =  {
-                    guard !encounteredError else { return }
-                    continuation.resume(with: $0)
-                }
-                nextOperation.recordMatchedBlock = { _, result in
-                    switch result {
-                    case .success(let record):
-                        data.append(record)
-                    case .failure(let error):
-                        encounteredError = true
-                        continuation.resume(throwing: error)
-                    }
-                }
-                
-                database.add(nextOperation)
+        
+        var (batch, cursor) =  try await database.records(matching: query)
+        data.append(contentsOf: try batch.map { recordId, recordResult in
+            switch recordResult {
+            case .success(let record):
+                return record
+            case .failure(let error):
+                throw error
             }
+        })
+        
+        while cursor != nil {
+            let (nextBatch, nextCursor) =  try await database.records(continuingMatchFrom: cursor!)
+            data.append(contentsOf: try nextBatch.map { recordId, recordResult in
+                switch recordResult {
+                case .success(let record):
+                    return record
+                case .failure(let error):
+                    throw error
+                }
+            })
             
-            if let cursor = cursor {
-                operation = CKQueryOperation(cursor: cursor)
-            }
-            else {
+            if let resultsLimit, data.count >= resultsLimit {
                 break
             }
+            
+            cursor = nextCursor
         }
         
         return data

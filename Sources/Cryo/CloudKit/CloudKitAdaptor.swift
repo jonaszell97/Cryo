@@ -57,15 +57,13 @@ public final class CloudKitAdaptor {
         let container = CKContainer(identifier: containerIdentifier)
         self.container = container
         self.database = container[keyPath: database]
+        self.iCloudRecordID = nil
         
-        self.iCloudRecordID = await withCheckedContinuation { continuation in
-            container.fetchUserRecordID(completionHandler: { (recordID, error) in
-                if let error {
-                    config.log?(.fault, "error fetching user record id: \(error.localizedDescription)")
-                }
-                
-                continuation.resume(returning: recordID?.recordName)
-            })
+        do {
+            self.iCloudRecordID = try await container.userRecordID().recordName
+        }
+        catch {
+            config.log?(.fault, "error fetching user record id: \(error.localizedDescription)")
         }
     }
 }
@@ -79,14 +77,11 @@ extension CloudKitAdaptor {
             return
         }
         
-        self.iCloudRecordID = await withCheckedContinuation { continuation in
-            container.fetchUserRecordID(completionHandler: { (recordID, error) in
-                if let error {
-                    self.config.log?(.fault, "error fetching user record id: \(error.localizedDescription)")
-                }
-                
-                continuation.resume(returning: recordID?.recordName)
-            })
+        do {
+            self.iCloudRecordID = try await container.userRecordID().recordName
+        }
+        catch {
+            config.log?(.fault, "error fetching user record id: \(error.localizedDescription)")
         }
         
         guard self.iCloudRecordID == nil else {

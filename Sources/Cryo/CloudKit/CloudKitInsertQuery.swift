@@ -88,22 +88,7 @@ extension UntypedCloudKitInsertQuery {
         config?.log?(.debug, "[CloudKitAdaptor] \(queryString)")
         #endif
         
-        return try await withCheckedThrowingContinuation { continuation in
-            let saveRecordsOperation = CKModifyRecordsOperation()
-            saveRecordsOperation.recordsToSave = [record]
-            
-            if replace {
-                saveRecordsOperation.savePolicy = .allKeys
-            }
-            else {
-                saveRecordsOperation.savePolicy = .ifServerRecordUnchanged
-            }
-            
-            saveRecordsOperation.completionBlock = {
-                continuation.resume(returning: true)
-            }
-            
-            database.add(saveRecordsOperation)
-        }
+        try await database.save(record)
+        return true
     }
 }

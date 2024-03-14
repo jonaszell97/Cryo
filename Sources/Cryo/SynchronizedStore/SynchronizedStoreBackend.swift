@@ -114,34 +114,21 @@ extension CloudKitAdaptor: SynchronizedStoreBackend {
         notificationInfo.shouldSendContentAvailable = true
         subscription.notificationInfo = notificationInfo
         
-        // Save the subscription
-        let operation = CKModifySubscriptionsOperation(subscriptionsToSave: [subscription],
-                                                       subscriptionIDsToDelete: nil)
-        
         #if DEBUG
         config.log?(.debug, "setting up change subscription for \(tableName) with predicate \(predicate) 'storeIdentifier == \(storeIdentifier) AND deviceIdentifier != \(deviceIdentifier)'")
         #endif
         
-        return try await withCheckedThrowingContinuation { continuation in
-            operation.modifySubscriptionsResultBlock = { result in
-                if case .failure(let error) = result {
-                    #if DEBUG
-                    self.config.log?(.error, "setting up change subscription failed for \(tableName): \(error.localizedDescription)")
-                    #endif
-                    
-                    continuation.resume(throwing: error)
-                    return
-                }
-                
-                #if DEBUG
-                self.config.log?(.debug, "successfully set up change subscription for \(tableName)")
-                #endif
-                
-                continuation.resume()
-            }
+        do {
+            try await database.save(subscription)
             
-            operation.qualityOfService = .utility
-            self.container.privateCloudDatabase.add(operation)
+            #if DEBUG
+            self.config.log?(.debug, "successfully set up change subscription for \(tableName)")
+            #endif
+        }
+        catch {
+            #if DEBUG
+            self.config.log?(.error, "setting up change subscription failed for \(tableName): \(error.localizedDescription)")
+            #endif
         }
     }
     
