@@ -6,6 +6,9 @@ public enum CryoError: Error {
     /// A value cannot be persisted with the given adaptor.
     case cannotPersistValue(valueType: Any.Type, adaptorType: Any.Type)
     
+    /// A feature is not available.
+    case featureNotAvailable(message: String)
+    
     // MARK: Databases
     
     /// Failed to connect to a database.

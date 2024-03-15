@@ -24,14 +24,22 @@ public struct DocumentAdaptor {
     /// The file manager instance to use.
     public let fileManager: FileManager
     
+    /// The file coordinator.
+    public let coordinator: NSFileCoordinator
+    
+    /// Whether or not this adaptor uses iCloud ubiquitous storage.
+    public let usesUbiquitousStorage: Bool
+    
     /// Create a document adaptor.
     ///
     /// - Parameters:
     ///   - url: The URL to the directory where data should be stored.
     ///   - fileManager: The file manager instance to use for file operations.
-    public init(url: URL, fileManager: FileManager = .default) {
+    public init(url: URL, usesUbiquitousStorage: Bool, fileManager: FileManager = .default) {
         self.url = url
         self.fileManager = fileManager
+        self.usesUbiquitousStorage = usesUbiquitousStorage
+        self.coordinator = NSFileCoordinator()
     }
     
     /// The shared local document adaptor.
@@ -50,7 +58,7 @@ public struct DocumentAdaptor {
         }
         
         try? fileManager.createDirectory(at: url, withIntermediateDirectories: false)
-        return DocumentAdaptor(url: url, fileManager: fileManager)
+        return DocumentAdaptor(url: url, usesUbiquitousStorage: false, fileManager: fileManager)
     }
     
     /// Create an iCloud based document adaptor.
@@ -71,7 +79,7 @@ public struct DocumentAdaptor {
         }
         
         try? fileManager.createDirectory(at: containerUrl, withIntermediateDirectories: false)
-        return DocumentAdaptor(url: containerUrl, fileManager: fileManager)
+        return DocumentAdaptor(url: containerUrl, usesUbiquitousStorage: false, fileManager: fileManager)
     }
 }
 
@@ -85,14 +93,57 @@ extension DocumentAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
         }
     }
     
-    public func persist<Key: CryoKey>(_ value: Key.Value?, for key: Key) throws {
-        let documentUrl = self.documentUrl(for: key)
-        if let value {
-            let data = try JSONEncoder().encode(value)
-            try data.write(to: documentUrl)
+    public func loadUbiquitousDocuments(at url: URL,
+                                        recursive: Bool = false,
+                                        filenameMatching filenamePattern: String? = nil,
+                                        onUpdate updateReceiver: Optional<([UbiquitousDocumentMetadata]) -> Bool> = nil
+    ) async throws -> [UbiquitousDocumentMetadata] {
+        guard self.usesUbiquitousStorage else {
+            throw CryoError.featureNotAvailable(message: "loadUbiquitousDocuments is only available for an iCloud documents adaptor")
         }
-        else {
-            try self.fileManager.removeItem(at: documentUrl)
+        
+        let query = ItemQuery()
+        let predicate = query.createQueryPredicate(directory: self.url, recursive: recursive, filenamePattern: filenamePattern)
+        
+        return await query.searchMetadataItems(predicate: predicate, onUpdate: updateReceiver)
+    }
+    
+    public func persist<Key: CryoKey>(_ value: Key.Value?, for key: Key) throws {
+        var data: Data? = nil
+        if let value {
+            data = try JSONEncoder().encode(value)
+        }
+        
+        try self.persist(data, url: self.documentUrl(for: key))
+    }
+    
+    public func persist(_ data: Data?, url: URL) throws {
+        var coordinationError: NSError?
+        var writeError: Error?
+        
+        // Use the coordinationError variable to capture the error information of the coordinate method.
+        // If an NSError pointer is not provided, errors occurring during the coordination process will not be caught and handled.
+        coordinator.coordinate(writingItemAt: url, options: [.forDeleting], error: &coordinationError) { url in
+            do {
+                if let data {
+                    try data.write(to: url, options: .atomic)
+                }
+                else {
+                    try self.fileManager.removeItem(at: url)
+                }
+            } catch {
+                writeError = error
+            }
+        }
+        
+        // Check outside the closure to see if an error occurred
+        if let error = writeError {
+            throw error
+        }
+        
+        // Check if an error occurred during reconciliation
+        if let coordinationError = coordinationError {
+            throw coordinationError
         }
     }
     
@@ -101,26 +152,45 @@ extension DocumentAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
     }
     
     public func loadSynchronously<Key: CryoKey>(with key: Key) throws -> Key.Value? {
-        do {
-            let documentUrl = self.documentUrl(for: key)
-            let data = try Data(contentsOf: documentUrl)
-            let value = try JSONDecoder().decode(Key.Value.self, from: data)
-            
-            return value
-        }
-        catch {
-            if (error as NSError).code == NSFileReadNoSuchFileError {
-                return nil
+        let documentUrl = self.documentUrl(for: key)
+        
+        var coordinationError: NSError?
+        var readError: Error? = nil
+        var data: Data? = nil
+        
+        coordinator.coordinate(readingItemAt: url, options: [], error: &coordinationError) { url in
+            do {
+                data = try Data(contentsOf: documentUrl)
+            } catch {
+                if (error as NSError).code == NSFileReadNoSuchFileError {
+                    return
+                }
+                
+                readError = error
             }
-            
+        }
+        
+        // Check outside the closure to see if an error occurred
+        if let error = readError {
             throw error
         }
+        
+        // Check if an error occurred during reconciliation
+        if let coordinationError = coordinationError {
+            throw coordinationError
+        }
+        
+        guard let data else {
+            return nil
+        }
+        
+        return try JSONDecoder().decode(Key.Value.self, from: data)
     }
     
     public func removeAll() throws {
         let urls = try FileManager.default.contentsOfDirectory(at: self.url, includingPropertiesForKeys: nil)
         for url in urls {
-            try self.fileManager.removeItem(at: url)
+            try self.persist(nil, url: url)
         }
     }
     
@@ -128,7 +198,155 @@ extension DocumentAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
         let urls = try FileManager.default.contentsOfDirectory(at: self.url, includingPropertiesForKeys: nil)
         for url in urls {
             guard condition(url) else { continue }
-            try self.fileManager.removeItem(at: url)
+            try self.persist(nil, url: url)
         }
+    }
+}
+
+fileprivate class ItemQuery {
+    /// The metadata query object.
+    let query: NSMetadataQuery
+    
+    /// The queue on which to execute operations.
+    let queue: OperationQueue
+    
+    /// Create a new item query.
+    init (queue: OperationQueue = .main) {
+        self.query = NSMetadataQuery()
+        self.queue = queue
+    }
+    
+    /// Create a new predicate for a metadat query.
+    /// 
+    /// - Parameters:
+    ///  - directory: The directory to search in.
+    ///  - recursive: Whether to search recursively.
+    ///  - filenamePattern: The filename pattern to match.
+    /// - Returns: A new predicate.
+    func createQueryPredicate(directory: URL, recursive: Bool, filenamePattern: String? = nil) -> NSPredicate {
+        var predicateString = "\(NSMetadataItemPathKey) \(recursive ? "BEGINSWITH" : "==") '\(directory.path)'"
+        if let filenamePattern {
+            predicateString += " && \(NSMetadataItemFSNameKey) LIKE '\(filenamePattern)'"
+        }
+
+        return NSPredicate(format: predicateString)
+    }
+    
+    /// Search for metadata items.
+    /// 
+    /// - Parameters:
+    ///  - predicate: The predicate to use for the search.
+    ///  - sortDescriptors: The sort descriptors to use for the search.
+    ///  - scopes: The search scopes to use for the search.
+    /// - Returns: An async stream of metadata items.
+    func searchMetadataItems(predicate: NSPredicate? = nil,
+                             sortDescriptors: [NSSortDescriptor] = [],
+                             scopes: [String] = [NSMetadataQueryUbiquitousDocumentsScope],
+                             onUpdate updateReceiver: Optional<([UbiquitousDocumentMetadata]) -> Bool>) async -> [UbiquitousDocumentMetadata] {
+        // Configure query
+        query.searchScopes = scopes
+        query.sortDescriptors = sortDescriptors
+        query.predicate = predicate ?? NSPredicate(value: true)
+        
+        // Set up handler for updates
+        if let updateReceiver {
+            NotificationCenter.default.addObserver(
+                forName: .NSMetadataQueryDidUpdate,
+                object: query,
+                queue: queue
+            ) { _ in
+                let result = self.query.results.compactMap { item -> UbiquitousDocumentMetadata? in
+                    guard let metadataItem = item as? NSMetadataItem else {
+                        return nil
+                    }
+                    
+                    return UbiquitousDocumentMetadata(metadataItem: metadataItem)
+                }
+                
+                let continueReceivingUpdates = updateReceiver(result)
+                if !continueReceivingUpdates {
+                    NotificationCenter.default.removeObserver(self, name: .NSMetadataQueryDidUpdate, object: self.query)
+                    self.query.stop()
+                }
+            }
+        }
+        
+        // Create and return the stream
+        return await withCheckedContinuation { continuation in
+            // Set up handler for first results
+            NotificationCenter.default.addObserver(
+                forName: .NSMetadataQueryDidFinishGathering,
+                object: query,
+                queue: queue
+            ) { _ in
+                let result = self.query.results.compactMap { item -> UbiquitousDocumentMetadata? in
+                    guard let metadataItem = item as? NSMetadataItem else {
+                        return nil
+                    }
+
+                    return UbiquitousDocumentMetadata(metadataItem: metadataItem)
+                }
+
+                NotificationCenter.default.removeObserver(self, name: .NSMetadataQueryDidFinishGathering, object: self.query)
+                continuation.resume(returning: result)
+            }
+            
+            // Start the query
+            query.start()
+        }
+    }
+}
+
+public struct UbiquitousDocumentMetadata: Sendable {
+    /// The name of the file.
+    public let fileName: String?
+    
+    /// The size of the file in bytes.
+    public let fileSize: Int?
+    
+    /// The content type of the file.
+    public let contentType: String?
+
+    /// Whether the file is a placeholder.
+    public let isPlaceholder: Bool
+
+    /// Whether the file is currently being downloaded.
+    public let isDownloading: Bool
+
+    /// The amount of the file that has been downloaded.
+    public let downloadAmount: Double?
+
+    /// Whether the file is a directory.
+    public let isDirectory: Bool
+
+    /// Whether the file is being uploaded.
+    public let isUploading: Bool
+
+    /// Whether the file has been uploaded.
+    public  let isUploaded: Bool
+    
+    fileprivate init(metadataItem: NSMetadataItem) {
+        self.fileName = metadataItem.value(forAttribute: NSMetadataItemFSNameKey) as? String
+        self.fileSize = metadataItem.value(forAttribute: NSMetadataItemFSSizeKey) as? Int
+        self.contentType = metadataItem.value(forAttribute: NSMetadataItemContentTypeKey) as? String
+        self.isPlaceholder = metadataItem.value(forAttribute: NSMetadataUbiquitousItemDownloadingStatusKey) as? Bool ?? false
+        self.downloadAmount = metadataItem.value(forAttribute: NSMetadataUbiquitousItemPercentDownloadedKey) as? Double
+        
+        let downloadStatus = metadataItem.value(forAttribute: NSMetadataUbiquitousItemIsDownloadingKey) as? String
+        self.isDownloading = downloadStatus == NSMetadataUbiquitousItemDownloadingStatusCurrent
+        
+        // Check if it is a directory
+        if let contentType = metadataItem.value(forAttribute: NSMetadataItemContentTypeKey) as? String {
+            self.isDirectory = (contentType == "public.folder")
+        } else {
+            self.isDirectory = false
+        }
+        
+        // Check whether the file has been uploaded successfully or saved in the cloud
+        let uploaded = metadataItem.value(forAttribute: NSMetadataUbiquitousItemIsUploadedKey) as? Bool ?? false
+        let uploading = metadataItem.value(forAttribute: NSMetadataUbiquitousItemIsUploadingKey) as? Bool ?? true
+        
+        self.isUploading = uploading
+        self.isUploaded = uploaded && !uploading
     }
 }
