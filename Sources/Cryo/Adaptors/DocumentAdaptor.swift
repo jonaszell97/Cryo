@@ -49,10 +49,10 @@ public struct DocumentAdaptor {
     ///
     /// - Parameter fileManager: The file manager instance to use for file operations.
     /// - Returns: A document adaptor using the local documents URL.
-    public static func local(subdirectory: String? = nil, fileManager: FileManager = .default) -> DocumentAdaptor {
+    public static func local(subdirectory: String? = ".cryo", fileManager: FileManager = .default) -> DocumentAdaptor {
         let documentDirectory = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true)[0]
         
-        var url = URL(fileURLWithPath: documentDirectory).appendingPathComponent(".cryo")
+        var url = URL(fileURLWithPath: documentDirectory)
         if let subdirectory {
             url = url.appendingPathComponent(subdirectory)
         }
@@ -65,17 +65,17 @@ public struct DocumentAdaptor {
     ///
     /// - Parameter fileManager: The file manager instance to use for file operations.
     /// - Returns: A document adaptor using the iCloud documents URL, or `nil` if iCloud is not available.
-    public static func cloud(fileManager: FileManager = .default) -> DocumentAdaptor? {
+    public static func cloud(subdirectory: String? = ".cryo", fileManager: FileManager = .default) -> DocumentAdaptor? {
         guard fileManager.ubiquityIdentityToken != nil else {
             return nil
         }
         
-        let containerUrl: URL? = fileManager.url(forUbiquityContainerIdentifier: nil)?
-            .appendingPathComponent("Documents")
-            .appendingPathComponent(".cryo")
-        
-        guard let containerUrl else {
+        guard var containerUrl = fileManager.url(forUbiquityContainerIdentifier: nil)?.appendingPathComponent("Documents") else {
             return nil
+        }
+        
+        if let subdirectory {
+            containerUrl = containerUrl.appendingPathComponent(subdirectory)
         }
         
         try? fileManager.createDirectory(at: containerUrl, withIntermediateDirectories: false)
