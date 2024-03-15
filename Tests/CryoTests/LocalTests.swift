@@ -99,7 +99,7 @@ final class CryoLocalTests: XCTestCase {
     }
     
     func testLocalDocumentAdaptor() async {
-        let adaptor = DocumentAdaptor.local()
+        let adaptor = DocumentAdaptor.local(config: .init())
         await self.adaptorTest(for: adaptor)
     }
 }

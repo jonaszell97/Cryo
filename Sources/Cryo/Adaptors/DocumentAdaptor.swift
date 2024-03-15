@@ -18,6 +18,9 @@ import Foundation
 /// try await adaptor.persist(Date.now, CryoNamedKey(id: "dateValue", for: Date.self))
 /// ```
 public struct DocumentAdaptor {
+    /// The cryo config.
+    public let config: CryoConfig
+    
     /// The URL documents should be saved to.
     public let url: URL
     
@@ -35,7 +38,8 @@ public struct DocumentAdaptor {
     /// - Parameters:
     ///   - url: The URL to the directory where data should be stored.
     ///   - fileManager: The file manager instance to use for file operations.
-    public init(url: URL, usesUbiquitousStorage: Bool, fileManager: FileManager = .default) {
+    public init(config: CryoConfig, url: URL, usesUbiquitousStorage: Bool, fileManager: FileManager = .default) {
+        self.config = config
         self.url = url
         self.fileManager = fileManager
         self.usesUbiquitousStorage = usesUbiquitousStorage
@@ -43,13 +47,13 @@ public struct DocumentAdaptor {
     }
     
     /// The shared local document adaptor.
-    public static let sharedLocal: DocumentAdaptor = .local()
+    public static let sharedLocal: DocumentAdaptor = .local(config: CryoConfig())
     
     /// Create a local document adaptor.
     ///
     /// - Parameter fileManager: The file manager instance to use for file operations.
     /// - Returns: A document adaptor using the local documents URL.
-    public static func local(subdirectory: String? = ".cryo", fileManager: FileManager = .default) -> DocumentAdaptor {
+    public static func local(config: CryoConfig, subdirectory: String? = ".cryo", fileManager: FileManager = .default) -> DocumentAdaptor {
         let documentDirectory = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true)[0]
         
         var url = URL(fileURLWithPath: documentDirectory)
@@ -58,14 +62,14 @@ public struct DocumentAdaptor {
         }
         
         try? fileManager.createDirectory(at: url, withIntermediateDirectories: false)
-        return DocumentAdaptor(url: url, usesUbiquitousStorage: false, fileManager: fileManager)
+        return DocumentAdaptor(config: config, url: url, usesUbiquitousStorage: false, fileManager: fileManager)
     }
     
     /// Create an iCloud based document adaptor.
     ///
     /// - Parameter fileManager: The file manager instance to use for file operations.
     /// - Returns: A document adaptor using the iCloud documents URL, or `nil` if iCloud is not available.
-    public static func cloud(subdirectory: String? = ".cryo", fileManager: FileManager = .default) -> DocumentAdaptor? {
+    public static func cloud(config: CryoConfig, subdirectory: String? = ".cryo", fileManager: FileManager = .default) -> DocumentAdaptor? {
         guard fileManager.ubiquityIdentityToken != nil else {
             return nil
         }
@@ -79,7 +83,7 @@ public struct DocumentAdaptor {
         }
         
         try? fileManager.createDirectory(at: containerUrl, withIntermediateDirectories: false)
-        return DocumentAdaptor(url: containerUrl, usesUbiquitousStorage: true, fileManager: fileManager)
+        return DocumentAdaptor(config: config, url: containerUrl, usesUbiquitousStorage: true, fileManager: fileManager)
     }
 }
 
@@ -193,6 +197,14 @@ extension DocumentAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
 }
 
 extension DocumentAdaptor {
+    public enum UbiquitousItemUpdate {
+        /// A new value that has been fetched.
+        case item(_ value: UbiquitousDocumentMetadata)
+        
+        /// An update on the overall download progress.
+        case progressUpdate(downloaded: Int, total: Int)
+    }
+    
     public func loadUbiquitousDocuments(at url: URL,
                                         filenameMatching filenamePattern: String? = nil,
                                         onUpdate updateReceiver: Optional<([UbiquitousDocumentMetadata]) -> Bool> = nil
@@ -207,7 +219,7 @@ extension DocumentAdaptor {
         return try await query.searchMetadataItems(baseUrl: url, predicate: predicate, onUpdate: updateReceiver)
     }
     
-    public func downloadUbiquitousDocuments(at url: URL, filenameMatching filenamePattern: String? = nil) throws -> AsyncThrowingStream<UbiquitousDocumentMetadata, Error> {
+    public func downloadUbiquitousDocuments(at url: URL, filenameMatching filenamePattern: String? = nil) throws -> AsyncThrowingStream<UbiquitousItemUpdate, Error> {
         guard self.usesUbiquitousStorage else {
             throw CryoError.featureNotAvailable(message: "loadUbiquitousDocuments is only available for an iCloud documents adaptor")
         }
@@ -215,7 +227,7 @@ extension DocumentAdaptor {
         let query = ItemQuery()
         let predicate = query.createQueryPredicate(directory: url, filenamePattern: filenamePattern)
         
-        return query.downloadUbiqitousFiles(baseUrl: url, fileManager: fileManager, predicate: predicate)
+        return query.downloadUbiqitousFiles(baseUrl: url, fileManager: fileManager, config: config, predicate: predicate)
     }
 }
 
@@ -256,18 +268,24 @@ fileprivate class ItemQuery {
     ///  - sortDescriptors: The sort descriptors to use for the search.
     ///  - scopes: The search scopes to use for the search.
     /// - Returns: An async stream of metadata items.
-    func downloadUbiqitousFiles(baseUrl: URL, fileManager: FileManager,
+    func downloadUbiqitousFiles(baseUrl: URL, fileManager: FileManager, config: CryoConfig,
                                 predicate: NSPredicate? = nil,
                                 sortDescriptors: [NSSortDescriptor] = [],
-                                scopes: [String] = [NSMetadataQueryUbiquitousDocumentsScope]) -> AsyncThrowingStream<UbiquitousDocumentMetadata, Error> {
+                                scopes: [String] = [NSMetadataQueryUbiquitousDocumentsScope]) -> AsyncThrowingStream<DocumentAdaptor.UbiquitousItemUpdate, Error> {
             
         // Configure query
         query.searchScopes = [NSMetadataQueryUbiquitousDocumentsScope]
         query.sortDescriptors = []
         query.predicate = predicate ?? NSPredicate(value: true)
         
+        let queryId = "\(ObjectIdentifier(self))".prefix(5)
+        let log: (String) -> Void = { message in
+            config.log?(.debug, "[ItemQuery \(queryId)] \(message)")
+        }
+        
         return AsyncThrowingStream { continuation in
             var downloadingItems = Set<URL>()
+            log("setting up metadata query")
             
             // Set up handler for initial results
             NotificationCenter.default.addObserver(
@@ -275,6 +293,8 @@ fileprivate class ItemQuery {
                 object: query,
                 queue: queue
             ) { _ in
+                log("received \(self.query.results.count) initial items")
+                
                 for result in self.query.results {
                     guard let metadataItem = result as? NSMetadataItem else {
                         continue
@@ -285,7 +305,7 @@ fileprivate class ItemQuery {
                     }
                     
                     if item.isDownloaded {
-                        continuation.yield(item)
+                        continuation.yield(.item(item))
                         continue
                     }
                     
@@ -302,12 +322,18 @@ fileprivate class ItemQuery {
                     downloadingItems.insert(item.fileUrl)
                 }
                 
+                log("\(downloadingItems.count) files need to be downloaded")
+                
                 // Remove observer for initial results
                 NotificationCenter.default.removeObserver(self, name: .NSMetadataQueryDidFinishGathering, object: self.query)
                 
                 // If no values are downloading, finish
                 if downloadingItems.isEmpty {
                     continuation.finish()
+                }
+                else {
+                    // Send an update about the download progress
+                    continuation.yield(.progressUpdate(downloaded: self.query.results.count - downloadingItems.count, total: self.query.results.count))
                 }
             }
             
@@ -316,6 +342,8 @@ fileprivate class ItemQuery {
                 object: query,
                 queue: queue
             ) { _ in
+                log("received update with \(self.query.results) items")
+                
                 var newDownloadingItems = Set<URL>()
                 for result in self.query.results {
                     guard let metadataItem = result as? NSMetadataItem else {
@@ -331,7 +359,7 @@ fileprivate class ItemQuery {
                     }
                     
                     if item.isDownloaded {
-                        continuation.yield(item)
+                        continuation.yield(.item(item))
                         continue
                     }
                     
@@ -348,14 +376,21 @@ fileprivate class ItemQuery {
                     newDownloadingItems.insert(item.fileUrl)
                 }
                 
+                log("\(newDownloadingItems.count) files still need to be downloaded")
                 downloadingItems = newDownloadingItems
                 
                 if newDownloadingItems.isEmpty {
                     continuation.finish()
                 }
+                else {
+                    // Send an update about the download progress
+                    continuation.yield(.progressUpdate(downloaded: self.query.results.count - downloadingItems.count, total: self.query.results.count))
+                }
             }
             
             continuation.onTermination = { termination in
+                log("query terminated")
+                
                 NotificationCenter.default.removeObserver(self, name: .NSMetadataQueryDidUpdate, object: self.query)
                 self.query.stop()
             }
