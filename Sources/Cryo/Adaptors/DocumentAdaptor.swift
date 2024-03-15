@@ -79,7 +79,7 @@ public struct DocumentAdaptor {
         }
         
         try? fileManager.createDirectory(at: containerUrl, withIntermediateDirectories: false)
-        return DocumentAdaptor(url: containerUrl, usesUbiquitousStorage: false, fileManager: fileManager)
+        return DocumentAdaptor(url: containerUrl, usesUbiquitousStorage: true, fileManager: fileManager)
     }
 }
 
@@ -94,7 +94,6 @@ extension DocumentAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
     }
     
     public func loadUbiquitousDocuments(at url: URL,
-                                        recursive: Bool = false,
                                         filenameMatching filenamePattern: String? = nil,
                                         onUpdate updateReceiver: Optional<([UbiquitousDocumentMetadata]) -> Bool> = nil
     ) async throws -> [UbiquitousDocumentMetadata] {
@@ -103,9 +102,9 @@ extension DocumentAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
         }
         
         let query = ItemQuery()
-        let predicate = query.createQueryPredicate(directory: self.url, recursive: recursive, filenamePattern: filenamePattern)
+        let predicate = query.createQueryPredicate(directory: self.url, filenamePattern: filenamePattern)
         
-        return await query.searchMetadataItems(predicate: predicate, onUpdate: updateReceiver)
+        return try await query.searchMetadataItems(predicate: predicate, onUpdate: updateReceiver)
     }
     
     public func persist<Key: CryoKey>(_ value: Key.Value?, for key: Key) throws {
@@ -145,6 +144,10 @@ extension DocumentAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
         if let coordinationError = coordinationError {
             throw coordinationError
         }
+    }
+    
+    public func remove<Key: CryoKey>(key: Key) throws {
+        try self.persist(nil, url: self.documentUrl(for: key))
     }
     
     public func load<Key: CryoKey>(with key: Key) throws -> Key.Value? {
@@ -223,13 +226,14 @@ fileprivate class ItemQuery {
     ///  - recursive: Whether to search recursively.
     ///  - filenamePattern: The filename pattern to match.
     /// - Returns: A new predicate.
-    func createQueryPredicate(directory: URL, recursive: Bool, filenamePattern: String? = nil) -> NSPredicate {
-        var predicateString = "\(NSMetadataItemPathKey) \(recursive ? "BEGINSWITH" : "==") '\(directory.path)'"
+    func createQueryPredicate(directory: URL, filenamePattern: String? = nil) -> NSPredicate {
         if let filenamePattern {
-            predicateString += " && \(NSMetadataItemFSNameKey) LIKE '\(filenamePattern)'"
+            return NSPredicate(format: "%K BEGINSWITH[cdw] %@ AND %K LIKE[cwd] %@",
+                               NSMetadataItemPathKey, directory.path, NSMetadataItemFSNameKey, filenamePattern)
         }
-
-        return NSPredicate(format: predicateString)
+        else {
+            return NSPredicate(format: "%K BEGINSWITH[cdw] %@", NSMetadataItemPathKey, directory.path)
+        }
     }
     
     /// Search for metadata items.
@@ -242,7 +246,7 @@ fileprivate class ItemQuery {
     func searchMetadataItems(predicate: NSPredicate? = nil,
                              sortDescriptors: [NSSortDescriptor] = [],
                              scopes: [String] = [NSMetadataQueryUbiquitousDocumentsScope],
-                             onUpdate updateReceiver: Optional<([UbiquitousDocumentMetadata]) -> Bool>) async -> [UbiquitousDocumentMetadata] {
+                             onUpdate updateReceiver: Optional<([UbiquitousDocumentMetadata]) -> Bool>) async throws -> [UbiquitousDocumentMetadata] {
         // Configure query
         query.searchScopes = scopes
         query.sortDescriptors = sortDescriptors
@@ -272,7 +276,7 @@ fileprivate class ItemQuery {
         }
         
         // Create and return the stream
-        return await withCheckedContinuation { continuation in
+        return try await withCheckedThrowingContinuation { continuation in
             // Set up handler for first results
             NotificationCenter.default.addObserver(
                 forName: .NSMetadataQueryDidFinishGathering,
@@ -292,7 +296,14 @@ fileprivate class ItemQuery {
             }
             
             // Start the query
-            query.start()
+            query.operationQueue = queue
+            queue.addOperation {
+                let started = self.query.start()
+                if !started {
+                    continuation.resume(throwing:
+                        CryoError.queryExecutionFailed(query: self.query.description, status: -1, message: "starting metadata query failed"))
+                }
+            }
         }
     }
 }
