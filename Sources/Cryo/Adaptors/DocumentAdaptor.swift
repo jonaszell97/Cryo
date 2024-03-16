@@ -97,51 +97,104 @@ extension DocumentAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
         }
     }
     
-    public func persist<Key: CryoKey>(_ value: Key.Value?, for key: Key) throws {
+    public func persist<Key: CryoKey>(_ value: Key.Value?, for key: Key) async throws {
         var data: Data? = nil
         if let value {
             data = try JSONEncoder().encode(value)
         }
         
-        try self.persist(data, url: self.documentUrl(for: key))
+        try await self.persist(data, url: self.documentUrl(for: key))
     }
     
-    public func persist(_ data: Data?, url: URL) throws {
-        var coordinationError: NSError?
-        var writeError: Error?
-        
-        // Use the coordinationError variable to capture the error information of the coordinate method.
-        // If an NSError pointer is not provided, errors occurring during the coordination process will not be caught and handled.
-        coordinator.coordinate(writingItemAt: url, options: [.forDeleting], error: &coordinationError) { url in
-            do {
-                if let data {
-                    try data.write(to: url, options: .atomic)
+    public func persist(_ data: Data?, url: URL) async throws {
+        return try await withCheckedThrowingContinuation { continuation in
+            Task.detached(priority: .userInitiated) {
+                var coordinationError: NSError? = nil
+                var writeError: Error? = nil
+                
+                // Use the coordinationError variable to capture the error information of the coordinate method.
+                // If an NSError pointer is not provided, errors occurring during the coordination process will not be caught and handled.
+                coordinator.coordinate(writingItemAt: url, options: [.forDeleting], error: &coordinationError) { url in
+                    do {
+                        if let data {
+                            try data.write(to: url, options: .atomic)
+                        }
+                        else {
+                            try self.fileManager.removeItem(at: url)
+                        }
+                    }
+                    catch {
+                        writeError = error
+                    }
                 }
-                else {
-                    try self.fileManager.removeItem(at: url)
+                
+                // Check outside the closure to see if an error occurred
+                if let error = writeError {
+                    continuation.resume(throwing: error)
+                    return
                 }
-            } catch {
-                writeError = error
+                
+                // Check if an error occurred during reconciliation
+                if let coordinationError = coordinationError {
+                    continuation.resume(throwing: coordinationError)
+                    return
+                }
+                
+                continuation.resume(returning: ())
             }
         }
-        
-        // Check outside the closure to see if an error occurred
-        if let error = writeError {
-            throw error
-        }
-        
-        // Check if an error occurred during reconciliation
-        if let coordinationError = coordinationError {
-            throw coordinationError
-        }
     }
     
-    public func remove<Key: CryoKey>(key: Key) throws {
-        try self.persist(nil, url: self.documentUrl(for: key))
+    public func remove<Key: CryoKey>(key: Key) async throws {
+        try await self.persist(nil, url: self.documentUrl(for: key))
     }
     
-    public func load<Key: CryoKey>(with key: Key) throws -> Key.Value? {
-        try self.loadSynchronously(with: key)
+    public func load<Key: CryoKey>(with key: Key) async throws -> Key.Value? {
+        try await withCheckedThrowingContinuation { continuation in
+            Task.detached(priority: .userInitiated) {
+                let documentUrl = self.documentUrl(for: key)
+                
+                var coordinationError: NSError?
+                var readError: Error? = nil
+                var data: Data? = nil
+                
+                coordinator.coordinate(readingItemAt: url, options: [], error: &coordinationError) { url in
+                    do {
+                        data = try Data(contentsOf: documentUrl)
+                    } catch {
+                        if (error as NSError).code == NSFileReadNoSuchFileError {
+                            return
+                        }
+                        
+                        readError = error
+                    }
+                }
+                
+                // Check outside the closure to see if an error occurred
+                if let error = readError {
+                    continuation.resume(throwing: error)
+                    return
+                }
+                
+                // Check if an error occurred during reconciliation
+                if let coordinationError = coordinationError {
+                    continuation.resume(throwing: coordinationError)
+                    return
+                }
+                
+                guard let data else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                
+                do {
+                    let value = try JSONDecoder().decode(Key.Value.self, from: data)
+                    continuation.resume(returning: value)
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
     }
     
     public func loadSynchronously<Key: CryoKey>(with key: Key) throws -> Key.Value? {
@@ -180,18 +233,18 @@ extension DocumentAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
         return try JSONDecoder().decode(Key.Value.self, from: data)
     }
     
-    public func removeAll() throws {
+    public func removeAll() async throws {
         let urls = try FileManager.default.contentsOfDirectory(at: self.url, includingPropertiesForKeys: nil)
         for url in urls {
-            try self.persist(nil, url: url)
+            try await self.persist(nil, url: url)
         }
     }
     
-    public func removeAll(matching condition: (URL) -> Bool) throws {
+    public func removeAll(matching condition: (URL) -> Bool) async throws {
         let urls = try FileManager.default.contentsOfDirectory(at: self.url, includingPropertiesForKeys: nil)
         for url in urls {
             guard condition(url) else { continue }
-            try self.persist(nil, url: url)
+            try await self.persist(nil, url: url)
         }
     }
 }
