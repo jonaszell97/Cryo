@@ -325,7 +325,6 @@ fileprivate class ItemQuery {
                                 predicate: NSPredicate? = nil,
                                 sortDescriptors: [NSSortDescriptor] = [],
                                 scopes: [String] = [NSMetadataQueryUbiquitousDocumentsScope]) -> AsyncThrowingStream<DocumentAdaptor.UbiquitousItemUpdate, Error> {
-            
         // Configure query
         query.searchScopes = [NSMetadataQueryUbiquitousDocumentsScope]
         query.sortDescriptors = []
@@ -442,8 +441,6 @@ fileprivate class ItemQuery {
             }
             
             continuation.onTermination = { termination in
-                log("query terminated")
-                
                 NotificationCenter.default.removeObserver(self, name: .NSMetadataQueryDidUpdate, object: self.query)
                 self.query.stop()
             }
@@ -451,9 +448,11 @@ fileprivate class ItemQuery {
             // Start the query
             query.operationQueue = queue
             queue.addOperation {
-                let started = self.query.start()
-                if !started {
-                    continuation.finish(throwing: CryoError.queryExecutionFailed(query: self.query.description, status: -1, message: "starting metadata query failed"))
+                Task { @MainActor in
+                    let started = self.query.start()
+                    if !started {
+                        continuation.finish(throwing: CryoError.queryExecutionFailed(query: self.query.description, status: -1, message: "starting metadata query failed"))
+                    }
                 }
             }
         }
