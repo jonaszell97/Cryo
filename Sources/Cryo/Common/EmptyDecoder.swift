@@ -50,6 +50,10 @@ fileprivate class EmptyKeyedDecodingContainer<K: CodingKey>: KeyedDecodingContai
     func decode(_ type: UInt64.Type, forKey key: K) throws -> UInt64 { 0 }
     
     func decode<T>(_ type: T.Type, forKey key: K) throws -> T where T: Decodable {
+        if let colType = type as? _AnyCryoColumnValue.Type {
+            return colType.defaultValue as! T
+        }
+        
         if T.self == URL.self { return URL(string: "file:///") as! T }
         if T.self == Data.self { return Data() as! T }
         if let intType = T.self as? CryoColumnIntValue.Type { return intType.init(integerValue: 0) as! T }
@@ -101,6 +105,10 @@ fileprivate struct EmptySingleValueDecodingContainer: SingleValueDecodingContain
     func decode(_ type: UInt64.Type) throws -> UInt64 { 0 }
 
     func decode<T>(_ type: T.Type) throws -> T where T: Decodable {
+        if let colType = type as? _AnyCryoColumnValue.Type {
+            return colType.defaultValue as! T
+        }
+        
         if T.self == URL.self { return URL(string: "file:///") as! T }
         if T.self == Data.self { return Data() as! T }
         if let intType = T.self as? CryoColumnIntValue.Type { return intType.init(integerValue: 0) as! T }
@@ -143,6 +151,10 @@ fileprivate struct EmptyUnkeyedDecodingContainer: UnkeyedDecodingContainer {
     mutating func decode(_ type: UInt64.Type) throws -> UInt64 { 0 }
 
     mutating func decode<T>(_ type: T.Type) throws -> T where T: Decodable {
+        if let colType = type as? _AnyCryoColumnValue.Type {
+            return colType.defaultValue as! T
+        }
+        
         if T.self == URL.self { return URL(string: "file:///") as! T }
         if T.self == Data.self { return Data() as! T }
         if let intType = T.self as? CryoColumnIntValue.Type { return intType.init(integerValue: 0) as! T }

@@ -245,9 +245,18 @@ extension CloudKitAdaptor {
     }
     
     /// The NSObject representation oft his value.
-    static func nsObject(from value: _AnyCryoColumnValue, column: CryoSchemaColumn) throws -> __CKRecordObjCValue {
+    static func nsObject(from value: _AnyCryoColumnValue, column: CryoSchemaColumn) throws -> __CKRecordObjCValue? {
         switch column {
         case .value(_, let type, _):
+            var value = value
+            if let optional = value as? _CryoOptionalValue {
+                guard let wrapped = optional.wrappedValue else {
+                    return nil
+                }
+                
+                value = wrapped
+            }
+            
             switch value {
             case let url as URL:
                 if case .asset = type {
