@@ -133,9 +133,9 @@ extension CloudKitAdaptor: ResilientStoreBackend {
                 throw CryoError.schemaNotInitialized(tableName: tableName)
             }
             
-            var modelData = [String: _AnyCryoColumnValue]()
+            var modelData = [String: CryoColumnValueWrapper]()
             for item in data {
-                modelData[item.columnName] = item.value.columnValue
+                modelData[item.columnName] = .init(value: item.value.columnValue)
             }
             
             let model = try schema.create(modelData)
@@ -218,36 +218,36 @@ extension CloudKitAdaptor {
     }
     
     /// Initialize from an NSObject representation.
-    static func decodeValue(from nsObject: __CKRecordObjCValue, as type: CryoColumnType) -> _AnyCryoColumnValue? {
+    static func decodeValue(from nsObject: __CKRecordObjCValue, as type: CryoColumnType) -> CryoColumnValueWrapper? {
         switch type {
         case .integer:
             guard let value = nsObject as? NSNumber else { return nil }
-            return Int(truncating: value)
+            return .init(value: Int(truncating: value))
         case .double:
             guard let value = nsObject as? NSNumber else { return nil }
-            return Double(truncating: value)
+            return .init(value: Double(truncating: value))
         case .text:
             guard let value = nsObject as? NSString else { return nil }
-            return value as String
+            return .init(value: value as String)
         case .date:
             guard let value = nsObject as? NSDate else { return nil }
-            return Date(timeIntervalSinceReferenceDate: value.timeIntervalSinceReferenceDate)
+            return .init(value: Date(timeIntervalSinceReferenceDate: value.timeIntervalSinceReferenceDate))
         case .bool:
             guard let value = nsObject as? NSNumber else { return nil }
-            return value != 0
+            return .init(value: value != 0)
         case .asset:
             guard let value = nsObject as? CKAsset else { return nil }
-            return value.fileURL
+            return .init(value: value.fileURL)
         case .data:
             guard let value = nsObject as? NSData else { return nil }
-            return value as Data
+            return .init(value: value as Data)
         }
     }
     
     /// The NSObject representation oft his value.
     static func nsObject(from value: _AnyCryoColumnValue, column: CryoSchemaColumn) throws -> __CKRecordObjCValue? {
         switch column {
-        case .value(_, let type, _):
+        case .value(_, let type, _, _):
             var value = value
             if let optional = value as? _CryoOptionalValue {
                 guard let wrapped = optional.wrappedValue else {

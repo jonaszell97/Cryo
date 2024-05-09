@@ -179,14 +179,26 @@ extension UntypedCloudKitSelectQuery {
         return data
     }
     
-    func decodeValue(from value: __CKRecordObjCValue, column: CryoSchemaColumn) async throws -> _AnyCryoColumnValue? {
+    func decodeValue(from value: __CKRecordObjCValue?, column: CryoSchemaColumn) async throws -> CryoColumnValueWrapper? {
         switch column {
-        case .value(_, let type, _):
+        case .value(_, let type, let metaType, _):
+            guard let value else {
+                if let optionalType = metaType as? _CryoOptionalValue.Type {
+                    return .init(value: optionalType.nilValue as! _AnyCryoColumnValue)
+                }
+                
+                return nil
+            }
+            
             return CloudKitAdaptor.decodeValue(from: value, as: type)
         case .oneToOneRelation(_, let modelType, _):
             let id = (value as! NSString) as String
-            return try await UntypedCloudKitSelectQuery(for: modelType, id: id, database: database, config: config)
-                .execute().first
+            guard let result = try await UntypedCloudKitSelectQuery(for: modelType, id: id, database: database, config: config)
+                .execute().first else {
+                return nil
+            }
+            
+            return CryoColumnValueWrapper(value: result)
         }
     }
 }
@@ -204,11 +216,9 @@ extension UntypedCloudKitSelectQuery {
         
         var results = [any CryoModel]()
         for record in records {
-            var data = [String: _AnyCryoColumnValue]()
+            var data = [String: CryoColumnValueWrapper]()
             for columnDetails in schema.columns {
-                guard
-                    let object = record[columnDetails.columnName],
-                    let value = try await self.decodeValue(from: object, column: columnDetails)
+                guard let value = try await self.decodeValue(from: record[columnDetails.columnName], column: columnDetails)
                 else {
                     continue
                 }

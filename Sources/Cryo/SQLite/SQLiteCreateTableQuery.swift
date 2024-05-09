@@ -60,7 +60,7 @@ internal class UntypedSQLiteCreateTableQuery {
         
         for columnDetails in schema.columns {
             switch columnDetails {
-            case .value(let columnName, _, _):
+            case .value(let columnName, _, _, _):
                 let specifiers: String
                 if columnName == "id" {
                     specifiers = " NOT NULL UNIQUE"

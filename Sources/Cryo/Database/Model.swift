@@ -230,7 +230,7 @@ internal final class CryoSchemaManager {
 
 internal enum CryoSchemaColumn {
     /// A value column.
-    case value(columnName: String, type: CryoColumnType, getValue: (any CryoModel) -> _AnyCryoColumnValue)
+    case value(columnName: String, type: CryoColumnType, metaType: _AnyCryoColumnValue.Type, getValue: (any CryoModel) -> _AnyCryoColumnValue)
     
     /// A one-to-one relationship.
     case oneToOneRelation(columnName: String, modelType: any CryoModel.Type, getValue: (any CryoModel) -> _AnyCryoColumnValue)
@@ -239,7 +239,7 @@ internal enum CryoSchemaColumn {
 extension CryoSchemaColumn {
     var columnName: String {
         switch self {
-        case .value(let columnName, _, _):
+        case .value(let columnName, _, _, _):
             return columnName
         case .oneToOneRelation(let columnName, _, _):
             return columnName
@@ -248,7 +248,7 @@ extension CryoSchemaColumn {
     
     var getValue: (any CryoModel) -> _AnyCryoColumnValue {
         switch self {
-        case .value(_, _, let getValue):
+        case .value(_, _, _, let getValue):
             return getValue
         case .oneToOneRelation(_, _, let getValue):
             return getValue
@@ -264,7 +264,7 @@ internal struct CryoSchema {
     var columns: [CryoSchemaColumn] = []
     
     /// Create a value of this model type from the given data dictionary.
-    let create: ([String: _AnyCryoColumnValue]) throws -> any CryoModel
+    let create: ([String: CryoColumnValueWrapper]) throws -> any CryoModel
 }
 
 internal extension CryoModel {
@@ -355,7 +355,8 @@ internal extension CryoModel {
                     continue
                 }
                 
-                column = .value(columnName: name, type: columnType, getValue: extractValue)
+                column = .value(columnName: name, type: columnType, metaType: wrappedValueMirror.subjectType as! _AnyCryoColumnValue.Type,
+                                getValue: extractValue)
             }
             
             schema.columns.append(column)

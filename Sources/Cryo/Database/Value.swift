@@ -86,6 +86,9 @@ internal protocol _CryoOptionalValue {
     
     /// The wrapped value, if present.
     var wrappedValue: _AnyCryoColumnValue? { get }
+    
+    /// The nil value.
+    static var nilValue: Self { get }
 }
 
 extension Optional: _AnyCryoColumnValue, _CryoOptionalValue where Wrapped: _AnyCryoColumnValue {
@@ -113,6 +116,9 @@ extension Optional: _AnyCryoColumnValue, _CryoOptionalValue where Wrapped: _AnyC
     
     /// A default value for this type.
     public static var defaultValue: Self { .some(Wrapped.defaultValue) }
+    
+    /// The nil value.
+    static var nilValue: Self { nil }
 }
 
 // MARK: CryoDatabaseValue conformances

@@ -158,9 +158,9 @@ extension SQLiteAdaptor: ResilientStoreBackend {
                 throw CryoError.schemaNotInitialized(tableName: tableName)
             }
             
-            var modelData = [String: _AnyCryoColumnValue]()
+            var modelData = [String: CryoColumnValueWrapper]()
             for item in data {
-                modelData[item.columnName] = item.value.columnValue
+                modelData[item.columnName] = .init(value: item.value.columnValue)
             }
             
             let model = try schema.create(modelData)
@@ -321,7 +321,7 @@ extension SQLiteAdaptor {
     /// The SQLite type name for a Swift type.
     static func sqliteTypeName(for column: CryoSchemaColumn) -> String {
         switch column {
-        case .value(_, let type, _):
+        case .value(_, let type, _, _):
             switch type {
             case .integer:
                 return "INTEGER"

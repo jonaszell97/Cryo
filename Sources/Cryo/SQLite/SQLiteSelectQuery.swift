@@ -172,7 +172,7 @@ extension UntypedSQLiteSelectQuery {
     func columnValue(_ queryStatement: OpaquePointer, connection: OpaquePointer,
                      column: CryoSchemaColumn, index: Int32) throws -> _AnyCryoColumnValue? {
         switch column {
-        case .value(let columnName, let type, _):
+        case .value(let columnName, let type, _, _):
             return try SQLiteAdaptor.columnValue(queryStatement,
                                                  connection: connection,
                                                  columnName: columnName,
@@ -247,9 +247,9 @@ extension UntypedSQLiteSelectQuery {
         
         var values = [any CryoModel]()
         for row in rows {
-            var data = [String: _AnyCryoColumnValue]()
+            var data = [String: CryoColumnValueWrapper]()
             for i in 0..<schema.columns.count {
-                data[schema.columns[i].columnName] = row[i]
+                data[schema.columns[i].columnName] = .init(value: row[i])
             }
             
             values.append(try schema.create(data))
