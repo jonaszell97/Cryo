@@ -88,7 +88,13 @@ extension UntypedCloudKitInsertQuery {
         config?.log?(.debug, "[CloudKitAdaptor] \(queryString)")
         #endif
         
-        try await database.save(record)
+        if self.replace {
+            _ = try await database.modifyRecords(saving: [record], deleting: [])
+        }
+        else {
+            try await database.save(record)
+        }
+        
         return true
     }
 }
