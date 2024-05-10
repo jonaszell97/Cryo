@@ -101,9 +101,13 @@ extension CloudKitAdaptor {
 
 extension CloudKitAdaptor: CryoDatabaseAdaptor {
     public func createTable<Model: CryoModel>(for model: Model.Type) async throws -> any CryoCreateTableQuery<Model> {
+        try await self.createTable(for: model, initializeCloudKitSchema: true)
+    }
+    
+    public func createTable<Model: CryoModel>(for model: Model.Type, initializeCloudKitSchema: Bool) async throws -> any CryoCreateTableQuery<Model> {
         // Initialize the CryoSchema
         await CryoSchemaManager.shared.createSchema(for: model)
-        return try CloudKitCreateTableQuery(from: model, database: database, config: config)
+        return try CloudKitCreateTableQuery(from: model, database: database, config: config, initializeCloudKitSchema: initializeCloudKitSchema)
     }
     
     public func select<Model: CryoModel>(id: String? = nil, from: Model.Type) throws -> CloudKitSelectQuery<Model> {

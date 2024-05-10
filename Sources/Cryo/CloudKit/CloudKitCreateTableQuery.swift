@@ -7,8 +7,8 @@ public final class CloudKitCreateTableQuery<Model: CryoModel> {
     let untypedQuery: UntypedCloudKitCreateTableQuery
     
     /// Create a CREATE TABLE query.
-    internal init(from: Model.Type, database: CKDatabase, config: CryoConfig?) throws {
-        self.untypedQuery = try .init(for: Model.self, database: database, config: config)
+    internal init(from: Model.Type, database: CKDatabase, config: CryoConfig?, initializeCloudKitSchema: Bool) throws {
+        self.untypedQuery = try .init(for: Model.self, database: database, config: config, initializeCloudKitSchema: initializeCloudKitSchema)
     }
 }
 
@@ -29,14 +29,18 @@ internal class UntypedCloudKitCreateTableQuery {
     /// The CloudKit database.
     let database: CKDatabase
     
+    /// Whether to initialized the CloudKit schema by inserting a dummy value.
+    let initializeCloudKitSchema: Bool
+    
     #if DEBUG
     let config: CryoConfig?
     #endif
     
     /// Create a CREATE TABLE query.
-    internal init(for modelType: any CryoModel.Type, database: CKDatabase, config: CryoConfig?) throws {
+    internal init(for modelType: any CryoModel.Type, database: CKDatabase, config: CryoConfig?, initializeCloudKitSchema: Bool) throws {
         self.database = database
         self.modelType = modelType
+        self.initializeCloudKitSchema = initializeCloudKitSchema
         
         #if DEBUG
         self.config = config
@@ -51,6 +55,10 @@ extension UntypedCloudKitCreateTableQuery {
     public typealias Result = Void
     
     public func execute() async throws {
+        if !initializeCloudKitSchema {
+            return
+        }
+        
         #if DEBUG
         let id = UUID().uuidString
         let value = try! modelType.init(from: EmptyDecoder())
