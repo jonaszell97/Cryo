@@ -180,11 +180,14 @@ fileprivate struct CryoModelSingleValueDecodingContainer: SingleValueDecodingCon
     func decodeNil() -> Bool { false }
 
     func decode(_ type: Bool.Type) throws -> Bool {
-        guard let value = value.value as? Bool else {
-            throw DecodingError.typeMismatch(Bool.self, .init(codingPath: codingPath, debugDescription: "unexpected CryoPersistable: \(value)"))
+        if let value = value.value as? Bool {
+            return value
+        }
+        if let value = value.value as? Int {
+            return value != 0
         }
 
-        return value
+        throw DecodingError.typeMismatch(Bool.self, .init(codingPath: codingPath, debugDescription: "unexpected CryoPersistable: \(value)"))
     }
 
     func decode(_ type: String.Type) throws -> String {
