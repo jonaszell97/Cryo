@@ -106,47 +106,82 @@ extension DocumentAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
         try await self.persist(data, url: self.documentUrl(for: key))
     }
     
+    public func persistSynchronously<Key: CryoKey>(_ value: Key.Value?, for key: Key) throws {
+        var data: Data? = nil
+        if let value {
+            data = try JSONEncoder().encode(value)
+        }
+        
+        try self.persistSynchronously(data, url: self.documentUrl(for: key))
+    }
+    
     public func persist(_ data: Data?, url: URL) async throws {
+        config.log?(.info, "[DocumentAdaptor.persist] to \(url)")
+        
         return try await withCheckedThrowingContinuation { continuation in
+            config.log?(.info, "[DocumentAdaptor.persist] in continuation")
             Task.detached(priority: .userInitiated) {
-                var coordinationError: NSError? = nil
-                var writeError: Error? = nil
-                
-                // Use the coordinationError variable to capture the error information of the coordinate method.
-                // If an NSError pointer is not provided, errors occurring during the coordination process will not be caught and handled.
-                coordinator.coordinate(writingItemAt: url, options: [.forDeleting], error: &coordinationError) { url in
-                    do {
-                        if let data {
-                            try data.write(to: url, options: .atomic)
-                        }
-                        else {
-                            try self.fileManager.removeItem(at: url)
-                        }
-                    }
-                    catch {
-                        writeError = error
-                    }
+                config.log?(.info, "[DocumentAdaptor.persist] in detached task")
+                do {
+                    try self.persistSynchronously(data, url: url)
+                    config.log?(.info, "[DocumentAdaptor.persist] resume")
+                    continuation.resume(returning: ())
                 }
-                
-                // Check outside the closure to see if an error occurred
-                if let error = writeError {
+                catch {
+                    config.log?(.info, "[DocumentAdaptor.persist] throw error")
                     continuation.resume(throwing: error)
-                    return
                 }
-                
-                // Check if an error occurred during reconciliation
-                if let coordinationError = coordinationError {
-                    continuation.resume(throwing: coordinationError)
-                    return
-                }
-                
-                continuation.resume(returning: ())
             }
+        }
+    }
+    
+    public func persistSynchronously(_ data: Data?, url: URL) throws {
+        config.log?(.info, "[DocumentAdaptor.persistSynchronously] to \(url)")
+        
+        var coordinationError: NSError? = nil
+        var writeError: Error? = nil
+        
+        // Use the coordinationError variable to capture the error information of the coordinate method.
+        // If an NSError pointer is not provided, errors occurring during the coordination process will not be caught and handled.
+        config.log?(.info, "[DocumentAdaptor.persistSynchronously] starting coordination")
+        coordinator.coordinate(writingItemAt: url, options: [.forDeleting], error: &coordinationError) { url in
+            config.log?(.info, "[DocumentAdaptor.persistSynchronously] in coordination callback")
+            do {
+                if let data {
+                    config.log?(.info, "[DocumentAdaptor.persistSynchronously] write \(data.count) bytes")
+                    try data.write(to: url, options: .atomic)
+                }
+                else {
+                    try self.fileManager.removeItem(at: url)
+                }
+                
+                config.log?(.info, "[DocumentAdaptor.persistSynchronously] completed coordination callback")
+            }
+            catch {
+                writeError = error
+                config.log?(.info, "[DocumentAdaptor.persistSynchronously] error in coordination callback: \(error)")
+            }
+        }
+        
+        // Check outside the closure to see if an error occurred
+        if let error = writeError {
+            config.log?(.info, "[DocumentAdaptor.persistSynchronously] throwing write error: \(error)")
+            throw error
+        }
+        
+        // Check if an error occurred during coordination
+        if let coordinationError = coordinationError {
+            config.log?(.info, "[DocumentAdaptor.persistSynchronously] throwing coordination error: \(coordinationError)")
+            throw coordinationError
         }
     }
     
     public func remove<Key: CryoKey>(key: Key) async throws {
         try await self.persist(nil, url: self.documentUrl(for: key))
+    }
+    
+    public func removeSynchronously<Key: CryoKey>(with key: Key) throws {
+        try self.persistSynchronously(nil, url: self.documentUrl(for: key))
     }
     
     public func load<Key: CryoKey>(with key: Key) async throws -> Key.Value? {
@@ -240,6 +275,12 @@ extension DocumentAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
         }
     }
     
+    public func removeAllSynchronously() throws {
+        let urls = try FileManager.default.contentsOfDirectory(at: self.url, includingPropertiesForKeys: nil)
+        for url in urls {
+            try self.persistSynchronously(nil, url: url)
+        }
+    }
     public func removeAll(matching condition: (URL) -> Bool) async throws {
         let urls = try FileManager.default.contentsOfDirectory(at: self.url, includingPropertiesForKeys: nil)
         for url in urls {

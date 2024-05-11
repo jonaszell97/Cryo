@@ -76,16 +76,39 @@ extension CryoAdaptor {
 }
 
 public protocol CryoSynchronousAdaptor: CryoAdaptor {
+    /// Persist the given value for a key synchronously.
+    ///
+    /// - Parameters:
+    ///   - value: The value to persist. If this parameter is `nil`, the value for the given key is removed.
+    ///   - key: The key that uniquely identifies the persisted value.
+    func persistSynchronously<Key: CryoKey>(_ value: Key.Value?, for key: Key) throws
+    
     /// A synchronous version of ``CryoAdaptor/load(with:)-25w6c``.
     ///
     /// - Parameter key: The key that uniquely identifies the persisted value.
     /// - Returns: The value previously persisted for `key`, or nil if none exists.
     func loadSynchronously<Key: CryoKey>(with key: Key) throws -> Key.Value?
+    
+    /// Remove the given value for a key synchronously.
+    ///
+    /// - Parameter key: The key that uniquely identifies the value to remove.
+    func removeSynchronously<Key: CryoKey>(with key: Key) throws
+    
+    /// Remove the values for all keys associated with this adaptor synchronously.
+    ///
+    /// - Warning: This is a destructive operation. Be sure to check whether you really want
+    /// to delete all data before calling it.
+    func removeAllSynchronously() throws
+    
 }
 
 extension CryoSynchronousAdaptor {
     public func load<Key: CryoKey>(with key: Key) async throws -> Key.Value? {
         try self.loadSynchronously(with: key)
+    }
+    
+    public func removeSynchronously<Key: CryoKey>(with key: Key) throws {
+        try self.persistSynchronously(nil, for: key)
     }
 }
 

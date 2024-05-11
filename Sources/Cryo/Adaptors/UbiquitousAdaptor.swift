@@ -33,6 +33,10 @@ public final class UbiquitousKeyValueStoreAdaptor {
 
 extension UbiquitousKeyValueStoreAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
     public func persist<Key: CryoKey>(_ value: Key.Value?, for key: Key) async throws {
+        try self.persistSynchronously(value, for: key)
+    }
+    
+    public func persistSynchronously<Key: CryoKey>(_ value: Key.Value?, for key: Key) throws {
         guard let value else {
             store.removeObject(forKey: key.id)
             return
@@ -92,6 +96,10 @@ extension UbiquitousKeyValueStoreAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
     }
     
     public func removeAll() async throws {
+        try self.removeAllSynchronously()
+    }
+    
+    public func removeAllSynchronously() throws {
         let keys = store.dictionaryRepresentation.keys.map { $0 }
         for key in keys {
             store.removeObject(forKey: key)
