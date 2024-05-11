@@ -144,12 +144,12 @@ extension DocumentAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
         // Use the coordinationError variable to capture the error information of the coordinate method.
         // If an NSError pointer is not provided, errors occurring during the coordination process will not be caught and handled.
         config.log?(.info, "[DocumentAdaptor.persistSynchronously] starting coordination")
-        coordinator.coordinate(writingItemAt: url, options: [.forDeleting], error: &coordinationError) { url in
+//        coordinator.coordinate(writingItemAt: url, options: [.forDeleting], error: &coordinationError) { url in
             config.log?(.info, "[DocumentAdaptor.persistSynchronously] in coordination callback")
             do {
                 if let data {
                     config.log?(.info, "[DocumentAdaptor.persistSynchronously] write \(data.count) bytes")
-                    try data.write(to: url, options: .atomic)
+                    try data.write(to: url)
                 }
                 else {
                     try self.fileManager.removeItem(at: url)
@@ -161,7 +161,7 @@ extension DocumentAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
                 writeError = error
                 config.log?(.info, "[DocumentAdaptor.persistSynchronously] error in coordination callback: \(error)")
             }
-        }
+//        }
         
         // Check outside the closure to see if an error occurred
         if let error = writeError {
@@ -185,47 +185,15 @@ extension DocumentAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
     }
     
     public func load<Key: CryoKey>(with key: Key) async throws -> Key.Value? {
-        try await withCheckedThrowingContinuation { continuation in
+        return try await withCheckedThrowingContinuation { continuation in
             Task.detached(priority: .userInitiated) {
-                let documentUrl = self.documentUrl(for: key)
-                
-                var coordinationError: NSError?
-                var readError: Error? = nil
-                var data: Data? = nil
-                
-                coordinator.coordinate(readingItemAt: url, options: [], error: &coordinationError) { url in
-                    do {
-                        data = try Data(contentsOf: documentUrl)
-                    } catch {
-                        if (error as NSError).code == NSFileReadNoSuchFileError {
-                            return
-                        }
-                        
-                        readError = error
-                    }
-                }
-                
-                // Check outside the closure to see if an error occurred
-                if let error = readError {
-                    continuation.resume(throwing: error)
-                    return
-                }
-                
-                // Check if an error occurred during reconciliation
-                if let coordinationError = coordinationError {
-                    continuation.resume(throwing: coordinationError)
-                    return
-                }
-                
-                guard let data else {
-                    continuation.resume(returning: nil)
-                    return
-                }
-                
                 do {
-                    let value = try JSONDecoder().decode(Key.Value.self, from: data)
+                    let value = try self.loadSynchronously(with: key)
+                    config.log?(.info, "[DocumentAdaptor.load] resume")
                     continuation.resume(returning: value)
-                } catch {
+                }
+                catch {
+                    config.log?(.info, "[DocumentAdaptor.load] throw error")
                     continuation.resume(throwing: error)
                 }
             }
@@ -239,17 +207,15 @@ extension DocumentAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
         var readError: Error? = nil
         var data: Data? = nil
         
-        coordinator.coordinate(readingItemAt: url, options: [], error: &coordinationError) { url in
+//        coordinator.coordinate(readingItemAt: url, options: [], error: &coordinationError) { url in
             do {
                 data = try Data(contentsOf: documentUrl)
             } catch {
-                if (error as NSError).code == NSFileReadNoSuchFileError {
-                    return
+                if (error as NSError).code != NSFileReadNoSuchFileError {
+                    readError = error
                 }
-                
-                readError = error
             }
-        }
+//        }
         
         // Check outside the closure to see if an error occurred
         if let error = readError {
