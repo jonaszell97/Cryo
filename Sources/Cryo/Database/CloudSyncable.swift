@@ -85,7 +85,7 @@ public protocol CloudSyncableModel: CryoModel {
     static func compare(lhs: Self, rhs: Self) -> Int
 }
 
-extension CloudSyncable {
+public extension CloudSyncable {
     /// The name of this instance.
     var name: String { identifier }
     
