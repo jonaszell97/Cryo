@@ -421,6 +421,7 @@ public extension CloudKitAdaptor {
     /// Execute a CloudKit operation, waiting and repeating as necessary in case of a rate limit.
     static func cloudKitOperation<Result>(
         maxAttempts: Int = 5,
+        defaultDelay: TimeInterval = 3,
         log: Optional<(OSLogType, String) -> Void> = nil,
         _ operation: () async throws -> Result
     ) async rethrows -> Result {
@@ -433,11 +434,15 @@ public extension CloudKitAdaptor {
             guard let error = error as? CKError else { throw error }
             guard error.code == .requestRateLimited || error.code == .serviceUnavailable else { throw error }
             
-            let retryAfter = error.retryAfterSeconds ?? 2
+            let retryAfter = error.retryAfterSeconds ?? defaultDelay
             log?(.info, "Rate limit reached, retrying in \(retryAfter) seconds.")
             
             await Task.sleep(seconds: retryAfter)
-            return try await cloudKitOperation(maxAttempts: maxAttempts - 1, operation)
+            return try await cloudKitOperation(
+                maxAttempts: maxAttempts - 1,
+                defaultDelay: min(defaultDelay * 2, 30),
+                operation
+            )
         }
     }
 }
