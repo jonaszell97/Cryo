@@ -416,6 +416,26 @@ extension CloudKitAdaptor {
     }
 }
 
+public extension CloudKitAdaptor {
+    /// Execute a CloudKit operation, waiting and repeating as necessary in case of a rate limit.
+    static func cloudKitOperation<Result>(maxAttempts: Int = 5, _ operation: () async throws -> Result) async rethrows -> Result {
+        do {
+            let result = try await operation()
+            return result
+        }
+        catch {
+            guard maxAttempts > 0 else { throw error }
+            guard let error = error as? CKError else { throw error }
+            guard error.code == .requestRateLimited || error.code == .serviceUnavailable else { throw error }
+            
+            let retryAfter = error.retryAfterSeconds ?? 2
+            await Task.sleep(seconds: retryAfter)
+            
+            return try await cloudKitOperation(maxAttempts: maxAttempts - 1, operation)
+        }
+    }
+}
+
 internal extension CryoQueryValue {
     init?(value: __CKRecordObjCValue) {
         switch value {

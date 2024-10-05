@@ -270,7 +270,7 @@ public extension CloudSyncable {
     /// Load the newest instance of a type.
     static func loadInstance(withIdentifier identifier: String) async -> Self {
         let localInstance = await Self.localInstance(withIdentifier: identifier) ?? .init(identifier: identifier)
-        logger.log("[\(ModelType.self)] Loaded local instance for device \(identifier)")
+        logger.log("[\(ModelType.self)] Loaded local instance for device \(identifier) with recency \(localInstance.recency)")
         
         do {
             let remoteInstances = try await Self.loadRemoteInstances()
@@ -279,17 +279,17 @@ public extension CloudSyncable {
             var bestInstance = localInstance
             for remoteInstance in remoteInstances {
                 if Self.compare(lhs: remoteInstance, rhs: bestInstance) > 0 {
-                    logger.log("[\(ModelType.self)] Found better instance \(remoteInstance.name)")
+                    logger.log("[\(ModelType.self)] Found better instance \(remoteInstance.name) with recency \(remoteInstance.recency) (compared with \(bestInstance.name) \(bestInstance.recency)")
                     bestInstance = remoteInstance
                 }
             }
             
             if localInstance !== bestInstance {
-                logger.log("[\(ModelType.self)] Copying data from best instance \(bestInstance.name)")
+                logger.log("[\(ModelType.self)] Copying data from best instance \(bestInstance.name) with recency \(bestInstance.recency)")
                 localInstance.consolidate(source: bestInstance)
             }
             else {
-                logger.log("[\(ModelType.self)] Using local instance \(localInstance.name)")
+                logger.log("[\(ModelType.self)] Using local instance \(localInstance.name) with recency \(localInstance.recency)")
             }
             
             await localInstance.saveRemotely()
@@ -325,7 +325,7 @@ public extension CloudSyncable {
             }
             
             if instance.identifier != highestRecencyInstance.identifier {
-                logger.log("[\(ModelType.self)] Deleting old instance \(instance.identifier) (recency \(instance.recency)).")
+                logger.log("[\(ModelType.self)] Deleting old instance \(instance.identifier) from device \(instance.name) (recency \(instance.recency)).")
                 try await instance.removeInstance()
             }
         }

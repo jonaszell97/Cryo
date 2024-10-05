@@ -117,7 +117,9 @@ extension UntypedCloudKitSelectQuery {
                       sortingClauses: [(String, CryoSortingOrder)],
                       database: CKDatabase) async throws -> [CKRecord] {
         if let id {
-            return try [await database.record(for: .init(recordName: id))]
+            return try await CloudKitAdaptor.cloudKitOperation {
+                try [await database.record(for: .init(recordName: id))]
+            }
         }
         
         // Fetch all records matching WHERE clauses
@@ -148,7 +150,10 @@ extension UntypedCloudKitSelectQuery {
         
         var data = [CKRecord]()
         
-        var (batch, cursor) =  try await database.records(matching: query)
+        var (batch, cursor) = try await CloudKitAdaptor.cloudKitOperation {
+            try await database.records(matching: query)
+        }
+        
         data.append(contentsOf: try batch.map { recordId, recordResult in
             switch recordResult {
             case .success(let record):
@@ -159,7 +164,10 @@ extension UntypedCloudKitSelectQuery {
         })
         
         while cursor != nil {
-            let (nextBatch, nextCursor) =  try await database.records(continuingMatchFrom: cursor!)
+            let (nextBatch, nextCursor) = try await CloudKitAdaptor.cloudKitOperation {
+                try await database.records(continuingMatchFrom: cursor!)
+            }
+            
             data.append(contentsOf: try nextBatch.map { recordId, recordResult in
                 switch recordResult {
                 case .success(let record):
@@ -212,6 +220,7 @@ extension UntypedCloudKitSelectQuery {
         let records = try await Self.fetch(id: id, modelType: modelType, whereClauses: whereClauses,
                                            resultsLimit: resultsLimit, sortingClauses: sortingClauses,
                                            database: database)
+        
         let schema = CryoSchemaManager.shared.schema(for: modelType)
         
         var results = [any CryoModel]()

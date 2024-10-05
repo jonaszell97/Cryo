@@ -89,10 +89,14 @@ extension UntypedCloudKitInsertQuery {
         #endif
         
         if self.replace {
-            _ = try await database.modifyRecords(saving: [record], deleting: [])
+            _ = try await CloudKitAdaptor.cloudKitOperation {
+                try await database.modifyRecords(saving: [record], deleting: [])
+            }
         }
         else {
-            try await database.save(record)
+            _ = try await CloudKitAdaptor.cloudKitOperation {
+                try await database.save(record)
+            }
         }
         
         return true
