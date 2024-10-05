@@ -120,10 +120,18 @@ final class UntypedMockSelectQuery {
         return self
     }
     
-    func decodeValue(from value: __CKRecordObjCValue, column: CryoSchemaColumn) async throws -> _AnyCryoColumnValue? {
+    func decodeValue(from value: __CKRecordObjCValue?, column: CryoSchemaColumn) async throws -> _AnyCryoColumnValue? {
         switch column {
-        case .value(_, let type, _):
-            return CloudKitAdaptor.decodeValue(from: value, as: type)
+        case .value(_, let type, let metaType, _):
+            guard let value else {
+                if let optionalType = metaType as? _CryoOptionalValue.Type {
+                    return optionalType.nilValue as? _AnyCryoColumnValue
+                }
+                
+                return nil
+            }
+            
+            return CloudKitAdaptor.decodeValue(from: value, as: type)?.value
         case .oneToOneRelation(_, let modelType, _):
             let id = (value as! NSString) as String
             return try await UntypedMockSelectQuery(id: id, modelType: modelType, allRecords: allRecords)
@@ -149,7 +157,7 @@ final class UntypedMockSelectQuery {
             }
             
             var matches = true
-            var data = [String: _AnyCryoColumnValue]()
+            var data = [String: CryoColumnValueWrapper]()
             
             for columnDetails in schema.columns {
                 guard
@@ -166,7 +174,7 @@ final class UntypedMockSelectQuery {
                     }
                 }
                 
-                data[columnDetails.columnName] = value
+                data[columnDetails.columnName] = .init(value: value)
             }
             
             guard matches else {
@@ -354,8 +362,8 @@ final class UntypedMockUpdateQuery {
     
     func decodeValue(from value: __CKRecordObjCValue, column: CryoSchemaColumn) async throws -> _AnyCryoColumnValue? {
         switch column {
-        case .value(_, let type, _):
-            return CloudKitAdaptor.decodeValue(from: value, as: type)
+        case .value(_, let type, _, _):
+            return CloudKitAdaptor.decodeValue(from: value, as: type)?.value
         case .oneToOneRelation(_, let modelType, _):
             let id = (value as! NSString) as String
             return try await UntypedMockSelectQuery(id: id, modelType: modelType, allRecords: allRecords)
@@ -485,8 +493,8 @@ final class UntypedMockDeleteQuery {
     
     func decodeValue(from value: __CKRecordObjCValue, column: CryoSchemaColumn) async throws -> _AnyCryoColumnValue? {
         switch column {
-        case .value(_, let type, _):
-            return CloudKitAdaptor.decodeValue(from: value, as: type)
+        case .value(_, let type, let metaType, _):
+            return CloudKitAdaptor.decodeValue(from: value, as: type)?.value
         case .oneToOneRelation(_, let modelType, _):
             let id = (value as! NSString) as String
             return try await UntypedMockSelectQuery(id: id, modelType: modelType, allRecords: allRecords)
@@ -547,9 +555,9 @@ extension MockCloudKitAdaptor: ResilientStoreBackend {
                 throw CryoError.schemaNotInitialized(tableName: tableName)
             }
             
-            var modelData = [String: _AnyCryoColumnValue]()
+            var modelData = [String: CryoColumnValueWrapper]()
             for item in data {
-                modelData[item.columnName] = item.value.columnValue
+                modelData[item.columnName] = .init(value: item.value.columnValue)
             }
             
             let model = try schema.create(modelData)

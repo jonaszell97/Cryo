@@ -5,6 +5,9 @@ import XCTest
 fileprivate enum TestEnum: Int, CryoColumnIntValue, Hashable {
     case zero = 0
     case a = 300, b = 400, c = 500
+    
+    /// A default value for this type.
+    static var defaultValue: Self { .zero }
 }
 
 fileprivate struct TestModel: CryoModel {

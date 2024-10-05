@@ -42,6 +42,12 @@ public protocol CloudSyncableModel: CryoModel {
     associatedtype LocalKey: CloudSyncableKey
         where LocalKey.Value == Self
     
+    /// Get the local store instance.
+    static var localStore: LocalStore { get }
+    
+    /// Get the remote store instance.
+    static var remoteStore: RemoteStore? { get }
+    
     /// The identifier of this instance.
     var identifier: String { get }
     
@@ -58,22 +64,22 @@ public protocol CloudSyncableModel: CryoModel {
     static var logger: Logger { get }
     
     /// Load a local instance with the given identifier.
-    static func localInstance(localStore: LocalStore, withIdentifier identifier: String) async -> Self?
+    static func localInstance(withIdentifier identifier: String) async -> Self?
     
     /// Load a remote instance with the given identifier.
-    static func remoteInstance(remoteStore: RemoteStore, withIdentifier identifier: String) async -> Self?
+    static func remoteInstance(withIdentifier identifier: String) async -> Self?
     
     /// Load all remote instances.
-    static func loadRemoteInstances(remoteStore: RemoteStore) async throws -> [Self]
+    static func loadRemoteInstances() async throws -> [Self]
     
     /// Remove an instance.
-    func removeInstance(remoteStore: RemoteStore) async throws
+    func removeInstance() async throws
     
     /// Save the current instance locally.
-    func saveLocally(localStore: LocalStore) async
+    func saveLocally() async
     
     /// Save the current instance remotely.
-    func saveRemotely(remoteStore: RemoteStore) async
+    func saveRemotely() async
     
     /// Create a new instance with the given identifier.
     init(identifier: String)
@@ -98,7 +104,7 @@ public extension CloudSyncable {
     }
     
     /// Load a local instance with the given identifier.
-    static func localInstance(localStore: LocalStore, withIdentifier identifier: String) async -> Self? {
+    static func localInstance(withIdentifier identifier: String) async -> Self? {
         Self.logger.log("[\(ModelType.self)] loading local instance \(identifier)")
         defer {
             Self.logger.log("[\(ModelType.self)] finished loading local instance \(identifier)")
@@ -115,13 +121,18 @@ public extension CloudSyncable {
     }
     
     /// Load a remote instance with the given identifier.
-    static func remoteInstance(remoteStore: RemoteStore, withIdentifier identifier: String) async -> Self? {
+    static func remoteInstance(withIdentifier identifier: String) async -> Self? {
         Self.logger.log("[\(ModelType.self)] loading remote instance \(identifier)")
         defer {
             Self.logger.log("[\(ModelType.self)] finished loading remote instance \(identifier)")
         }
         
         do {
+            guard let remoteStore else {
+                logger.error("[\(ModelType.self)] Remote store not initialized")
+                return nil
+            }
+            
             let id = ModelType.identifier(for: identifier)
             let results = try await remoteStore.select(id: id, from: ModelType.self).execute()
             
@@ -139,7 +150,12 @@ public extension CloudSyncable {
     }
     
     /// Load all remote instances.
-    static func loadRemoteInstances(remoteStore: RemoteStore) async throws -> [Self] {
+    static func loadRemoteInstances() async throws -> [Self] {
+        guard let remoteStore else {
+            logger.error("[\(ModelType.self)] Remote store not initialized")
+            return []
+        }
+        
         let modelInstances = try await remoteStore.select(from: ModelType.self).execute()
         logger.log("[\(ModelType.self)] Found \(modelInstances.count) total remote instances")
         
@@ -162,12 +178,12 @@ public extension CloudSyncable {
     }
     
     /// Save the current instance locally.
-    func saveLocally(localStore: LocalStore) async {
+    func saveLocally() async {
         do {
             Self.logger.log("[\(ModelType.self)] saving instance \(self.identifier) locally")
             
             let key = LocalKey(deviceIdentifier: identifier)
-            try localStore.persistSynchronously(self, for: key)
+            try Self.localStore.persistSynchronously(self, for: key)
         }
         catch {
             Self.logger.error("[\(ModelType.self)] error saving instance locally: \(error.localizedDescription)")
@@ -175,8 +191,13 @@ public extension CloudSyncable {
     }
     
     /// Save the current instance remotely.
-    func saveRemotely(remoteStore: RemoteStore) async {
+    func saveRemotely() async {
         do {
+            guard let remoteStore = Self.remoteStore else {
+                Self.logger.error("[\(ModelType.self)] Remote store not initialized")
+                return
+            }
+            
             Self.logger.log("[\(ModelType.self)] saving instance \(self.identifier) remotely")
             
             let model = try ModelType(value: self)
@@ -188,24 +209,24 @@ public extension CloudSyncable {
     }
     
     /// Remove this instance
-    func removeInstance(remoteStore: RemoteStore) async throws {
-        try await remoteStore.delete(id: ModelType.identifier(for: self.identifier), from: ModelType.self).execute()
+    func removeInstance() async throws {
+        guard let remoteStore = Self.remoteStore else {
+            Self.logger.error("[\(ModelType.self)] Remote store not initialized")
+            return
+        }
+        
+        try await remoteStore.delete(
+            id: ModelType.identifier(for: self.identifier), from: ModelType.self
+        ).execute()
     }
     
     /// Load the newest instance of a type.
-    static func loadInstance(
-        localStore: LocalStore,
-        remoteStore: RemoteStore,
-        withIdentifier identifier: String
-    ) async -> Self {
-        let localInstance = await Self.localInstance(
-            localStore: localStore,
-            withIdentifier: identifier
-        ) ?? .init(identifier: identifier)
+    static func loadInstance(withIdentifier identifier: String) async -> Self {
+        let localInstance = await Self.localInstance(withIdentifier: identifier) ?? .init(identifier: identifier)
         logger.log("[\(ModelType.self)] Loaded local instance for device \(identifier)")
         
         do {
-            let remoteInstances = try await Self.loadRemoteInstances(remoteStore: remoteStore)
+            let remoteInstances = try await Self.loadRemoteInstances()
             logger.log("[\(ModelType.self)] Found \(remoteInstances.count) other remote instances")
             
             var bestInstance = localInstance
@@ -224,19 +245,19 @@ public extension CloudSyncable {
                 logger.log("[\(ModelType.self)] Using local instance \(localInstance.name)")
             }
             
-            await localInstance.saveRemotely(remoteStore: remoteStore)
-            try await Self.cleanupOldInstances(remoteStore: remoteStore, instances: remoteInstances)
+            await localInstance.saveRemotely()
+            try await Self.cleanupOldInstances(instances: remoteInstances)
         }
         catch {
             logger.error("[\(ModelType.self)] Failed to load cloud instances: \(error)")
         }
         
-        await localInstance.saveLocally(localStore: localStore)
+        await localInstance.saveLocally()
         return localInstance
     }
     
     /// Clean up old instances.
-    static func cleanupOldInstances(remoteStore: RemoteStore, instances: [Self]) async throws {
+    static func cleanupOldInstances(instances: [Self]) async throws {
         logger.log("[\(ModelType.self)] cleaning up \(instances.count) old instances")
         
         var highestRecencyByDeviceId: [String: (Int, Self)] = [:]
@@ -258,7 +279,7 @@ public extension CloudSyncable {
             
             if instance.identifier != highestRecencyInstance.identifier {
                 logger.log("[\(ModelType.self)] Deleting old instance \(instance.identifier) (recency \(instance.recency)).")
-                try await instance.removeInstance(remoteStore: remoteStore)
+                try await instance.removeInstance()
             }
         }
         
