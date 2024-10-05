@@ -87,7 +87,7 @@ extension UntypedCloudKitInsertQuery {
         #if DEBUG
         config?.log?(.debug, "[CloudKitAdaptor] \(queryString)")
         for columnDetails in schema.columns {
-            config?.log?(.debug, "[CloudKitAdaptor] \(columnDetails.columnName): \(record[columnDetails.columnName]!)")
+            config?.log?(.debug, "[CloudKitAdaptor] \(columnDetails.columnName): \(String(describing: record[columnDetails.columnName]))")
         }
         #endif
         
