@@ -85,7 +85,7 @@ public protocol CloudSyncableModel: CryoModel {
     static func loadLocalInstances() async throws -> [Self]?
     
     /// Load all remote instances.
-    static func loadRemoteInstances() async throws -> [Self]
+    static func loadRemoteInstances(includeSelf: Bool) async throws -> [Self]
     
     /// Remove an instance.
     func removeInstance() async throws
@@ -197,7 +197,7 @@ public extension CloudSyncable {
     }
     
     /// Load all remote instances.
-    static func loadRemoteInstances() async throws -> [Self] {
+    static func loadRemoteInstances(includeSelf: Bool = false) async throws -> [Self] {
         guard let remoteStore else {
             logger.error("[\(ModelType.self)] Remote store not initialized")
             return []
@@ -209,7 +209,7 @@ public extension CloudSyncable {
         var instances: [Self] = []
         for modelInstance in modelInstances {
             let deviceId = modelInstance.deviceIdentifier
-            if deviceId == UIDevice.currentDeviceIdentifier {
+            if !includeSelf && deviceId == UIDevice.currentDeviceIdentifier {
                 continue
             }
             
