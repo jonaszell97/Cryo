@@ -87,14 +87,27 @@ extension UntypedCloudKitInsertQuery {
         #if DEBUG
         config?.log?(.debug, "[CloudKitAdaptor] \(queryString)")
         for columnDetails in schema.columns {
-            config?.log?(.debug, "[CloudKitAdaptor] \(columnDetails.columnName): \(String(describing: record[columnDetails.columnName]))")
+            config?.log?(.debug, "[CloudKitAdaptor] \(columnDetails.columnName): \(String(describing: record[columnDetails.columnName]).prefix(50))")
         }
         #endif
         
         if self.replace {
-            _ = try await CloudKitAdaptor.cloudKitOperation(log: config?.log) {
+            let (saveResults, _) = try await CloudKitAdaptor.cloudKitOperation(log: config?.log) {
                 try await database.modifyRecords(saving: [record], deleting: [])
             }
+            
+            #if DEBUG
+            for result in saveResults {
+                switch result.value {
+                case .success(let id):
+                    config?.log?(.debug, "[CloudKitAdaptor] Success! \(id)")
+                case .failure(let err):
+                    config?.log?(.debug, "[CloudKitAdaptor] FAILURE: \(err.localizedDescription)")
+                }
+            }
+            #else
+            _ = saveResults
+            #endif
         }
         else {
             _ = try await CloudKitAdaptor.cloudKitOperation(log: config?.log) {
