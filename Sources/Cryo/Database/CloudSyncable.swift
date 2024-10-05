@@ -287,6 +287,7 @@ public extension CloudSyncable {
     }
 }
 
+
 fileprivate extension UIDevice {
     static var currentDeviceIdentifier: String {
         current.identifierForVendor?.uuidString ?? ""
