@@ -11,6 +11,9 @@ public protocol CloudSyncableKey: CryoKey {
     
     /// Identify whether a key string belongs to this key type.
     static func ownsInstanceWithKey(_ key: String) -> Bool
+    
+    /// Extract the device identifier from a key.
+    static func deviceIdentifierFromKey(_ key: String) -> String
 }
 
 public extension CloudSyncableKey {
@@ -150,7 +153,10 @@ public extension CloudSyncable {
                     continue
                 }
                 
-                result.append(ifNotNil: try localStore.loadSynchronously(with: LocalKey(id: key)))
+                let deviceIdentifier = LocalKey.deviceIdentifierFromKey(key)
+                result.append(ifNotNil: try localStore.loadSynchronously(
+                    with: LocalKey(deviceIdentifier: deviceIdentifier))
+                )
             }
             
             return result
