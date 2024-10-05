@@ -89,12 +89,12 @@ extension UntypedCloudKitInsertQuery {
         #endif
         
         if self.replace {
-            _ = try await CloudKitAdaptor.cloudKitOperation {
+            _ = try await CloudKitAdaptor.cloudKitOperation(log: config?.log) {
                 try await database.modifyRecords(saving: [record], deleting: [])
             }
         }
         else {
-            _ = try await CloudKitAdaptor.cloudKitOperation {
+            _ = try await CloudKitAdaptor.cloudKitOperation(log: config?.log) {
                 try await database.save(record)
             }
         }

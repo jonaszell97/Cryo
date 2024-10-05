@@ -194,7 +194,7 @@ extension UntypedCloudKitUpdateQuery {
         config?.log?(.debug, "[CloudKitAdaptor] \(queryString), SET \(setClauses.map { "\($0.value)" }), WHERE \(whereClauses.map { "\($0.value)" })")
         #endif
         
-        _ = try await CloudKitAdaptor.cloudKitOperation {
+        _ = try await CloudKitAdaptor.cloudKitOperation(log: config?.log) {
             try await database.modifyRecords(saving: records, deleting: [])
         }
         

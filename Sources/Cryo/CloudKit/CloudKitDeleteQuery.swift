@@ -101,7 +101,7 @@ extension UntypedCloudKitDeleteQuery {
         config?.log?(.debug, "[CloudKitAdaptor] \(queryString), WHERE \(whereClauses.map { "\($0.value)" })")
         #endif
         
-        _ = try await CloudKitAdaptor.cloudKitOperation {
+        _ = try await CloudKitAdaptor.cloudKitOperation(log: config?.log) {
             try await database.modifyRecords(saving: [], deleting: records.map { $0.recordID })
         }
         

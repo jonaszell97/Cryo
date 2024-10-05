@@ -1,6 +1,7 @@
 
 import CloudKit
 import Foundation
+import os
 
 public final class CloudKitSelectQuery<Model: CryoModel> {
     /// The untyped query.
@@ -115,9 +116,11 @@ extension UntypedCloudKitSelectQuery {
                       whereClauses: [CryoQueryWhereClause],
                       resultsLimit: Int?,
                       sortingClauses: [(String, CryoSortingOrder)],
-                      database: CKDatabase) async throws -> [CKRecord] {
+                      database: CKDatabase,
+                      log: Optional<(OSLogType, String) -> Void> = nil
+    ) async throws -> [CKRecord] {
         if let id {
-            return try await CloudKitAdaptor.cloudKitOperation {
+            return try await CloudKitAdaptor.cloudKitOperation(log: log) {
                 try [await database.record(for: .init(recordName: id))]
             }
         }
@@ -150,7 +153,7 @@ extension UntypedCloudKitSelectQuery {
         
         var data = [CKRecord]()
         
-        var (batch, cursor) = try await CloudKitAdaptor.cloudKitOperation {
+        var (batch, cursor) = try await CloudKitAdaptor.cloudKitOperation(log: log) {
             try await database.records(matching: query)
         }
         
@@ -164,7 +167,7 @@ extension UntypedCloudKitSelectQuery {
         })
         
         while cursor != nil {
-            let (nextBatch, nextCursor) = try await CloudKitAdaptor.cloudKitOperation {
+            let (nextBatch, nextCursor) = try await CloudKitAdaptor.cloudKitOperation(log: log) {
                 try await database.records(continuingMatchFrom: cursor!)
             }
             
@@ -219,7 +222,7 @@ extension UntypedCloudKitSelectQuery {
         
         let records = try await Self.fetch(id: id, modelType: modelType, whereClauses: whereClauses,
                                            resultsLimit: resultsLimit, sortingClauses: sortingClauses,
-                                           database: database)
+                                           database: database, log: config?.log)
         
         let schema = CryoSchemaManager.shared.schema(for: modelType)
         
