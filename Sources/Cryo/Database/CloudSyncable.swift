@@ -146,6 +146,10 @@ public extension CloudSyncable {
             
             var result: [Self] = []
             for key in keys {
+                guard LocalKey.ownsInstanceWithKey(key) else {
+                    continue
+                }
+                
                 result.append(ifNotNil: try localStore.loadSynchronously(with: LocalKey(id: key)))
             }
             
