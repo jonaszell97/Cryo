@@ -292,7 +292,6 @@ public extension CloudSyncable {
                 logger.log("[\(ModelType.self)] Using local instance \(localInstance.name) with recency \(localInstance.recency)")
             }
             
-            await localInstance.saveRemotely()
             try await Self.cleanupOldInstances(instances: remoteInstances)
         }
         catch {
