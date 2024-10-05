@@ -85,35 +85,33 @@ extension UntypedCloudKitInsertQuery {
         }
         
         #if DEBUG
-        config?.log?(.debug, "[CloudKitAdaptor] \(queryString)")
+        var valuesStr = ""
         for columnDetails in schema.columns {
-            config?.log?(.debug, "[CloudKitAdaptor] \(columnDetails.columnName): \(String(describing: record[columnDetails.columnName]).prefix(50))")
+            valuesStr += "\(columnDetails.columnName): \(String(describing: record[columnDetails.columnName]).prefix(50)) "
         }
+        
+        config?.log?(.debug, "[CloudKitAdaptor] \(queryString); \(valuesStr)")
         #endif
         
-        if self.replace {
-            let (saveResults, _) = try await CloudKitAdaptor.cloudKitOperation(log: config?.log) {
-                try await database.modifyRecords(saving: [record], deleting: [])
-            }
-            
-            #if DEBUG
-            for result in saveResults {
-                switch result.value {
-                case .success(let id):
-                    config?.log?(.debug, "[CloudKitAdaptor] Success! \(id)")
-                case .failure(let err):
-                    config?.log?(.debug, "[CloudKitAdaptor] FAILURE: \(err.localizedDescription)")
-                }
-            }
-            #else
-            _ = saveResults
-            #endif
+        let (saveResults, _) = try await CloudKitAdaptor.cloudKitOperation(log: config?.log) {
+            try await database.modifyRecords(
+                saving: [record], deleting: [],
+                savePolicy: self.replace ? .changedKeys : .ifServerRecordUnchanged
+            )
         }
-        else {
-            _ = try await CloudKitAdaptor.cloudKitOperation(log: config?.log) {
-                try await database.save(record)
+        
+        #if DEBUG
+        for result in saveResults {
+            switch result.value {
+            case .success(let id):
+                config?.log?(.debug, "[CloudKitAdaptor] Success! \(id)")
+            case .failure(let err):
+                config?.log?(.debug, "[CloudKitAdaptor] FAILURE: \(err.localizedDescription)")
             }
         }
+        #else
+        _ = saveResults
+        #endif
         
         return true
     }

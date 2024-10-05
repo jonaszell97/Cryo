@@ -194,9 +194,22 @@ extension UntypedCloudKitUpdateQuery {
         config?.log?(.debug, "[CloudKitAdaptor] \(queryString), SET \(setClauses.map { "\($0.value)" }), WHERE \(whereClauses.map { "\($0.value)" })")
         #endif
         
-        _ = try await CloudKitAdaptor.cloudKitOperation(log: config?.log) {
-            try await database.modifyRecords(saving: records, deleting: [])
+        let (saveResults, _) = try await CloudKitAdaptor.cloudKitOperation(log: config?.log) {
+            try await database.modifyRecords(saving: records, deleting: [], savePolicy: .changedKeys)
         }
+        
+        #if DEBUG
+        for result in saveResults {
+            switch result.value {
+            case .success(let id):
+                config?.log?(.debug, "[CloudKitAdaptor] Success! \(id)")
+            case .failure(let err):
+                config?.log?(.debug, "[CloudKitAdaptor] FAILURE: \(err.localizedDescription)")
+            }
+        }
+        #else
+        _ = saveResults
+        #endif
         
         return records.count
     }
