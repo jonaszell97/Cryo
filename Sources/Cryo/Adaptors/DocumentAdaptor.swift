@@ -207,7 +207,7 @@ extension DocumentAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
         var readError: Error? = nil
         var data: Data? = nil
         
-//        coordinator.coordinate(readingItemAt: url, options: [], error: &coordinationError) { url in
+        coordinator.coordinate(readingItemAt: url, options: [], error: &coordinationError) { url in
             do {
                 data = try Data(contentsOf: documentUrl)
             } catch {
@@ -215,7 +215,7 @@ extension DocumentAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
                     readError = error
                 }
             }
-//        }
+        }
         
         // Check outside the closure to see if an error occurred
         if let error = readError {
@@ -253,6 +253,24 @@ extension DocumentAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
             guard condition(url) else { continue }
             try await self.persist(nil, url: url)
         }
+    }
+    
+    /// List all instances available in this adaptor.
+    ///
+    /// - Note: This method is not available in all adaptors.
+    public func listInstanceKeys() async throws -> [String]? {
+        try FileManager.default.contentsOfDirectory(
+            at: self.url, includingPropertiesForKeys: nil
+        ).map { $0.lastPathComponent }
+    }
+    
+    /// List all instances available in this adaptor.
+    ///
+    /// - Note: This method is not available in all adaptors.
+    public func listInstanceKeysSynchronously() throws -> [String]? {
+        try FileManager.default.contentsOfDirectory(
+            at: self.url, includingPropertiesForKeys: nil
+        ).map { $0.lastPathComponent }
     }
 }
 

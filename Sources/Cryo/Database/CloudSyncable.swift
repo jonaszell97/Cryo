@@ -8,6 +8,15 @@ import UIKit
 public protocol CloudSyncableKey: CryoKey {
     /// Initialize from a device identifier.
     init(deviceIdentifier: String)
+    
+    /// Identify whether a key string belongs to this key type.
+    static func ownsInstanceWithKey(_ key: String) -> Bool
+}
+
+public extension CloudSyncableKey {
+    init(id: String) {
+        self.init(deviceIdentifier: id)
+    }
 }
 
 public protocol CloudSyncableModel: CryoModel {
@@ -28,12 +37,6 @@ public protocol CloudSyncableModel: CryoModel {
 }
 
 @MainActor public protocol CloudSyncable: AnyObject, Codable {
-    /// The local store type.
-    associatedtype LocalStore: CryoAdaptor & CryoSynchronousAdaptor
-    
-    /// The remote store type.
-    associatedtype RemoteStore: CloudKitAdaptor
-    
     /// The model type.
     associatedtype ModelType: CloudSyncableModel
         where ModelType.Value == Self
@@ -41,6 +44,12 @@ public protocol CloudSyncableModel: CryoModel {
     /// The local key type.
     associatedtype LocalKey: CloudSyncableKey
         where LocalKey.Value == Self
+    
+    /// The local store type.
+    associatedtype LocalStore: CryoAdaptor & CryoSynchronousAdaptor
+    
+    /// The remote store type.
+    associatedtype RemoteStore: CloudKitAdaptor
     
     /// Get the local store instance.
     static var localStore: LocalStore { get }
@@ -68,6 +77,9 @@ public protocol CloudSyncableModel: CryoModel {
     
     /// Load a remote instance with the given identifier.
     static func remoteInstance(withIdentifier identifier: String) async -> Self?
+    
+    /// Load all local instances.
+    static func loadLocalInstances() async throws -> [Self]?
     
     /// Load all remote instances.
     static func loadRemoteInstances() async throws -> [Self]
@@ -117,6 +129,31 @@ public extension CloudSyncable {
         catch {
             logger.error("[\(ModelType.self)] failed to decode local instance \(identifier)")
             return nil
+        }
+    }
+    
+    /// Load all available local instances.
+    static func loadLocalInstances() -> [Self]? {
+        Self.logger.log("[\(ModelType.self)] loading all local instances")
+        defer {
+            Self.logger.log("[\(ModelType.self)] finished loading all local instances")
+        }
+        
+        do {
+            guard let keys = try localStore.listInstanceKeysSynchronously() else {
+                return nil
+            }
+            
+            var result: [Self] = []
+            for key in keys {
+                result.append(ifNotNil: try localStore.loadSynchronously(with: LocalKey(id: key)))
+            }
+            
+            return result
+        }
+        catch {
+            logger.error("[\(ModelType.self)] failed to load all local instances: \(error)")
+            return []
         }
     }
     

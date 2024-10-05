@@ -46,6 +46,11 @@ public protocol CryoAdaptor {
     ///
     /// - Note: Not all adaptors support this operation. If not supported, it is a no-op.
     func synchronize()
+    
+    /// List all instances available in this adaptor.
+    ///
+    /// - Note: This method is not available in all adaptors.
+    func listInstanceKeys() async throws -> [String]?
 }
 
 extension CryoAdaptor {
@@ -73,6 +78,10 @@ extension CryoAdaptor {
     }
     
     public func synchronize() { }
+    
+    public func listInstanceKeys() async throws -> [String]? {
+        nil
+    }
 }
 
 public protocol CryoSynchronousAdaptor: CryoAdaptor {
@@ -100,6 +109,11 @@ public protocol CryoSynchronousAdaptor: CryoAdaptor {
     /// to delete all data before calling it.
     func removeAllSynchronously() throws
     
+    /// List all instances available in this adaptor.
+    ///
+    /// - Note: This method is not available in all adaptors.
+    func listInstanceKeysSynchronously() throws -> [String]?
+    
 }
 
 extension CryoSynchronousAdaptor {
@@ -109,6 +123,10 @@ extension CryoSynchronousAdaptor {
     
     public func removeSynchronously<Key: CryoKey>(with key: Key) throws {
         try self.persistSynchronously(nil, for: key)
+    }
+    
+    public func listInstanceKeysSynchronously() throws -> [String]? {
+        nil
     }
 }
 

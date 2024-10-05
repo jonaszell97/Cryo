@@ -10,6 +10,9 @@ public protocol CryoKey {
     
     /// The unique identifier for the stored value.
     var id: String { get }
+    
+    /// Create a key from a string identifier.
+    init (id: String)
 }
 
 /// Basic implementation of ``CryoKey`` with a configurable value type and identifier.
@@ -19,6 +22,11 @@ public struct CryoNamedKey<Value: Codable>: CryoKey {
     
     /// Create a named key.
     public init(id: String, for valueType: Value.Type) {
+        self.id = id
+    }
+    
+    /// Create a key from a string identifier.
+    public init (id: String) {
         self.id = id
     }
 }
