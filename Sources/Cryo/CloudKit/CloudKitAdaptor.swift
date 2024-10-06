@@ -245,7 +245,13 @@ extension CloudKitAdaptor {
             return .init(value: value.fileURL)
         case .data:
             guard let value = nsObject as? NSData else { return nil }
-            return .init(value: value as Data)
+            do {
+                let decompressed = try value.decompressed(using: .lzfse)
+                return .init(value: decompressed as Data)
+            }
+            catch {
+                return .init(value: value as Data)
+            }
         }
     }
     
@@ -278,8 +284,7 @@ extension CloudKitAdaptor {
             case let value as CryoColumnDateValue:
                 return value.dateValue as NSDate
             case let value as CryoColumnDataValue:
-                return try value.dataValue as NSData
-                
+                return try (value.dataValue as NSData).compressed(using: .lzfse)
             default:
                 return (try JSONEncoder().encode(value)) as NSData
             }
