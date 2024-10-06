@@ -1,6 +1,7 @@
 
 import CloudKit
 import Foundation
+import os
 
 public final class CloudKitUpdateQuery<Model: CryoModel> {
     /// The untyped query.
@@ -190,11 +191,14 @@ extension UntypedCloudKitUpdateQuery {
             }
         }
         
+        var log: Optional<(OSLogType, String) -> Void> = nil
+        
         #if DEBUG
+        log = config?.log
         config?.log?(.debug, "[CloudKitAdaptor] \(queryString), SET \(setClauses.map { "\($0.value)" }), WHERE \(whereClauses.map { "\($0.value)" })")
         #endif
         
-        let (saveResults, _) = try await CloudKitAdaptor.cloudKitOperation(log: config?.log) {
+        let (saveResults, _) = try await CloudKitAdaptor.cloudKitOperation(log: log) {
             try await database.modifyRecords(saving: records, deleting: [], savePolicy: .changedKeys)
         }
         

@@ -1,6 +1,7 @@
 
 import CloudKit
 import Foundation
+import os
 
 public final class CloudKitInsertQuery<Model: CryoModel> {
     /// The untyped query.
@@ -84,7 +85,10 @@ extension UntypedCloudKitInsertQuery {
                                                                             column: columnDetails)
         }
         
+        var log: Optional<(OSLogType, String) -> Void> = nil
+        
         #if DEBUG
+        log = config?.log
         var valuesStr = ""
         for columnDetails in schema.columns {
             valuesStr += "\(columnDetails.columnName): \(String(describing: record[columnDetails.columnName]).prefix(50)) "
@@ -93,7 +97,7 @@ extension UntypedCloudKitInsertQuery {
         config?.log?(.debug, "[CloudKitAdaptor] \(queryString); \(valuesStr)")
         #endif
         
-        let (saveResults, _) = try await CloudKitAdaptor.cloudKitOperation(log: config?.log) {
+        let (saveResults, _) = try await CloudKitAdaptor.cloudKitOperation(log: log) {
             try await database.modifyRecords(
                 saving: [record], deleting: [],
                 savePolicy: self.replace ? .changedKeys : .ifServerRecordUnchanged

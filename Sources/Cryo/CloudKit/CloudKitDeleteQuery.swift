@@ -1,6 +1,7 @@
 
 import CloudKit
 import Foundation
+import os
 
 public final class CloudKitDeleteQuery<Model: CryoModel> {
     /// The untyped query.
@@ -97,11 +98,14 @@ extension UntypedCloudKitDeleteQuery {
                                                                  sortingClauses: [],
                                                                  database: database)
         
+        var log: Optional<(OSLogType, String) -> Void> = nil
+        
         #if DEBUG
+        log = config?.log
         config?.log?(.debug, "[CloudKitAdaptor] \(queryString), WHERE \(whereClauses.map { "\($0.value)" })")
         #endif
         
-        _ = try await CloudKitAdaptor.cloudKitOperation(log: config?.log) {
+        _ = try await CloudKitAdaptor.cloudKitOperation(log: log) {
             try await database.modifyRecords(saving: [], deleting: records.map { $0.recordID })
         }
         

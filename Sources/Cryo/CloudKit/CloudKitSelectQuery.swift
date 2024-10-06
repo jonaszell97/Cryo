@@ -216,13 +216,16 @@ extension UntypedCloudKitSelectQuery {
 
 extension UntypedCloudKitSelectQuery {
     public func execute() async throws -> [any CryoModel] {
+        var log: Optional<(OSLogType, String) -> Void> = nil
+        
         #if DEBUG
+        log = config?.log
         config?.log?(.debug, "[CloudKitAdaptor] \(queryString), WHERE \(whereClauses.map { "\($0.value)" })")
         #endif
         
         let records = try await Self.fetch(id: id, modelType: modelType, whereClauses: whereClauses,
                                            resultsLimit: resultsLimit, sortingClauses: sortingClauses,
-                                           database: database, log: config?.log)
+                                           database: database, log: log)
         
         let schema = CryoSchemaManager.shared.schema(for: modelType)
         
