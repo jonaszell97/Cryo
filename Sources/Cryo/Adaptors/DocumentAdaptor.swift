@@ -247,6 +247,7 @@ extension DocumentAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
             try self.persistSynchronously(nil, url: url)
         }
     }
+    
     public func removeAll(matching condition: (URL) -> Bool) async throws {
         let urls = try FileManager.default.contentsOfDirectory(at: self.url, includingPropertiesForKeys: nil)
         for url in urls {
@@ -370,6 +371,7 @@ fileprivate class ItemQuery {
                 object: query,
                 queue: queue
             ) { _ in
+                let fileManager = FileManager()
                 log("received \(self.query.results.count) initial items")
                 
                 for result in self.query.results {
@@ -419,6 +421,7 @@ fileprivate class ItemQuery {
                 object: query,
                 queue: queue
             ) { _ in
+                let fileManager = FileManager()
                 log("received update with \(self.query.results) items")
                 
                 var newDownloadingItems = Set<URL>()
@@ -588,15 +591,18 @@ public struct UbiquitousDocumentMetadata: Sendable {
     public let isUploading: Bool
 
     /// Whether the file has been uploaded.
-    public  let isUploaded: Bool
+    public let isUploaded: Bool
     
     fileprivate init? (baseUrl: URL, metadataItem: NSMetadataItem) {
         guard let fileName = metadataItem.value(forAttribute: NSMetadataItemFSNameKey) as? String else {
             return nil
         }
+        guard let fileUrl = metadataItem.value(forAttribute: NSMetadataItemPathKey) as? URL else {
+            return nil
+        }
         
         self.fileName = fileName
-        self.fileUrl = baseUrl.appendingPathComponent(fileName)
+        self.fileUrl = fileUrl
         
         self.fileSize = metadataItem.value(forAttribute: NSMetadataItemFSSizeKey) as? Int
         self.contentType = metadataItem.value(forAttribute: NSMetadataItemContentTypeKey) as? String
