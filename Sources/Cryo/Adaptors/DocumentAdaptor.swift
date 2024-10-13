@@ -597,7 +597,10 @@ public struct UbiquitousDocumentMetadata: Sendable {
         guard let fileName = metadataItem.value(forAttribute: NSMetadataItemFSNameKey) as? String else {
             return nil
         }
-        guard let fileUrl = metadataItem.value(forAttribute: NSMetadataItemPathKey) as? URL else {
+        guard
+            let fileUrlString = metadataItem.value(forAttribute: NSMetadataItemPathKey) as? String,
+            let fileUrl = URL(string: fileUrlString)
+        else {
             return nil
         }
         
