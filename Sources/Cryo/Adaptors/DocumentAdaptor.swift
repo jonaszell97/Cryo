@@ -559,7 +559,7 @@ fileprivate class ItemQuery {
     }
 }
 
-public struct UbiquitousDocumentMetadata: Sendable {
+public struct UbiquitousDocumentMetadata: Codable, Sendable {
     /// The name of the file.
     public let fileName: String
     
