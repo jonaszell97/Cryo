@@ -27,9 +27,6 @@ public struct DocumentAdaptor {
     /// The file manager instance to use.
     public let fileManager: FileManager
     
-    /// The file coordinator.
-    public let coordinator: NSFileCoordinator
-    
     /// Whether or not this adaptor uses iCloud ubiquitous storage.
     public let usesUbiquitousStorage: Bool
     
@@ -43,7 +40,6 @@ public struct DocumentAdaptor {
         self.url = url
         self.fileManager = fileManager
         self.usesUbiquitousStorage = usesUbiquitousStorage
-        self.coordinator = NSFileCoordinator()
     }
     
     /// The shared local document adaptor.
@@ -207,7 +203,7 @@ extension DocumentAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
         var readError: Error? = nil
         var data: Data? = nil
         
-        coordinator.coordinate(readingItemAt: url, options: [], error: &coordinationError) { url in
+        // coordinator.coordinate(readingItemAt: url, options: [], error: &coordinationError) { url in
             do {
                 data = try Data(contentsOf: documentUrl)
             } catch {
@@ -215,7 +211,7 @@ extension DocumentAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
                     readError = error
                 }
             }
-        }
+        //}
         
         // Check outside the closure to see if an error occurred
         if let error = readError {
