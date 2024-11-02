@@ -268,9 +268,14 @@ public extension CloudSyncable {
     }
     
     /// Load the newest instance of a type.
-    static func loadInstance(withIdentifier identifier: String) async -> Self {
+    static func loadInstance(withIdentifier identifier: String, loadRemoteInstances: Bool = true) async -> Self {
         let localInstance = await Self.localInstance(withIdentifier: identifier) ?? .init(identifier: identifier)
         logger.log("[\(ModelType.self)] Loaded local instance for device \(identifier) with recency \(localInstance.recency)")
+        
+        guard loadRemoteInstances else {
+            logger.log("[\(ModelType.self)] Not loading remote instances")
+            return localInstance
+        }
         
         do {
             let remoteInstances = try await Self.loadRemoteInstances()
