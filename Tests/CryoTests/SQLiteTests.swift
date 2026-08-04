@@ -40,6 +40,10 @@ final class CryoSQLiteTests: XCTestCase {
     struct AnyKey<Value: CryoModel>: CryoKey {
         let id: String
         
+        init(id: String) {
+            self.id = id
+        }
+
         init(id: String, for: Value.Type) {
             self.id = id
         }

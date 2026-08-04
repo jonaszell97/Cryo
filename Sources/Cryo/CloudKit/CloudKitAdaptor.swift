@@ -48,23 +48,73 @@ public final class CloudKitAdaptor {
     /// The database to store to.
     let database: CKDatabase
     
+    /// Synchronizes access to availability state, including late connection results.
+    private let availabilityLock: NSLock
+
     /// The unique iCloud record ID for the user.
-    var iCloudRecordID: String?
+    private var storedICloudRecordID: String?
+
+    /// The unique iCloud record ID for the user.
+    public private(set) var iCloudRecordID: String? {
+        get {
+            availabilityLock.lock()
+            defer { availabilityLock.unlock() }
+            return storedICloudRecordID
+        }
+        set {
+            availabilityLock.lock()
+            storedICloudRecordID = newValue
+            availabilityLock.unlock()
+        }
+    }
+
+    /// Tokens for account-change observers installed by clients.
+    private var availabilityObserverTokens: [NSObjectProtocol]
     
     /// Default initializer.
-    public init(config: CryoConfig, containerIdentifier: String, database: KeyPath<CKContainer, CKDatabase>) async {
+    public init(config: CryoConfig, containerIdentifier: String, database: KeyPath<CKContainer, CKDatabase>) {
         self.config = config
         
         let container = CKContainer(identifier: containerIdentifier)
         self.container = container
         self.database = container[keyPath: database]
-        self.iCloudRecordID = nil
+        self.availabilityLock = NSLock()
+        self.storedICloudRecordID = nil
+        self.availabilityObserverTokens = []
+    }
+
+    deinit {
+        availabilityObserverTokens.forEach(NotificationCenter.default.removeObserver)
+    }
+
+    /// Connect to CloudKit within a bounded amount of time.
+    ///
+    /// A request that misses the deadline is allowed to finish in the background. Its late
+    /// result upgrades the adaptor to available without making the original caller wait.
+    @discardableResult
+    public func connect(timeout: TimeInterval = 15) async -> Bool {
+        guard !isAvailable else {
+            return true
+        }
+
+        let request = Task { try await container.userRecordID().recordName }
         
         do {
-            self.iCloudRecordID = try await container.userRecordID().recordName
+            self.iCloudRecordID = try await withCryoTimeout(timeout) {
+                try await request.value
+            }
+            return true
         }
         catch {
             config.log?(.fault, "error fetching user record id: \(error.localizedDescription)")
+
+            Task { [weak self] in
+                guard let recordID = try? await request.value else {
+                    return
+                }
+                self?.iCloudRecordID = recordID
+            }
+            return false
         }
     }
 }
@@ -73,58 +123,66 @@ public final class CloudKitAdaptor {
 
 extension CloudKitAdaptor {
     /// Check for availability of the database.
-    public func ensureAvailability() async throws {
-        guard self.iCloudRecordID == nil else {
+    public func ensureAvailability(timeout: TimeInterval = 15) async throws {
+        guard !isAvailable else {
             return
         }
         
-        do {
-            self.iCloudRecordID = try await container.userRecordID().recordName
+        guard await connect(timeout: timeout) else {
+            throw CryoError.backendNotAvailable
         }
-        catch {
-            config.log?(.fault, "error fetching user record id: \(error.localizedDescription)")
-        }
-        
-        guard self.iCloudRecordID == nil else {
-            return
-        }
-        
-        throw CryoError.backendNotAvailable
     }
     
     /// Whether CloudKit is available.
     public var isAvailable: Bool { iCloudRecordID != nil }
     
     public func observeAvailabilityChanges(_ callback: @escaping (Bool) -> Void) {
-        // TODO: implement this
+        let token = NotificationCenter.default.addObserver(
+            forName: .CKAccountChanged,
+            object: nil,
+            queue: nil
+        ) { [weak self] _ in
+            guard let self else { return }
+            self.iCloudRecordID = nil
+            Task {
+                callback(await self.connect())
+            }
+        }
+        availabilityObserverTokens.append(token)
     }
 }
 
 extension CloudKitAdaptor: CryoDatabaseAdaptor {
     public func createTable<Model: CryoModel>(for model: Model.Type) async throws -> any CryoCreateTableQuery<Model> {
-        try await self.createTable(for: model, initializeCloudKitSchema: true)
+        guard isAvailable else { throw CryoError.backendNotAvailable }
+        return try await self.createTable(for: model, initializeCloudKitSchema: true)
     }
     
     public func createTable<Model: CryoModel>(for model: Model.Type, initializeCloudKitSchema: Bool) async throws -> any CryoCreateTableQuery<Model> {
+        guard isAvailable else { throw CryoError.backendNotAvailable }
         // Initialize the CryoSchema
         await CryoSchemaManager.shared.createSchema(for: model)
         return try CloudKitCreateTableQuery(from: model, database: database, config: config, initializeCloudKitSchema: initializeCloudKitSchema)
     }
     
     public func select<Model: CryoModel>(id: String? = nil, from: Model.Type) throws -> CloudKitSelectQuery<Model> {
-        try CloudKitSelectQuery(from: Model.self, id: id, database: database, config: config)
+        guard isAvailable else { throw CryoError.backendNotAvailable }
+        return try CloudKitSelectQuery(from: Model.self, id: id, database: database, config: config)
     }
     
     public func insert<Model: CryoModel>(_ value: Model, replace: Bool = true) throws -> CloudKitInsertQuery<Model> {
-        try CloudKitInsertQuery(id: value.id, value: value, replace: replace, database: database, config: config)
+        guard isAvailable else { throw CryoError.backendNotAvailable }
+        return try CloudKitInsertQuery(id: value.id, value: value, replace: replace, database: database, config: config)
     }
     
     public func update<Model: CryoModel>(id: String? = nil, from: Model.Type) throws -> CloudKitUpdateQuery<Model> {
-        try CloudKitUpdateQuery(from: Model.self, id: id, database: database, config: config)
+        guard isAvailable else { throw CryoError.backendNotAvailable }
+        return try CloudKitUpdateQuery(from: Model.self, id: id, database: database, config: config)
     }
     
     public func delete<Model: CryoModel>(id: String? = nil, from: Model.Type) throws -> CloudKitDeleteQuery<Model> {
-        try CloudKitDeleteQuery(from: Model.self, id: id, database: database, config: config)
+        guard isAvailable else { throw CryoError.backendNotAvailable }
+        return try CloudKitDeleteQuery(from: Model.self, id: id, database: database, config: config)
     }
 }
 
@@ -132,6 +190,7 @@ extension CloudKitAdaptor: CryoDatabaseAdaptor {
 
 extension CloudKitAdaptor: ResilientStoreBackend {
     func execute(operation: DatabaseOperation) async throws {
+        guard isAvailable else { throw CryoError.backendNotAvailable }
         switch operation {
         case .insert(_, let tableName, let rowId, let data):
             guard let schema = CryoSchemaManager.shared.schema(tableName: tableName) else {
@@ -442,7 +501,7 @@ public extension CloudKitAdaptor {
             let retryAfter = error.retryAfterSeconds ?? defaultDelay
             log?(.info, "Rate limit reached, retrying in \(retryAfter) seconds.")
             
-            await Task.sleep(seconds: retryAfter)
+            try? await Task.sleep(nanoseconds: UInt64(retryAfter * 1_000_000_000))
             return try await cloudKitOperation(
                 maxAttempts: maxAttempts - 1,
                 defaultDelay: min(defaultDelay * 2, 30),

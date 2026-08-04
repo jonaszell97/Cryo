@@ -5,6 +5,10 @@ final class CryoLocalTests: XCTestCase {
     struct AnyKey<Value: Codable>: CryoKey {
         let id: String
         
+        init(id: String) {
+            self.id = id
+        }
+
         init(id: String, for: Value.Type) {
             self.id = id
         }

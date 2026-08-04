@@ -79,9 +79,10 @@ public final class SynchronizedStore {
     
     /// Create a synchronized store.
     public init(config: SynchronizedStoreConfig) async throws {
-        let cloudKitStore = await CloudKitAdaptor(config: config.cryoConfig,
-                                                  containerIdentifier: config.containerIdentifier,
-                                                  database: \.privateCloudDatabase)
+        let cloudKitStore = CloudKitAdaptor(config: config.cryoConfig,
+                                            containerIdentifier: config.containerIdentifier,
+                                            database: \.privateCloudDatabase)
+        _ = await cloudKitStore.connect()
         
         let backend = try await ResilientCloudKitStore(store: cloudKitStore,
                                                        config: .init(identifier: "\(config.storeIdentifier)_resilient",
