@@ -81,6 +81,21 @@ public struct DocumentAdaptor {
         try? fileManager.createDirectory(at: containerUrl, withIntermediateDirectories: false)
         return DocumentAdaptor(config: config, url: containerUrl, usesUbiquitousStorage: true, fileManager: fileManager)
     }
+
+    /// Create an iCloud based document adaptor without performing ubiquity I/O on
+    /// the caller's actor.
+    ///
+    /// - Parameter fileManager: The file manager instance to use for file operations.
+    /// - Returns: A document adaptor using the iCloud documents URL, or `nil` if iCloud is not available.
+    public static func cloud(
+        config: CryoConfig,
+        subdirectory: String? = ".cryo",
+        fileManager: FileManager = .default
+    ) async -> DocumentAdaptor? {
+        await Task.detached(priority: .userInitiated) {
+            Self.cloud(config: config, subdirectory: subdirectory, fileManager: fileManager)
+        }.value
+    }
 }
 
 extension DocumentAdaptor: CryoAdaptor, CryoSynchronousAdaptor {

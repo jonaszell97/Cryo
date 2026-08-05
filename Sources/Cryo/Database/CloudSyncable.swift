@@ -101,6 +101,10 @@ public protocol CloudSyncableModel: CryoModel {
     
     /// Consolidate the data from a local and remote instance.
     func consolidate(source: Self)
+
+    /// Merge the best available remote instance into this live local instance.
+    @discardableResult
+    func mergeWithRemoteInstances() async -> Bool
     
     /// Determine if an instance should be preferred over another.
     static func compare(lhs: Self, rhs: Self) -> Int
@@ -277,34 +281,45 @@ public extension CloudSyncable {
             return localInstance
         }
         
+        _ = await localInstance.mergeWithRemoteInstances()
+        return localInstance
+    }
+
+    /// Merge the best available remote instance into this live local instance.
+    ///
+    /// Keeping the receiver alive is important for local-first startup: views and
+    /// callbacks continue to reference the same object when CloudKit becomes
+    /// available after launch.
+    @discardableResult
+    func mergeWithRemoteInstances() async -> Bool {
         do {
             let remoteInstances = try await Self.loadRemoteInstances()
-            logger.log("[\(ModelType.self)] Found \(remoteInstances.count) other remote instances")
-            
-            var bestInstance = localInstance
+            Self.logger.log("[\(ModelType.self)] Found \(remoteInstances.count) other remote instances")
+
+            var bestInstance = self
             for remoteInstance in remoteInstances {
                 if Self.compare(lhs: remoteInstance, rhs: bestInstance) > 0 {
-                    logger.log("[\(ModelType.self)] Found better instance \(remoteInstance.name) with recency \(remoteInstance.recency) (compared with \(bestInstance.name) \(bestInstance.recency)")
+                    Self.logger.log("[\(ModelType.self)] Found better instance \(remoteInstance.name) with recency \(remoteInstance.recency) (compared with \(bestInstance.name) \(bestInstance.recency)")
                     bestInstance = remoteInstance
                 }
             }
-            
-            if localInstance !== bestInstance {
-                logger.log("[\(ModelType.self)] Copying data from best instance \(bestInstance.name) with recency \(bestInstance.recency)")
-                localInstance.consolidate(source: bestInstance)
+
+            if self !== bestInstance {
+                Self.logger.log("[\(ModelType.self)] Copying data from best instance \(bestInstance.name) with recency \(bestInstance.recency)")
+                consolidate(source: bestInstance)
             }
             else {
-                logger.log("[\(ModelType.self)] Using local instance \(localInstance.name) with recency \(localInstance.recency)")
+                Self.logger.log("[\(ModelType.self)] Using local instance \(name) with recency \(recency)")
             }
-            
+
             try await Self.cleanupOldInstances(instances: remoteInstances)
+            await saveLocally()
+            return true
         }
         catch {
-            logger.error("[\(ModelType.self)] Failed to load cloud instances: \(error)")
+            Self.logger.error("[\(ModelType.self)] Failed to merge cloud instances: \(error)")
+            return false
         }
-        
-        await localInstance.saveLocally()
-        return localInstance
     }
     
     /// Clean up old instances.
