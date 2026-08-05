@@ -5,6 +5,10 @@ final class CryoLocalTests: XCTestCase {
     struct AnyKey<Value: Codable>: CryoKey {
         let id: String
         
+        init(id: String) {
+            self.id = id
+        }
+
         init(id: String, for: Value.Type) {
             self.id = id
         }
@@ -25,7 +29,7 @@ final class CryoLocalTests: XCTestCase {
         userDefaults?.removePersistentDomain(forName: "CryoTestsSuite")
     }
     
-    func adaptorTest(for adaptor: CryoAdaptor) async {
+    func adaptorTest(for adaptor: CryoSynchronousAdaptor) async {
         do {
             // Remove All
             try await adaptor.removeAll()
@@ -99,7 +103,7 @@ final class CryoLocalTests: XCTestCase {
     }
     
     func testLocalDocumentAdaptor() async {
-        let adaptor = DocumentAdaptor.local()
+        let adaptor = DocumentAdaptor.local(config: .init())
         await self.adaptorTest(for: adaptor)
     }
 }

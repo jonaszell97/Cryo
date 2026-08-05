@@ -12,16 +12,18 @@ let package = Package(
     products: [
         .library(
             name: "Cryo",
-            targets: ["Cryo"]),
+            targets: ["Cryo"]
+        ),
     ],
     dependencies: [
+        .package(url: "https://github.com/jonaszell97/Toolbox.git", branch: "dev")
     ],
     targets: [
         .target(
             name: "Cryo",
-            dependencies: []),
+            dependencies: ["Toolbox"]),
         .testTarget(
             name: "CryoTests",
-            dependencies: ["Cryo"]),
+            dependencies: ["Cryo", "Toolbox"]),
     ]
 )

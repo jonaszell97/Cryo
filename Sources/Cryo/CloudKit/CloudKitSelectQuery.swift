@@ -1,0 +1,262 @@
+
+import CloudKit
+import Foundation
+import os
+
+public final class CloudKitSelectQuery<Model: CryoModel> {
+    /// The untyped query.
+    let untypedQuery: UntypedCloudKitSelectQuery
+    
+    /// Create an UPDATE query.
+    internal init(from: Model.Type, id: String?, database: CKDatabase, config: CryoConfig?) throws {
+        self.untypedQuery = try .init(for: Model.self, id: id, database: database, config: config)
+    }
+}
+
+extension CloudKitSelectQuery: CryoSelectQuery {
+    public var id: String? { untypedQuery.id }
+    public var whereClauses: [CryoQueryWhereClause] { untypedQuery.whereClauses }
+    
+    public var queryString: String {
+        untypedQuery.queryString
+    }
+    
+    @discardableResult public func execute() async throws -> [Model] {
+        try await untypedQuery.execute() as! [Model]
+    }
+    
+    
+    public func `where`<Value: _AnyCryoColumnValue>(
+        _ columnName: String,
+        operation: CryoComparisonOperator,
+        value: Value
+    ) throws -> Self {
+        _ = try untypedQuery.where(columnName, operation: operation, value: value)
+        return self
+    }
+    
+    /// Limit the number of results this query returns.
+    public func limit(_ limit: Int) -> Self {
+        _ = untypedQuery.limit(limit)
+        return self
+    }
+    
+    /// Define a sorting for the results of this query.
+    public func sort(by columnName: String, _ order: CryoSortingOrder) -> Self {
+        _ = untypedQuery.sort(by: columnName, order)
+        return self
+    }
+}
+
+internal class UntypedCloudKitSelectQuery {
+    /// The ID of the record to fetch.
+    let id: String?
+    
+    /// The model type.
+    let modelType: any CryoModel.Type
+    
+    /// The where clauses.
+    var whereClauses: [CryoQueryWhereClause]
+    
+    /// The query results limit.
+    var resultsLimit: Int? = nil
+    
+    /// The sorting clauses.
+    var sortingClauses: [(String, CryoSortingOrder)] = []
+    
+    /// The database to store to.
+    let database: CKDatabase
+    
+    /// The cryo config.
+    let config: CryoConfig?
+    
+    /// Create a SELECT query.
+    internal init(for modelType: any CryoModel.Type, id: String?, database: CKDatabase, config: CryoConfig?) throws {
+        self.id = id
+        self.database = database
+        self.modelType = modelType
+        self.whereClauses = []
+        self.config = config
+    }
+    
+    /// The complete query string.
+    public var queryString: String {
+        var result = "SELECT * FROM \(modelType.tableName)"
+        for i in 0..<whereClauses.count {
+            if i == 0 {
+                result += " WHERE "
+            }
+            else {
+                result += " AND "
+            }
+            
+            let clause = whereClauses[i]
+            result += "\(clause.columnName) \(CloudKitAdaptor.formatOperator(clause.operation)) \(CloudKitAdaptor.placeholderSymbol(for: clause.value))"
+        }
+        
+        return result
+    }
+    
+    /// Limit the number of results this query returns.
+    public func limit(_ limit: Int) -> Self {
+        self.resultsLimit = limit
+        return self
+    }
+    
+    /// Define a sorting for the results of this query.
+    public func sort(by columnName: String, _ order: CryoSortingOrder) -> Self {
+        self.sortingClauses.append((columnName, order))
+        return self
+    }
+}
+
+extension UntypedCloudKitSelectQuery {
+    static func fetch(id: String?,
+                      modelType: any CryoModel.Type,
+                      whereClauses: [CryoQueryWhereClause],
+                      resultsLimit: Int?,
+                      sortingClauses: [(String, CryoSortingOrder)],
+                      database: CKDatabase,
+                      log: Optional<(OSLogType, String) -> Void> = nil
+    ) async throws -> [CKRecord] {
+        if let id {
+            return try await CloudKitAdaptor.cloudKitOperation(log: log) {
+                try [await database.record(for: .init(recordName: id))]
+            }
+        }
+        
+        // Fetch all records matching WHERE clauses
+        
+        let predicate: NSPredicate
+        if whereClauses.isEmpty {
+            predicate = NSPredicate(value: true)
+        }
+        else {
+            var predicateFormat = ""
+            var predicateArgs = [Any]()
+            
+            for i in 0..<whereClauses.count {
+                if i > 0 {
+                    predicateFormat += " AND "
+                }
+                
+                let clause = whereClauses[i]
+                predicateFormat += "(\(clause.columnName) \(CloudKitAdaptor.formatOperator(clause.operation)) \(CloudKitAdaptor.placeholderSymbol(for: clause.value)))"
+                predicateArgs.append(CloudKitAdaptor.queryArgument(for: clause.value))
+            }
+            
+            predicate = NSPredicate(format: predicateFormat, argumentArray: predicateArgs)
+        }
+        
+        let query = CKQuery(recordType: modelType.tableName, predicate: predicate)
+        query.sortDescriptors = sortingClauses.map { .init(key: $0.0, ascending: $0.1 == .ascending) }
+        
+        var data = [CKRecord]()
+        
+        var (batch, cursor) = try await CloudKitAdaptor.cloudKitOperation(log: log) {
+            try await database.records(matching: query)
+        }
+        
+        data.append(contentsOf: try batch.map { recordId, recordResult in
+            switch recordResult {
+            case .success(let record):
+                return record
+            case .failure(let error):
+                throw error
+            }
+        })
+        
+        while cursor != nil {
+            let (nextBatch, nextCursor) = try await CloudKitAdaptor.cloudKitOperation(log: log) {
+                try await database.records(continuingMatchFrom: cursor!)
+            }
+            
+            data.append(contentsOf: try nextBatch.map { recordId, recordResult in
+                switch recordResult {
+                case .success(let record):
+                    return record
+                case .failure(let error):
+                    throw error
+                }
+            })
+            
+            if let resultsLimit, data.count >= resultsLimit {
+                break
+            }
+            
+            cursor = nextCursor
+        }
+        
+        return data
+    }
+    
+    func decodeValue(from value: __CKRecordObjCValue?, column: CryoSchemaColumn) async throws -> CryoColumnValueWrapper? {
+        switch column {
+        case .value(_, let type, let metaType, _):
+            guard let value else {
+                if let optionalType = metaType as? _CryoOptionalValue.Type {
+                    return .init(value: optionalType.nilValue as! _AnyCryoColumnValue)
+                }
+                
+                return nil
+            }
+            
+            return CloudKitAdaptor.decodeValue(from: value, as: type)
+        case .oneToOneRelation(_, let modelType, _):
+            let id = (value as! NSString) as String
+            guard let result = try await UntypedCloudKitSelectQuery(for: modelType, id: id, database: database, config: config)
+                .execute().first else {
+                return nil
+            }
+            
+            return CryoColumnValueWrapper(value: result)
+        }
+    }
+}
+
+extension UntypedCloudKitSelectQuery {
+    public func execute() async throws -> [any CryoModel] {
+        var log: Optional<(OSLogType, String) -> Void> = nil
+        
+        #if DEBUG
+        log = config?.log
+        config?.log?(.debug, "[CloudKitAdaptor] \(queryString), WHERE \(whereClauses.map { "\($0.value)" })")
+        #endif
+        
+        let records = try await Self.fetch(id: id, modelType: modelType, whereClauses: whereClauses,
+                                           resultsLimit: resultsLimit, sortingClauses: sortingClauses,
+                                           database: database, log: log)
+        
+        let schema = CryoSchemaManager.shared.schema(for: modelType)
+        
+        var results = [any CryoModel]()
+        for record in records {
+            var data = [String: CryoColumnValueWrapper]()
+            for columnDetails in schema.columns {
+                guard let value = try await self.decodeValue(from: record[columnDetails.columnName], column: columnDetails)
+                else {
+                    continue
+                }
+                
+                data[columnDetails.columnName] = value
+            }
+            
+            results.append(try schema.create(data))
+        }
+                          
+        return results
+    }
+    
+    /// Attach a WHERE clause to this query.
+    public func `where`<Value: _AnyCryoColumnValue>(
+        _ columnName: String,
+        operation: CryoComparisonOperator,
+        value: Value
+    ) throws -> Self {
+        self.whereClauses.append(.init(columnName: columnName,
+                                       operation: operation,
+                                       value: try .init(value: value)))
+        
+        return self
+    }
+}

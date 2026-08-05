@@ -1,15 +1,20 @@
 
 import Foundation
 
+/// Used to wrap optional values in a dictionary.
+internal struct CryoColumnValueWrapper {
+    let value: _AnyCryoColumnValue
+}
+
 /// Decoder that constructs a CryoModel value from a set of key-value pairs fetched from a database.
 internal class CryoModelDecoder: Decoder {
     var codingPath: Array<CodingKey> { [] }
     var userInfo: Dictionary<CodingUserInfoKey, Any> { [:] }
     
-    var data: [String: _AnyCryoColumnValue]
+    var data: [String: CryoColumnValueWrapper]
     
     /// Default initializer.
-    init(data: [String: _AnyCryoColumnValue]) {
+    init(data: [String: CryoColumnValueWrapper]) {
         self.data = data
     }
     
@@ -32,10 +37,10 @@ fileprivate class CryoModelKeyedDecodingContainer<K: CodingKey>: KeyedDecodingCo
     let codingPath: Array<CodingKey> = []
     var allKeys: Array<K> { [] }
     
-    var data: [String: _AnyCryoColumnValue]
+    var data: [String: CryoColumnValueWrapper]
     
     /// Default initializer.
-    init(data: [String: _AnyCryoColumnValue]) {
+    init(data: [String: CryoColumnValueWrapper]) {
         self.data = data
     }
     
@@ -44,7 +49,7 @@ fileprivate class CryoModelKeyedDecodingContainer<K: CodingKey>: KeyedDecodingCo
     func decodeNil(forKey key: K) throws -> Bool { false }
     
     func decode(_ type: Bool.Type, forKey key: K) throws -> Bool {
-        guard let data = self.data[key.stringValue], let value = data as? Bool else {
+        guard let data = self.data[key.stringValue], let value = data.value as? Bool else {
             throw DecodingError.keyNotFound(key, .init(codingPath: codingPath, debugDescription: ""))
         }
         
@@ -52,7 +57,7 @@ fileprivate class CryoModelKeyedDecodingContainer<K: CodingKey>: KeyedDecodingCo
     }
     
     func decode(_ type: String.Type, forKey key: K) throws -> String {
-        guard let data = self.data[key.stringValue], let value = data as? String else {
+        guard let data = self.data[key.stringValue], let value = data.value as? String else {
             throw DecodingError.keyNotFound(key, .init(codingPath: codingPath, debugDescription: ""))
         }
         
@@ -60,7 +65,7 @@ fileprivate class CryoModelKeyedDecodingContainer<K: CodingKey>: KeyedDecodingCo
     }
     
     func decode(_ type: Date.Type, forKey key: K) throws -> Date {
-        guard let data = self.data[key.stringValue], let value = data as? Date else {
+        guard let data = self.data[key.stringValue], let value = data.value as? Date else {
             throw DecodingError.keyNotFound(key, .init(codingPath: codingPath, debugDescription: ""))
         }
         
@@ -68,7 +73,7 @@ fileprivate class CryoModelKeyedDecodingContainer<K: CodingKey>: KeyedDecodingCo
     }
     
     func decode(_ type: Data.Type, forKey key: K) throws -> Data {
-        guard let data = self.data[key.stringValue], let value = data as? Data else {
+        guard let data = self.data[key.stringValue], let value = data.value as? Data else {
             throw DecodingError.keyNotFound(key, .init(codingPath: codingPath, debugDescription: ""))
         }
         
@@ -76,7 +81,7 @@ fileprivate class CryoModelKeyedDecodingContainer<K: CodingKey>: KeyedDecodingCo
     }
     
     func decode(_ type: Double.Type, forKey key: K) throws -> Double {
-        guard let data = self.data[key.stringValue], let value = data as? Double else {
+        guard let data = self.data[key.stringValue], let value = data.value as? Double else {
             throw DecodingError.keyNotFound(key, .init(codingPath: codingPath, debugDescription: ""))
         }
         
@@ -84,7 +89,7 @@ fileprivate class CryoModelKeyedDecodingContainer<K: CodingKey>: KeyedDecodingCo
     }
     
     func decode(_ type: Float.Type, forKey key: K) throws -> Float {
-        guard let data = self.data[key.stringValue], let value = data as? Float else {
+        guard let data = self.data[key.stringValue], let value = data.value as? Float else {
             throw DecodingError.keyNotFound(key, .init(codingPath: codingPath, debugDescription: ""))
         }
         
@@ -92,7 +97,7 @@ fileprivate class CryoModelKeyedDecodingContainer<K: CodingKey>: KeyedDecodingCo
     }
     
     func decodeInt<T: BinaryInteger>(_ type: T.Type, forKey key: K) throws -> T {
-        guard let data = self.data[key.stringValue], let value = data as? T else {
+        guard let data = self.data[key.stringValue], let value = data.value as? T else {
             throw DecodingError.keyNotFound(key, .init(codingPath: codingPath, debugDescription: ""))
         }
         
@@ -112,6 +117,10 @@ fileprivate class CryoModelKeyedDecodingContainer<K: CodingKey>: KeyedDecodingCo
     
     func decode<T>(_ type: T.Type, forKey key: K) throws -> T where T: Decodable {
         guard let data = self.data[key.stringValue] else {
+            if let colType = type as? _CryoOptionalValue.Type {
+                return colType.nilValue as! T
+            }
+            
             throw DecodingError.keyNotFound(key, .init(codingPath: codingPath, debugDescription: ""))
         }
         
@@ -139,10 +148,10 @@ internal class CryoModelValueDecoder: Decoder {
     var codingPath: Array<CodingKey> { [] }
     var userInfo: Dictionary<CodingUserInfoKey, Any> { [:] }
     
-    let value: _AnyCryoColumnValue
+    let value: CryoColumnValueWrapper
     
     /// Default initializer.
-    init(value: _AnyCryoColumnValue) {
+    init(value: CryoColumnValueWrapper) {
         self.value = value
     }
     
@@ -161,25 +170,28 @@ internal class CryoModelValueDecoder: Decoder {
 
 fileprivate struct CryoModelSingleValueDecodingContainer: SingleValueDecodingContainer {
     var codingPath: [CodingKey] { [] }
-    let value: _AnyCryoColumnValue
+    let value: CryoColumnValueWrapper
 
     /// Default initializer.
-    init(value: _AnyCryoColumnValue) {
+    init(value: CryoColumnValueWrapper) {
         self.value = value
     }
 
     func decodeNil() -> Bool { false }
 
     func decode(_ type: Bool.Type) throws -> Bool {
-        guard let value = value as? Bool else {
-            throw DecodingError.typeMismatch(Bool.self, .init(codingPath: codingPath, debugDescription: "unexpected CryoPersistable: \(value)"))
+        if let value = value.value as? Bool {
+            return value
+        }
+        if let value = value.value as? Int {
+            return value != 0
         }
 
-        return value
+        throw DecodingError.typeMismatch(Bool.self, .init(codingPath: codingPath, debugDescription: "unexpected CryoPersistable: \(value)"))
     }
 
     func decode(_ type: String.Type) throws -> String {
-        guard let value = value as? String else {
+        guard let value = value.value as? String else {
             throw DecodingError.typeMismatch(String.self, .init(codingPath: codingPath, debugDescription: "unexpected CryoPersistable: \(value)"))
         }
 
@@ -187,7 +199,7 @@ fileprivate struct CryoModelSingleValueDecodingContainer: SingleValueDecodingCon
     }
 
     func decode(_ type: Date.Type) throws -> Date {
-        guard let value = value as? Date else {
+        guard let value = value.value as? Date else {
             throw DecodingError.typeMismatch(Date.self, .init(codingPath: codingPath, debugDescription: "unexpected CryoPersistable: \(value)"))
         }
 
@@ -195,7 +207,7 @@ fileprivate struct CryoModelSingleValueDecodingContainer: SingleValueDecodingCon
     }
 
     func decode(_ type: Data.Type) throws -> Data {
-        guard let value = value as? Data else {
+        guard let value = value.value as? Data else {
             throw DecodingError.typeMismatch(Data.self, .init(codingPath: codingPath, debugDescription: "unexpected CryoPersistable: \(value)"))
         }
 
@@ -203,7 +215,7 @@ fileprivate struct CryoModelSingleValueDecodingContainer: SingleValueDecodingCon
     }
 
     func decode(_ type: Double.Type) throws -> Double {
-        guard let value = value as? Double else {
+        guard let value = value.value as? Double else {
             throw DecodingError.typeMismatch(Double.self, .init(codingPath: codingPath, debugDescription: "unexpected CryoPersistable: \(value)"))
         }
 
@@ -211,7 +223,7 @@ fileprivate struct CryoModelSingleValueDecodingContainer: SingleValueDecodingCon
     }
 
     func decode(_ type: Float.Type) throws -> Float {
-        guard let value = value as? Float else {
+        guard let value = value.value as? Float else {
             throw DecodingError.typeMismatch(Float.self, .init(codingPath: codingPath, debugDescription: "unexpected CryoPersistable: \(value)"))
         }
 
@@ -219,7 +231,7 @@ fileprivate struct CryoModelSingleValueDecodingContainer: SingleValueDecodingCon
     }
     
     func decode(_ type: URL.Type) throws -> URL {
-        guard let value = value as? URL else {
+        guard let value = value.value as? URL else {
             throw DecodingError.typeMismatch(URL.self, .init(codingPath: codingPath, debugDescription: "unexpected CryoPersistable: \(value)"))
         }
         
@@ -227,11 +239,19 @@ fileprivate struct CryoModelSingleValueDecodingContainer: SingleValueDecodingCon
     }
 
     func decodeInt<T: BinaryInteger>(_ type: T.Type) throws -> T {
-        guard let value = value as? CryoColumnIntValue else {
+        guard let value = value.value as? CryoColumnIntValue else {
             throw DecodingError.typeMismatch(T.self, .init(codingPath: codingPath, debugDescription: "unexpected CryoPersistable: \(value)"))
         }
 
         return T(value.integerValue)
+    }
+    
+    func decode<T: _AnyCryoColumnValue>(_ type: [T].Type) throws -> [T] {
+        guard let value = value.value as? CryoColumnDataValue else {
+            throw DecodingError.typeMismatch(T.self, .init(codingPath: codingPath, debugDescription: "unexpected CryoPersistable: \(value)"))
+        }
+
+        return try [T](dataValue: value.dataValue)
     }
 
     func decode(_ type: Int.Type) throws -> Int { try decodeInt(Int.self) }
@@ -246,9 +266,25 @@ fileprivate struct CryoModelSingleValueDecodingContainer: SingleValueDecodingCon
     func decode(_ type: UInt64.Type) throws -> UInt64 { fatalError("UInt64 cannot be represented") }
 
     func decode<T>(_ type: T.Type) throws -> T where T: Decodable {
-        if T.self == URL.self { return try self.decode(URL.self) as! T }
-        if T.self == Data.self { return try self.decode(Data.self) as! T }
-        if T.self == Date.self { return try self.decode(Date.self) as! T }
+        if let value = value.value as? T {
+            return value
+        }
+        
+        if let dataType = T.self as? CryoColumnDataValue.Type {
+            guard let value = value.value as? CryoColumnDataValue else {
+                throw DecodingError.typeMismatch(T.self, .init(codingPath: codingPath, debugDescription: "unexpected CryoPersistable: \(value)"))
+            }
+            
+            return try dataType.init(dataValue: value.dataValue) as! T
+        }
+        
+        if let stringType = T.self as? CryoColumnStringValue.Type {
+            guard let value = value.value as? CryoColumnStringValue else {
+                throw DecodingError.typeMismatch(T.self, .init(codingPath: codingPath, debugDescription: "unexpected CryoPersistable: \(value)"))
+            }
+            
+            return stringType.init(stringValue: value.stringValue) as! T
+        }
         
         return try T(from: CryoModelValueDecoder(value: value))
     }

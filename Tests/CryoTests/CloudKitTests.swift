@@ -5,18 +5,30 @@ import XCTest
 fileprivate enum TestEnum: Int, CryoColumnIntValue, Hashable {
     case zero = 0
     case a = 300, b = 400, c = 500
+    
+    /// A default value for this type.
+    static var defaultValue: Self { .zero }
 }
 
 fileprivate struct TestModel: CryoModel {
+    @CryoColumn var id: String = UUID().uuidString
     @CryoColumn var x: Int16 = 0
     @CryoColumn var y: String = ""
     @CryoColumn var z: TestEnum = .c
+    
     @CryoAsset var w: URL
+    
+    @CryoColumn var a: [TestEnum] = [.a, .b, .c]
+    @CryoColumn var b: Int? = nil
+    @CryoColumn var c: [String: Int] = ["A": 1, "B": 2]
 }
 
 extension TestModel: Hashable {
     static func ==(lhs: TestModel, rhs: TestModel) -> Bool {
         guard lhs.x == rhs.x && lhs.y == rhs.y && lhs.z == rhs.z else {
+            return false
+        }
+        guard lhs.a == rhs.a && lhs.b == rhs.b && lhs.c == rhs.c else {
             return false
         }
         
@@ -31,6 +43,9 @@ extension TestModel: Hashable {
         hasher.combine(x)
         hasher.combine(y)
         hasher.combine(z)
+        hasher.combine(a)
+        hasher.combine(b)
+        hasher.combine(c)
         
         if let data = try? Data(contentsOf: w) {
             hasher.combine(data)
@@ -42,6 +57,10 @@ final class CryoDatabaseTests: XCTestCase {
     struct AnyKey<Value: CryoModel>: CryoKey {
         let id: String
         
+        init(id: String) {
+            self.id = id
+        }
+
         init(id: String, for: Value.Type) {
             self.id = id
         }
@@ -62,20 +81,21 @@ final class CryoDatabaseTests: XCTestCase {
         let value = TestModel(x: 123, y: "Hello there", z: .a, w: assetUrl)
         let value2 = TestModel(x: 3291, y: "Hello therexxx", z: .c, w: assetUrl)
         
-        XCTAssertEqual(Set(TestModel.schema.keys), ["x", "y", "z", "w"])
+        XCTAssertEqual(TestModel.schema.columns.map { $0.columnName }, ["id", "x", "y", "z", "w", "a", "b", "c"])
         
         do {
-            let key = AnyKey(id: "test-123", for: TestModel.self)
-            try await adaptor.persist(value, for: key)
+            try await adaptor.createTable(for: TestModel.self).execute()
             
-            let loadedValue = try await adaptor.load(with: key)
+            _ = try await adaptor.insert(value).execute()
+            
+            let loadedValue = try await adaptor.select(id: value.id, from: TestModel.self).execute().first
             XCTAssertEqual(value, loadedValue)
             
-            try await adaptor.persist(value2, for: AnyKey(id: "test-1234", for: TestModel.self))
+            _ = try await adaptor.insert(value2).execute()
             
-            let allValues = try await adaptor.loadAll(with: AnyKey<TestModel>.self)
+            let allValues = try await adaptor.select(from: TestModel.self).execute()
             XCTAssertNotNil(allValues)
-            XCTAssertEqual(Set(allValues!), Set([value, value2]))
+            XCTAssertEqual(Set(allValues), Set([value, value2]))
         }
         catch {
             XCTAssert(false, error.localizedDescription)

@@ -27,8 +27,12 @@ public struct UserDefaultsAdaptor {
     }
 }
 
-extension UserDefaultsAdaptor: CryoAdaptor {
+extension UserDefaultsAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
     public func persist<Key: CryoKey>(_ value: Key.Value?, for key: Key) async throws {
+        try self.persistSynchronously(value, for: key)
+    }
+    
+    public func persistSynchronously<Key: CryoKey>(_ value: Key.Value?, for key: Key) throws {
         guard let value else {
             defaults.removeObject(forKey: key.id)
             return
@@ -89,6 +93,10 @@ extension UserDefaultsAdaptor: CryoAdaptor {
     }
     
     public func removeAll() async throws {
+        try self.removeAllSynchronously()
+    }
+    
+    public func removeAllSynchronously() throws {
         let keys = defaults.dictionaryRepresentation().keys.map { $0 }
         for key in keys {
             defaults.removeObject(forKey: key)
