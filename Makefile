@@ -1,7 +1,8 @@
 .DEFAULT_GOAL := test-library-cryo-fast
 SIMULATOR ?= iPhone 16 Pro
-SIMULATOR_OS ?= latest
-DESTINATION ?= platform=iOS Simulator,name=$(SIMULATOR),OS=$(SIMULATOR_OS)
+SIMULATOR_OS ?=
+SIMULATOR_ID = $(shell sh Scripts/resolve-simulator.sh '$(SIMULATOR)' '$(SIMULATOR_OS)')
+DESTINATION ?= platform=iOS Simulator,id=$(SIMULATOR_ID)
 DERIVED_DATA_PATH ?= $(CURDIR)/DerivedData
 TEST_OPTIONS ?= -skipMacroValidation CODE_SIGNING_ALLOWED=NO
 RESULT_BUNDLE_OPTION = $(if $(RESULT_BUNDLE_PATH),-resultBundlePath '$(RESULT_BUNDLE_PATH)')

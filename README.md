@@ -36,8 +36,8 @@ make test-all                                      # full simulator suite
 The simulator target uses the shared `Cryo` package scheme and compiles the
 UIKit-gated `CloudSyncable` implementation. Choose an installed simulator with
 `SIMULATOR` and `SIMULATOR_OS`, or pass a complete Xcode destination with
-`DESTINATION`. For example, use `SIMULATOR_OS=26.0` when the named device is on
-that runtime rather than the newest installed runtime. Set
+`DESTINATION`. By default, the Makefile resolves the first installed simulator
+matching the device name. Set `SIMULATOR_OS=26.0` to require a specific runtime. Set
 `DEVELOPER_DIR` to select an Xcode installation. `DERIVED_DATA_PATH`,
 `TEST_OPTIONS`, and `RESULT_BUNDLE_PATH` are also configurable; each result bundle
 path must be new. The default options include `-skipMacroValidation` for Toolbox.
