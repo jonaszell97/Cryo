@@ -15,6 +15,9 @@ import Foundation
 public struct UserDefaultsAdaptor {
     /// The UserDefaults instance.
     let defaults: UserDefaults
+
+    /// Optional namespace used for keys and for scoped `removeAll` operations.
+    public let keyPrefix: String?
     
     /// Shared instance using `UserDefaults.standard`.
     public static let shared: UserDefaultsAdaptor = UserDefaultsAdaptor(defaults: .standard)
@@ -22,9 +25,12 @@ public struct UserDefaultsAdaptor {
     /// Create a user defaults adaptor.
     ///
     /// - Parameter defaults: The defaults instance to use.
-    public init(defaults: UserDefaults) {
+    public init(defaults: UserDefaults, keyPrefix: String? = nil) {
         self.defaults = defaults
+        self.keyPrefix = keyPrefix
     }
+
+    private func storageKey(_ id: String) -> String { (keyPrefix ?? "") + id }
 }
 
 extension UserDefaultsAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
@@ -34,60 +40,62 @@ extension UserDefaultsAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
     
     public func persistSynchronously<Key: CryoKey>(_ value: Key.Value?, for key: Key) throws {
         guard let value else {
-            defaults.removeObject(forKey: key.id)
+            defaults.removeObject(forKey: storageKey(key.id))
             return
         }
-        
-        switch value {
-        case let v as String:
-            defaults.set(v, forKey: key.id)
-        case let v as URL:
-            defaults.set(v, forKey: key.id)
-        case let v as Double:
-            defaults.set(v, forKey: key.id)
-        case let v as Float:
-            defaults.set(v, forKey: key.id)
-        case let v as Bool:
-            defaults.set(v, forKey: key.id)
-        case let v as Int:
-            defaults.set(v, forKey: key.id)
-        case let v as Date:
-            defaults.set(v.timeIntervalSinceReferenceDate, forKey: key.id)
-        case let v as Data:
-            defaults.set(v, forKey: key.id)
+
+        let id = storageKey(key.id)
+        switch Key.Value.self {
+        case is String.Type:
+            defaults.set(value as! String, forKey: id)
+        case is URL.Type:
+            defaults.set((value as! URL), forKey: id)
+        case is Double.Type:
+            defaults.set(value as! Double, forKey: id)
+        case is Float.Type:
+            defaults.set(value as! Float, forKey: id)
+        case is Bool.Type:
+            defaults.set(value as! Bool, forKey: id)
+        case is Int.Type:
+            defaults.set(value as! Int, forKey: id)
+        case is Date.Type:
+            defaults.set((value as! Date).timeIntervalSinceReferenceDate, forKey: id)
+        case is Data.Type:
+            defaults.set(value as! Data, forKey: id)
         default:
-            defaults.set(try JSONEncoder().encode(value), forKey: key.id)
+            defaults.set(try JSONEncoder().encode(value), forKey: id)
         }
     }
     
     public func loadSynchronously<Key: CryoKey>(with key: Key) throws -> Key.Value? {
+        let id = storageKey(key.id)
         switch Key.Value.self {
         case is String.Type:
-            guard defaults.object(forKey: key.id) != nil else { return nil }
-            return defaults.string(forKey: key.id) as? Key.Value
+            guard defaults.object(forKey: id) != nil else { return nil }
+            return defaults.string(forKey: id) as? Key.Value
         case is URL.Type:
-            guard defaults.object(forKey: key.id) != nil else { return nil }
-            return defaults.url(forKey: key.id) as? Key.Value
+            guard defaults.object(forKey: id) != nil else { return nil }
+            return defaults.url(forKey: id) as? Key.Value
         case is Double.Type:
-            guard defaults.object(forKey: key.id) != nil else { return nil }
-            return defaults.double(forKey: key.id) as? Key.Value
+            guard defaults.object(forKey: id) != nil else { return nil }
+            return defaults.double(forKey: id) as? Key.Value
         case is Float.Type:
-            guard defaults.object(forKey: key.id) != nil else { return nil }
-            return defaults.float(forKey: key.id) as? Key.Value
+            guard defaults.object(forKey: id) != nil else { return nil }
+            return defaults.float(forKey: id) as? Key.Value
         case is Bool.Type:
-            guard defaults.object(forKey: key.id) != nil else { return nil }
-            return defaults.bool(forKey: key.id) as? Key.Value
+            guard defaults.object(forKey: id) != nil else { return nil }
+            return defaults.bool(forKey: id) as? Key.Value
         case is Int.Type:
-            guard defaults.object(forKey: key.id) != nil else { return nil }
-            return defaults.integer(forKey: key.id) as? Key.Value
+            guard defaults.object(forKey: id) != nil else { return nil }
+            return defaults.integer(forKey: id) as? Key.Value
         case is Date.Type:
-            guard defaults.object(forKey: key.id) != nil else { return nil }
-            return Date(timeIntervalSinceReferenceDate: defaults.double(forKey: key.id)) as? Key.Value
+            guard defaults.object(forKey: id) != nil else { return nil }
+            return Date(timeIntervalSinceReferenceDate: defaults.double(forKey: id)) as? Key.Value
         case is Data.Type:
-            guard defaults.object(forKey: key.id) != nil else { return nil }
-            return defaults.data(forKey: key.id) as? Key.Value
+            guard defaults.object(forKey: id) != nil else { return nil }
+            return defaults.data(forKey: id) as? Key.Value
         default:
-            guard let data = defaults.data(forKey: key.id) else { return nil }
+            guard let data = defaults.data(forKey: id) else { return nil }
             return try JSONDecoder().decode(Key.Value.self, from: data)
         }
     }
@@ -97,7 +105,7 @@ extension UserDefaultsAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
     }
     
     public func removeAllSynchronously() throws {
-        let keys = defaults.dictionaryRepresentation().keys.map { $0 }
+        let keys = defaults.dictionaryRepresentation().keys.filter { keyPrefix == nil || $0.hasPrefix(keyPrefix!) }
         for key in keys {
             defaults.removeObject(forKey: key)
         }

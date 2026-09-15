@@ -29,7 +29,8 @@ final class CryoTestEnvironment {
         keyValueStore = UserDefaultsAdaptor(defaults: defaults)
         let documentRoot = root.appendingPathComponent("documents", isDirectory: true)
         try FileManager.default.createDirectory(at: documentRoot, withIntermediateDirectories: true)
-        documents = DocumentAdaptor(config: .init(), url: documentRoot, usesUbiquitousStorage: false)
+        documents = DocumentAdaptor(config: .init(), url: documentRoot,
+                                    usesUbiquitousStorage: false, ownsDirectory: true)
     }
 
     func tearDown() throws {

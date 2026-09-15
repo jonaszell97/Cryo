@@ -101,7 +101,7 @@ public protocol CloudSyncableModel: CryoModel {
     static func loadLocalInstances(in stores: CloudSyncStores<Self>) async throws -> [Self]?
 
     /// Load all remote instances.
-    static func loadRemoteInstances(includeSelf: Bool, in stores: CloudSyncStores<Self>) async throws -> [Self]
+    static func loadRemoteInstances(excludingIdentifier: String?, in stores: CloudSyncStores<Self>) async throws -> [Self]
 
     /// Remove an instance.
     func removeInstance(in stores: CloudSyncStores<Self>) async throws
@@ -131,17 +131,29 @@ public extension CloudSyncable {
     var name: String { identifier }
 
     /// A number that represents the recency of this instance (higher numbers represent a more recent instance).
-    var recency: Int { Int(lastModificationDate.timeIntervalSinceReferenceDate) }
+    var recency: Int { Int(lastModificationDate.timeIntervalSinceReferenceDate * 1_000_000) }
 
     /// Determine if an instance should be preferred over another.
     static func compare(lhs: Self, rhs: Self) -> Int {
-        Int(lhs.lastModificationDate.timeIntervalSinceReferenceDate) - Int(rhs.lastModificationDate.timeIntervalSinceReferenceDate)
+        if lhs.lastModificationDate > rhs.lastModificationDate { return 1 }
+        if lhs.lastModificationDate < rhs.lastModificationDate { return -1 }
+        return 0
     }
 
     /// Load a local instance with the given identifier.
     static func localInstance(withIdentifier identifier: String, in stores: CloudSyncStores<Self>) async -> Self? {
+        switch await localInstanceResult(withIdentifier: identifier, in: stores) {
+        case .success(let value): return value
+        case .failure(let error):
+            logger.error("[\(ModelType.self)] failed to load local instance \(identifier): \(error)")
+            return nil
+        }
+    }
+
+    private static func localInstanceResult(withIdentifier identifier: String,
+                                            in stores: CloudSyncStores<Self>) async -> Result<Self?, Error> {
         if let localInstance = stores.localInstance {
-            return await localInstance(identifier)
+            return .success(await localInstance(identifier))
         }
 
         Self.logger.log("[\(ModelType.self)] loading local instance \(identifier)")
@@ -151,11 +163,14 @@ public extension CloudSyncable {
 
         do {
             let key = LocalKey(deviceIdentifier: identifier)
-            return try await stores.local.load(with: key)
+            if let documents = stores.local as? DocumentAdaptor {
+                let data = try await documents.loadData(for: documents.documentUrl(for: key))
+                return .success(try data.map { try JSONDecoder().decode(Self.self, from: $0) })
+            }
+            return .success(try await stores.local.load(with: key))
         }
         catch {
-            logger.error("[\(ModelType.self)] failed to decode local instance \(identifier)")
-            return nil
+            return .failure(error)
         }
     }
 
@@ -168,7 +183,7 @@ public extension CloudSyncable {
 
         do {
             guard let keys = try stores.local.listInstanceKeysSynchronously() else {
-                return nil
+                return []
             }
 
             var result: [Self] = []
@@ -187,12 +202,22 @@ public extension CloudSyncable {
         }
         catch {
             logger.error("[\(ModelType.self)] failed to load all local instances: \(error)")
-            return []
+            return nil
         }
     }
 
     /// Load a remote instance with the given identifier.
     static func remoteInstance(withIdentifier identifier: String, in stores: CloudSyncStores<Self>) async -> Self? {
+        switch await remoteInstanceResult(withIdentifier: identifier, in: stores) {
+        case .success(let value): return value
+        case .failure(let error):
+            logger.error("[\(ModelType.self)] failed to load remote instance \(identifier): \(error)")
+            return nil
+        }
+    }
+
+    private static func remoteInstanceResult(withIdentifier identifier: String,
+                                             in stores: CloudSyncStores<Self>) async -> Result<Self?, Error> {
         Self.logger.log("[\(ModelType.self)] loading remote instance \(identifier)")
         defer {
             Self.logger.log("[\(ModelType.self)] finished loading remote instance \(identifier)")
@@ -201,7 +226,7 @@ public extension CloudSyncable {
         do {
             guard let remoteStore = stores.remote else {
                 logger.error("[\(ModelType.self)] Remote store not initialized")
-                return nil
+                return .success(nil)
             }
 
             let id = ModelType.identifier(for: identifier)
@@ -209,19 +234,19 @@ public extension CloudSyncable {
 
             guard let model = results.first else {
                 logger.warning("[\(ModelType.self)] no remote instance found for identifier \(identifier)")
-                return nil
+                return .success(nil)
             }
 
-            return try model.createInstance()
+            return .success(try model.createInstance())
         }
         catch {
-            logger.error("[\(ModelType.self)] failed to decode remote instance \(identifier)")
-            return nil
+            return .failure(error)
         }
     }
 
     /// Load all remote instances.
-    static func loadRemoteInstances(includeSelf: Bool = false, in stores: CloudSyncStores<Self>) async throws -> [Self] {
+    static func loadRemoteInstances(excludingIdentifier: String? = nil,
+                                    in stores: CloudSyncStores<Self>) async throws -> [Self] {
         guard let remoteStore = stores.remote else {
             logger.error("[\(ModelType.self)] Remote store not initialized")
             return []
@@ -233,7 +258,7 @@ public extension CloudSyncable {
         var instances: [Self] = []
         for modelInstance in modelInstances {
             let deviceId = modelInstance.deviceIdentifier
-            if !includeSelf && deviceId == UIDevice.currentDeviceIdentifier {
+            if deviceId == excludingIdentifier {
                 continue
             }
 
@@ -254,7 +279,12 @@ public extension CloudSyncable {
             Self.logger.log("[\(ModelType.self)] saving instance \(self.identifier) locally")
 
             let key = LocalKey(deviceIdentifier: identifier)
-            try stores.local.persistSynchronously(self, for: key)
+            if let documents = stores.local as? DocumentAdaptor {
+                let data = try JSONEncoder().encode(self)
+                try await documents.persist(data, url: documents.documentUrl(for: key))
+            } else {
+                try await stores.local.persist(self, for: key)
+            }
         }
         catch {
             Self.logger.error("[\(ModelType.self)] error saving instance locally: \(error.localizedDescription)")
@@ -293,8 +323,25 @@ public extension CloudSyncable {
 
     /// Load the newest instance of a type.
     static func loadInstance(withIdentifier identifier: String, in stores: CloudSyncStores<Self>,
-                             loadRemoteInstances: Bool = true) async -> Self {
-        let localInstance = await Self.localInstance(withIdentifier: identifier, in: stores) ?? .init(identifier: identifier)
+                             loadRemoteInstances: Bool = true) async -> Self? {
+        do {
+            return try await loadInstanceReportingErrors(withIdentifier: identifier, in: stores,
+                                                         loadRemoteInstances: loadRemoteInstances)
+        } catch {
+            logger.error("[\(ModelType.self)] failed to load instance \(identifier): \(error)")
+            return nil
+        }
+    }
+
+    /// Load an instance while distinguishing a missing value from a backend or decoding failure.
+    static func loadInstanceReportingErrors(withIdentifier identifier: String,
+                                            in stores: CloudSyncStores<Self>,
+                                            loadRemoteInstances: Bool = true) async throws -> Self {
+        let localInstance: Self
+        switch await localInstanceResult(withIdentifier: identifier, in: stores) {
+        case .success(let stored): localInstance = stored ?? .init(identifier: identifier)
+        case .failure(let error): throw error
+        }
         logger.log("[\(ModelType.self)] Loaded local instance for device \(identifier) with recency \(localInstance.recency)")
 
         guard loadRemoteInstances else {
@@ -302,7 +349,7 @@ public extension CloudSyncable {
             return localInstance
         }
 
-        _ = await localInstance.mergeWithRemoteInstances(in: stores)
+        try await localInstance.mergeWithRemoteInstancesReportingErrors(in: stores)
         return localInstance
     }
 
@@ -314,27 +361,7 @@ public extension CloudSyncable {
     @discardableResult
     func mergeWithRemoteInstances(in stores: CloudSyncStores<Self>) async -> Bool {
         do {
-            let remoteInstances = try await Self.loadRemoteInstances(in: stores)
-            Self.logger.log("[\(ModelType.self)] Found \(remoteInstances.count) other remote instances")
-
-            var bestInstance = self
-            for remoteInstance in remoteInstances {
-                if Self.compare(lhs: remoteInstance, rhs: bestInstance) > 0 {
-                    Self.logger.log("[\(ModelType.self)] Found better instance \(remoteInstance.name) with recency \(remoteInstance.recency) (compared with \(bestInstance.name) \(bestInstance.recency)")
-                    bestInstance = remoteInstance
-                }
-            }
-
-            if self !== bestInstance {
-                Self.logger.log("[\(ModelType.self)] Copying data from best instance \(bestInstance.name) with recency \(bestInstance.recency)")
-                consolidate(source: bestInstance)
-            }
-            else {
-                Self.logger.log("[\(ModelType.self)] Using local instance \(name) with recency \(recency)")
-            }
-
-            try await Self.cleanupOldInstances(instances: remoteInstances, in: stores)
-            await saveLocally(in: stores)
+            try await mergeWithRemoteInstancesReportingErrors(in: stores)
             return true
         }
         catch {
@@ -343,41 +370,25 @@ public extension CloudSyncable {
         }
     }
 
-    /// Clean up old instances.
-    static func cleanupOldInstances(instances: [Self], in stores: CloudSyncStores<Self>) async throws {
-        logger.log("[\(ModelType.self)] cleaning up \(instances.count) old instances")
+    private func mergeWithRemoteInstancesReportingErrors(in stores: CloudSyncStores<Self>) async throws {
+        let remoteInstances = try await Self.loadRemoteInstances(excludingIdentifier: identifier, in: stores)
+        Self.logger.log("[\(ModelType.self)] Found \(remoteInstances.count) other remote instances")
 
-        var highestRecencyByDeviceId: [String: (Int, Self)] = [:]
-        for instance in instances {
-            if let (highestRecency, _) = highestRecencyByDeviceId[instance.identifier] {
-                if instance.recency > highestRecency {
-                    highestRecencyByDeviceId[instance.identifier] = (instance.recency, instance)
-                }
-            }
-            else {
-                highestRecencyByDeviceId[instance.identifier] = (instance.recency, instance)
+        var bestInstance = self
+        for remoteInstance in remoteInstances {
+            if Self.compare(lhs: remoteInstance, rhs: bestInstance) > 0 {
+                Self.logger.log("[\(ModelType.self)] Found better instance \(remoteInstance.name) with recency \(remoteInstance.recency) (compared with \(bestInstance.name) \(bestInstance.recency)")
+                bestInstance = remoteInstance
             }
         }
 
-        for instance in instances {
-            guard let (_, highestRecencyInstance) = highestRecencyByDeviceId[instance.identifier] else {
-                continue
-            }
-
-            if instance.identifier != highestRecencyInstance.identifier {
-                logger.log("[\(ModelType.self)] Deleting old instance \(instance.identifier) from device \(instance.name) (recency \(instance.recency)).")
-                try await instance.removeInstance(in: stores)
-            }
+        if self !== bestInstance {
+            Self.logger.log("[\(ModelType.self)] Copying data from best instance \(bestInstance.name) with recency \(bestInstance.recency)")
+            consolidate(source: bestInstance)
+        } else {
+            Self.logger.log("[\(ModelType.self)] Using local instance \(name) with recency \(recency)")
         }
-
-        logger.log("[\(ModelType.self)] finished cleaning up old instances for type")
-    }
-}
-
-
-fileprivate extension UIDevice {
-    static var currentDeviceIdentifier: String {
-        current.identifierForVendor?.uuidString ?? ""
+        await saveLocally(in: stores)
     }
 }
 

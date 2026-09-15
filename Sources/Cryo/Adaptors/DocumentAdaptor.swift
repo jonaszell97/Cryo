@@ -19,6 +19,16 @@ import Foundation
 /// ```
 public struct DocumentAdaptor {
     internal var makeMetadataQuery: () -> any UbiquitousMetadataQuerying = { SystemUbiquitousMetadataQuery() }
+    internal var coordinate: (URL, Bool, @escaping (URL) -> Void) throws -> Void = { url, writing, accessor in
+        let coordinator = NSFileCoordinator()
+        var coordinationError: NSError?
+        if writing {
+            coordinator.coordinate(writingItemAt: url, options: [], error: &coordinationError, byAccessor: accessor)
+        } else {
+            coordinator.coordinate(readingItemAt: url, options: [], error: &coordinationError, byAccessor: accessor)
+        }
+        if let coordinationError { throw coordinationError }
+    }
 
     /// The cryo config.
     public let config: CryoConfig
@@ -31,17 +41,22 @@ public struct DocumentAdaptor {
     
     /// Whether or not this adaptor uses iCloud ubiquitous storage.
     public let usesUbiquitousStorage: Bool
+
+    /// Whether this adaptor owns the contents of `url` and may clear them.
+    public let ownsDirectory: Bool
     
     /// Create a document adaptor.
     ///
     /// - Parameters:
     ///   - url: The URL to the directory where data should be stored.
     ///   - fileManager: The file manager instance to use for file operations.
-    public init(config: CryoConfig, url: URL, usesUbiquitousStorage: Bool, fileManager: FileManager = .default) {
+    public init(config: CryoConfig, url: URL, usesUbiquitousStorage: Bool,
+                ownsDirectory: Bool = false, fileManager: FileManager = .default) {
         self.config = config
         self.url = url
         self.fileManager = fileManager
         self.usesUbiquitousStorage = usesUbiquitousStorage
+        self.ownsDirectory = ownsDirectory
     }
     
     /// The shared local document adaptor.
@@ -59,8 +74,13 @@ public struct DocumentAdaptor {
             url = url.appendingPathComponent(subdirectory)
         }
         
-        try? fileManager.createDirectory(at: url, withIntermediateDirectories: false)
-        return DocumentAdaptor(config: config, url: url, usesUbiquitousStorage: false, fileManager: fileManager)
+        do {
+            try fileManager.createDirectory(at: url, withIntermediateDirectories: true)
+        } catch {
+            config.log?(.error, "[DocumentAdaptor.local] failed to create directory: \(error)")
+        }
+        return DocumentAdaptor(config: config, url: url, usesUbiquitousStorage: false,
+                               ownsDirectory: subdirectory != nil, fileManager: fileManager)
     }
     
     /// Create an iCloud based document adaptor.
@@ -80,8 +100,13 @@ public struct DocumentAdaptor {
             containerUrl = containerUrl.appendingPathComponent(subdirectory)
         }
         
-        try? fileManager.createDirectory(at: containerUrl, withIntermediateDirectories: false)
-        return DocumentAdaptor(config: config, url: containerUrl, usesUbiquitousStorage: true, fileManager: fileManager)
+        do {
+            try fileManager.createDirectory(at: containerUrl, withIntermediateDirectories: true)
+        } catch {
+            config.log?(.error, "[DocumentAdaptor.cloud] failed to create directory: \(error)")
+        }
+        return DocumentAdaptor(config: config, url: containerUrl, usesUbiquitousStorage: true,
+                               ownsDirectory: subdirectory != nil, fileManager: fileManager)
     }
 
     /// Create an iCloud based document adaptor without performing ubiquity I/O on
@@ -101,13 +126,11 @@ public struct DocumentAdaptor {
 }
 
 extension DocumentAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
-    func documentUrl<Key: CryoKey>(for key: Key) -> URL {
-        if #available(iOS 16, macOS 13, *) {
-            return self.url.appending(component: key.id)
+    func documentUrl<Key: CryoKey>(for key: Key) throws -> URL {
+        guard !key.id.contains("/"), !key.id.contains("\\"), !key.id.contains("..") else {
+            throw CocoaError(.fileWriteInvalidFileName)
         }
-        else {
-            return self.url.appendingPathComponent(key.id)
-        }
+        return self.url.appendingPathComponent(key.id)
     }
     
     public func persist<Key: CryoKey>(_ value: Key.Value?, for key: Key) async throws {
@@ -151,21 +174,20 @@ extension DocumentAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
     public func persistSynchronously(_ data: Data?, url: URL) throws {
         config.log?(.info, "[DocumentAdaptor.persistSynchronously] to \(url)")
         
-        var coordinationError: NSError? = nil
         var writeError: Error? = nil
-        
-        // Use the coordinationError variable to capture the error information of the coordinate method.
-        // If an NSError pointer is not provided, errors occurring during the coordination process will not be caught and handled.
-        config.log?(.info, "[DocumentAdaptor.persistSynchronously] starting coordination")
-//        coordinator.coordinate(writingItemAt: url, options: [.forDeleting], error: &coordinationError) { url in
+        let access: (URL) -> Void = { coordinatedURL in
             config.log?(.info, "[DocumentAdaptor.persistSynchronously] in coordination callback")
             do {
                 if let data {
                     config.log?(.info, "[DocumentAdaptor.persistSynchronously] write \(data.count) bytes")
-                    try data.write(to: url)
+                    try data.write(to: coordinatedURL, options: .atomic)
                 }
                 else {
-                    try self.fileManager.removeItem(at: url)
+                    do {
+                        try self.fileManager.removeItem(at: coordinatedURL)
+                    } catch let error as CocoaError where error.code == .fileNoSuchFile {
+                        // Removing a missing value is a successful no-op.
+                    }
                 }
                 
                 config.log?(.info, "[DocumentAdaptor.persistSynchronously] completed coordination callback")
@@ -174,7 +196,13 @@ extension DocumentAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
                 writeError = error
                 config.log?(.info, "[DocumentAdaptor.persistSynchronously] error in coordination callback: \(error)")
             }
-//        }
+        }
+
+        if usesUbiquitousStorage {
+            try coordinate(url, true, access)
+        } else {
+            access(url)
+        }
         
         // Check outside the closure to see if an error occurred
         if let error = writeError {
@@ -182,11 +210,6 @@ extension DocumentAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
             throw error
         }
         
-        // Check if an error occurred during coordination
-        if let coordinationError = coordinationError {
-            config.log?(.info, "[DocumentAdaptor.persistSynchronously] throwing coordination error: \(coordinationError)")
-            throw coordinationError
-        }
     }
     
     public func remove<Key: CryoKey>(key: Key) async throws {
@@ -214,57 +237,76 @@ extension DocumentAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
     }
     
     public func loadSynchronously<Key: CryoKey>(with key: Key) throws -> Key.Value? {
-        let documentUrl = self.documentUrl(for: key)
-        
-        var coordinationError: NSError?
+        let documentUrl = try self.documentUrl(for: key)
+        guard let data = try loadDataSynchronously(for: documentUrl) else { return nil }
+        return try JSONDecoder().decode(Key.Value.self, from: data)
+    }
+
+    /// Read raw document data without decoding it.
+    public func loadData(for url: URL) async throws -> Data? {
+        try await Task.detached(priority: .userInitiated) {
+            try loadDataSynchronously(for: url)
+        }.value
+    }
+
+    func loadDataSynchronously(for documentUrl: URL) throws -> Data? {
         var readError: Error? = nil
         var data: Data? = nil
-        
-        // coordinator.coordinate(readingItemAt: url, options: [], error: &coordinationError) { url in
+
+        let access: (URL) -> Void = { coordinatedURL in
             do {
-                data = try Data(contentsOf: documentUrl)
+                data = try Data(contentsOf: coordinatedURL)
             } catch {
                 if (error as NSError).code != NSFileReadNoSuchFileError {
                     readError = error
                 }
             }
-        //}
+        }
+
+        if usesUbiquitousStorage {
+            try coordinate(documentUrl, false, access)
+        } else {
+            access(documentUrl)
+        }
         
         // Check outside the closure to see if an error occurred
         if let error = readError {
             throw error
         }
         
-        // Check if an error occurred during reconciliation
-        if let coordinationError = coordinationError {
-            throw coordinationError
-        }
-        
-        guard let data else {
-            return nil
-        }
-        
-        return try JSONDecoder().decode(Key.Value.self, from: data)
+        return data
     }
     
     public func removeAll() async throws {
-        let urls = try FileManager.default.contentsOfDirectory(at: self.url, includingPropertiesForKeys: nil)
+        guard ownsDirectory else {
+            throw CryoError.featureNotAvailable(message: "removeAll requires an adaptor that owns a scoped directory")
+        }
+        let urls = try fileManager.contentsOfDirectory(at: self.url, includingPropertiesForKeys: [.isDirectoryKey])
         for url in urls {
+            guard try url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory != true else { continue }
             try await self.persist(nil, url: url)
         }
     }
     
     public func removeAllSynchronously() throws {
-        let urls = try FileManager.default.contentsOfDirectory(at: self.url, includingPropertiesForKeys: nil)
+        guard ownsDirectory else {
+            throw CryoError.featureNotAvailable(message: "removeAll requires an adaptor that owns a scoped directory")
+        }
+        let urls = try fileManager.contentsOfDirectory(at: self.url, includingPropertiesForKeys: [.isDirectoryKey])
         for url in urls {
+            guard try url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory != true else { continue }
             try self.persistSynchronously(nil, url: url)
         }
     }
     
     public func removeAll(matching condition: (URL) -> Bool) async throws {
-        let urls = try FileManager.default.contentsOfDirectory(at: self.url, includingPropertiesForKeys: nil)
+        guard ownsDirectory else {
+            throw CryoError.featureNotAvailable(message: "removeAll requires an adaptor that owns a scoped directory")
+        }
+        let urls = try fileManager.contentsOfDirectory(at: self.url, includingPropertiesForKeys: [.isDirectoryKey])
         for url in urls {
             guard condition(url) else { continue }
+            guard try url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory != true else { continue }
             try await self.persist(nil, url: url)
         }
     }
@@ -273,7 +315,7 @@ extension DocumentAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
     ///
     /// - Note: This method is not available in all adaptors.
     public func listInstanceKeys() async throws -> [String]? {
-        try FileManager.default.contentsOfDirectory(
+        try fileManager.contentsOfDirectory(
             at: self.url, includingPropertiesForKeys: nil
         ).map { $0.lastPathComponent }
     }
@@ -282,7 +324,7 @@ extension DocumentAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
     ///
     /// - Note: This method is not available in all adaptors.
     public func listInstanceKeysSynchronously() throws -> [String]? {
-        try FileManager.default.contentsOfDirectory(
+        try fileManager.contentsOfDirectory(
             at: self.url, includingPropertiesForKeys: nil
         ).map { $0.lastPathComponent }
     }
@@ -442,7 +484,7 @@ public struct UbiquitousDocumentMetadata: Codable, Sendable {
     public let downloadAmount: Double?
     
     /// Whether the item is fully downloaded.
-    public var isDownloaded: Bool { (downloadAmount ?? 0) >= 100 }
+    public let isDownloaded: Bool
 
     /// Whether the file is a directory.
     public let isDirectory: Bool
@@ -458,22 +500,24 @@ public struct UbiquitousDocumentMetadata: Codable, Sendable {
             return nil
         }
         guard
-            let fileUrlString = metadataItem.value(forAttribute: NSMetadataItemPathKey) as? String,
-            let fileUrl = URL(string: fileUrlString)
+            let fileUrlString = metadataItem.value(forAttribute: NSMetadataItemPathKey) as? String
         else {
             return nil
         }
+        let fileUrl = URL(fileURLWithPath: fileUrlString)
         
         self.fileName = fileName
         self.fileUrl = fileUrl
         
         self.fileSize = metadataItem.value(forAttribute: NSMetadataItemFSSizeKey) as? Int
         self.contentType = metadataItem.value(forAttribute: NSMetadataItemContentTypeKey) as? String
-        self.isPlaceholder = metadataItem.value(forAttribute: NSMetadataUbiquitousItemDownloadingStatusKey) as? Bool ?? false
+        let downloadStatus = metadataItem.value(forAttribute: NSMetadataUbiquitousItemDownloadingStatusKey) as? String
+        self.isPlaceholder = downloadStatus != NSMetadataUbiquitousItemDownloadingStatusCurrent
+            && downloadStatus != NSMetadataUbiquitousItemDownloadingStatusDownloaded
         self.downloadAmount = metadataItem.value(forAttribute: NSMetadataUbiquitousItemPercentDownloadedKey) as? Double
-        
-        let downloadStatus = metadataItem.value(forAttribute: NSMetadataUbiquitousItemIsDownloadingKey) as? String
-        self.isDownloading = downloadStatus == NSMetadataUbiquitousItemDownloadingStatusCurrent
+        self.isDownloading = metadataItem.value(forAttribute: NSMetadataUbiquitousItemIsDownloadingKey) as? Bool ?? false
+        self.isDownloaded = downloadStatus == NSMetadataUbiquitousItemDownloadingStatusCurrent
+            || downloadStatus == NSMetadataUbiquitousItemDownloadingStatusDownloaded
         
         // Check if it is a directory
         if let contentType = metadataItem.value(forAttribute: NSMetadataItemContentTypeKey) as? String {
