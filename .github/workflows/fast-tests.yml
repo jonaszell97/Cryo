@@ -1,0 +1,38 @@
+name: Cryo test suite
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cryo-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cryo-tests:
+    runs-on: macos-15
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        sanitizer: ["", Address]
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+      SIMULATOR: iPhone 16 Pro
+      SIMULATOR_OS: "18.5"
+      TEST_OPTIONS: -skipMacroValidation -disableAutomaticPackageResolution CODE_SIGNING_ALLOWED=NO
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve pinned package dependencies
+        run: xcodebuild -resolvePackageDependencies -scheme Cryo -onlyUsePackageVersionsFromResolvedFile
+      - name: Run simulator suite
+        run: make test-library-cryo SANITIZER='${{ matrix.sanitizer }}' RESULT_BUNDLE_PATH='${{ runner.temp }}/Cryo.xcresult'
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cryo-results-${{ matrix.sanitizer || 'standard' }}
+          path: ${{ runner.temp }}/Cryo.xcresult

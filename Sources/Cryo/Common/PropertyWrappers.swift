@@ -1,360 +1,191 @@
-
 import Foundation
 
-/// Property wrapper that automatically loads and persists values using a configurable adaptor.
-///
-/// By default, the value is persisted after every modification. If you want to manually persist it instead, set the `saveOnWrite`
-/// parameter to `false` and manually call ``CryoPersisted/persist()`` to save the value.
-///
-/// ```swift
-/// struct PersistentCounter {
-///     @CryoPersisted("count", adaptor: UserDefaultsAdaptor.shared) var count: Int = 0
-/// }
-///
-/// let counter = PersistentCounter()
-/// counter.count += 1
-///
-/// // Quit and relaunch the app...
-/// let counter = PersistentCounter()
-/// print(counter.count) // prints "1"
-/// ```
+private final class PersistenceQueue: @unchecked Sendable {
+    private let lock = NSLock()
+    private var tail: Task<Void, Never>?
+    private var errors: [Error] = []
+    private var autoSaveSuppressed = false
+
+    private func withLock<T>(_ body: () -> T) -> T {
+        lock.lock(); defer { lock.unlock() }
+        return body()
+    }
+
+    func suppressAutoSave() {
+        withLock { autoSaveSuppressed = true }
+    }
+
+    func enableAutoSave() {
+        withLock { autoSaveSuppressed = false }
+    }
+
+    var permitsAutoSave: Bool {
+        withLock { !autoSaveSuppressed }
+    }
+
+    func enqueue<Value, Key>(value: Value, key: Key, adaptor: any CryoAdaptor,
+                             onError: @escaping (Error) -> Void) -> Task<Result<Void, Error>, Never>
+        where Key: CryoKey, Key.Value == Value
+    {
+        lock.lock()
+        let previous = tail
+        let operation = Task<Result<Void, Error>, Never> {
+            await previous?.value
+            do {
+                try await adaptor.persist(value, for: key)
+                return .success(())
+            } catch {
+                self.withLock { self.errors.append(error) }
+                onError(error)
+                return .failure(error)
+            }
+        }
+        tail = Task { _ = await operation.value }
+        lock.unlock()
+        return operation
+    }
+
+    func flush() async throws {
+        let pending = withLock { tail }
+        await pending?.value
+        let error = withLock { errors.isEmpty ? nil : errors.removeFirst() }
+        if let error { throw error }
+    }
+}
+
+/// Property wrapper that loads synchronously and persists changes in order through a configurable adaptor.
 @propertyWrapper public struct CryoPersisted<Value: Codable> {
-    struct Key: CryoKey {
-        let id: String
-    }
-    
-    /// The ID of the persisted value.
+    struct Key: CryoKey { let id: String }
+
     let id: String
-    
-    /// The adaptor to use for persistence.
     let adaptor: any CryoSynchronousAdaptor
-    
-    /// The key for this instance.
+    let saveOnWrite: Bool
+    private let queue: PersistenceQueue
+    private let onError: (Error) -> Void
     var key: Key { .init(id: id) }
-    
-    /// Whether to automatically save after each modification.
-    let saveOnWrite: Bool
-    
-    /// The wrapped value.
+
     public var wrappedValue: Value {
         didSet {
-            guard saveOnWrite else { return }
-            self.persist(value: wrappedValue)
+            guard saveOnWrite, queue.permitsAutoSave else { return }
+            _ = enqueue(value: wrappedValue)
         }
     }
-    
-    /// Create a persisted value wrapper.
-    ///
-    /// - Parameters:
-    ///   - wrappedValue: The wrapped value.
-    ///   - id: The identifier to use as a key.
-    ///   - saveOnWrite: Whether to automatically persist the value after every modification.
-    ///   - adaptor: The adaptor to use for persistence.
-    public init(wrappedValue: Value, _ id: String, saveOnWrite: Bool = true, adaptor: any CryoSynchronousAdaptor) {
+
+    public init(wrappedValue: Value, _ id: String, saveOnWrite: Bool = true,
+                adaptor: any CryoSynchronousAdaptor, config: CryoConfig = .init(),
+                onError: ((Error) -> Void)? = nil) {
         self.id = id
         self.adaptor = adaptor
         self.saveOnWrite = saveOnWrite
-        self.wrappedValue = (try? adaptor.loadSynchronously(with: Key(id: id))) ?? wrappedValue
+        self.queue = PersistenceQueue()
+        self.onError = onError ?? { error in
+            config.log?(.error, "[CryoPersisted] failed to persist \(id): \(error)")
+        }
+        do {
+            self.wrappedValue = try adaptor.loadSynchronously(with: Key(id: id)) ?? wrappedValue
+        } catch {
+            self.wrappedValue = wrappedValue
+            queue.suppressAutoSave()
+            self.onError(error)
+        }
     }
-    
-    /// Create a persisted value wrapper.
-    ///
-    /// - Parameters:
-    ///   - defaultValue: The wrapped value.
-    ///   - id: The identifier to use as a key.
-    ///   - saveOnWrite: Whether to automatically persist the value after every modification.
-    ///   - adaptor: The adaptor to use for persistence.
-    public init(defaultValue: Value, _ id: String, saveOnWrite: Bool = true, adaptor: any CryoSynchronousAdaptor) {
-        self.id = id
-        self.adaptor = adaptor
-        self.saveOnWrite = saveOnWrite
-        self.wrappedValue = (try? adaptor.loadSynchronously(with: Key(id: id))) ?? defaultValue
+
+    public init(defaultValue: Value, _ id: String, saveOnWrite: Bool = true,
+                adaptor: any CryoSynchronousAdaptor, config: CryoConfig = .init(),
+                onError: ((Error) -> Void)? = nil) {
+        self.init(wrappedValue: defaultValue, id, saveOnWrite: saveOnWrite,
+                  adaptor: adaptor, config: config, onError: onError)
     }
-    
-    /// Make several modifications to the wrapped value while only persisting it once at the end.
-    ///
-    /// - Parameter modify: Closure to modify the value before it is persisted.
+
     public mutating func modify(_ modify: (inout Value) -> Void) {
         var value = wrappedValue
         modify(&value)
-        
-        self.wrappedValue = value
-        if !saveOnWrite { self.persist(value: value) }
+        wrappedValue = value
+        if !saveOnWrite { _ = enqueue(value: value) }
     }
-    
-    /// Manually persist the value.
+
+    /// Persist the current value after all writes already queued for this wrapper.
     public func persist() async throws {
-        try await adaptor.persist(wrappedValue, for: key)
+        queue.enableAutoSave()
+        try await enqueue(value: wrappedValue).value.get()
     }
-    
-    /// Persist the value asynchronously.
-    func persist(value: Value) {
-        _Concurrency.Task { try await adaptor.persist(value, for: key) }
+
+    /// Wait for all writes that were queued when this method was called.
+    public func flush() async throws { try await queue.flush() }
+
+    private func enqueue(value: Value) -> Task<Result<Void, Error>, Never> {
+        queue.enqueue(value: value, key: key, adaptor: adaptor, onError: onError)
     }
 }
 
-/// Property wrapper that automatically loads and persists values using ``UserDefaultsAdaptor/shared``.
-///
-/// This property wrapper automatically loads and persists its value using the shared `UserDefaults` instance.
-/// By default, the value is persisted after every modification. If you want to manually persist it instead, set the `saveOnWrite`
-/// parameter to `false` and manually call ``CryoKeyValue/persist()`` to save the value.
-///
-/// ```swift
-/// struct PersistentCounter {
-///     @CryoKeyValue("count") var count: Int = 0
-/// }
-///
-/// let counter = PersistentCounter()
-/// counter.count += 1
-///
-/// // Quit and relaunch the app...
-/// let counter = PersistentCounter()
-/// print(counter.count) // prints "1"
-/// ```
+/// Property wrapper backed by ``UserDefaultsAdaptor/shared``.
 @propertyWrapper public struct CryoKeyValue<Value: Codable> {
-    /// The ID of the persisted value.
-    let id: String
-    
-    /// The adaptor.
-    var adaptor: CryoAdaptor { UserDefaultsAdaptor.shared }
-    
-    /// The key for this instance.
-    var key: CryoNamedKey<Value> { .init(id: id, for: Value.self) }
-    
-    /// Whether to automatically save after each modification.
-    let saveOnWrite: Bool
-    
-    /// The wrapped value.
+    private var storage: CryoPersisted<Value>
     public var wrappedValue: Value {
-        didSet {
-            guard saveOnWrite else { return }
-            self.persist(value: wrappedValue)
-        }
+        get { storage.wrappedValue }
+        set { storage.wrappedValue = newValue }
     }
-    
-    /// Create a key-value persisted value wrapper.
-    ///
-    /// - Parameters:
-    ///   - wrappedValue: The wrapped value.
-    ///   - id: The identifier to use as a key.
-    ///   - saveOnWrite: Whether to automatically persist the value after every modification.
-    public init(wrappedValue: Value, _ id: String, saveOnWrite: Bool = true) {
-        self.id = id
-        self.saveOnWrite = saveOnWrite
-        self.wrappedValue = (try? UserDefaultsAdaptor.shared.loadSynchronously(
-            with: CryoNamedKey(id: id, for: Value.self))) ?? wrappedValue
+
+    public init(wrappedValue: Value, _ id: String, saveOnWrite: Bool = true,
+                onError: ((Error) -> Void)? = nil) {
+        storage = .init(wrappedValue: wrappedValue, id, saveOnWrite: saveOnWrite,
+                        adaptor: UserDefaultsAdaptor.shared, onError: onError)
     }
-    
-    
-    /// Create a key-value persisted value wrapper.
-    ///
-    /// - Parameters:
-    ///   - defaultValue: The wrapped value.
-    ///   - id: The identifier to use as a key.
-    ///   - saveOnWrite: Whether to automatically persist the value after every modification.
-    public init(defaultValue: Value, _ id: String, saveOnWrite: Bool = true) {
-        self.id = id
-        self.saveOnWrite = saveOnWrite
-        self.wrappedValue = (try? UserDefaultsAdaptor.shared.loadSynchronously(
-            with: CryoNamedKey(id: id, for: Value.self))) ?? defaultValue
+
+    public init(defaultValue: Value, _ id: String, saveOnWrite: Bool = true,
+                onError: ((Error) -> Void)? = nil) {
+        self.init(wrappedValue: defaultValue, id, saveOnWrite: saveOnWrite, onError: onError)
     }
-    
-    /// Make several modifications to the wrapped value while only persisting it once at the end.
-    ///
-    /// - Parameter modify: Closure to modify the value before it is persisted.
-    public mutating func modify(_ modify: (inout Value) -> Void) {
-        var value = wrappedValue
-        modify(&value)
-        
-        self.wrappedValue = value
-        if !saveOnWrite { self.persist(value: value) }
-    }
-    
-    /// Manually persist the value.
-    public func persist() async throws {
-        try await adaptor.persist(wrappedValue, for: key)
-    }
-    
-    /// Persist the value asynchronously.
-    func persist(value: Value) {
-        _Concurrency.Task { try await adaptor.persist(value, for: key) }
-    }
+
+    public mutating func modify(_ modify: (inout Value) -> Void) { storage.modify(modify) }
+    public func persist() async throws { try await storage.persist() }
+    public func flush() async throws { try await storage.flush() }
 }
 
-/// Property wrapper that automatically loads and persists values using ``UbiquitousKeyValueStoreAdaptor/shared``.
-///
-/// This property wrapper automatically loads and persists its value using the shared `NSUbiquitousKeyValueStore` instance.
-/// By default, the value is persisted after every modification. If you want to manually persist it instead, set the `saveOnWrite`
-/// parameter to `false` and manually call ``CryoUbiquitousKeyValue/persist()`` to save the value.
-///
-/// ```swift
-/// struct PersistentCounter {
-///     @CryoUbiquitousKeyValue("count", saveOnWrite: false) var count: Int = 0
-///
-///    func persist() { Task { try await _count.persist() } }
-/// }
-///
-/// let counter = PersistentCounter()
-/// counter.count += 1
-/// // Manually persist
-/// counter.persist()
-///
-/// // Quit and relaunch the app...
-/// let counter = PersistentCounter()
-/// print(counter.count) // prints "1"
-/// ```
+/// Property wrapper backed by ``UbiquitousKeyValueStoreAdaptor/shared``.
 @propertyWrapper public struct CryoUbiquitousKeyValue<Value: Codable> {
-    /// The ID of the persisted value.
-    let id: String
-    
-    /// The adaptor.
-    var adaptor: CryoAdaptor { UbiquitousKeyValueStoreAdaptor.shared }
-    
-    /// The key for this instance.
-    var key: CryoNamedKey<Value> { CryoNamedKey(id: id, for: Value.self) }
-    
-    /// Whether to automatically save after each modification.
-    let saveOnWrite: Bool
-    
-    /// The wrapped value.
+    private var storage: CryoPersisted<Value>
     public var wrappedValue: Value {
-        didSet {
-            guard saveOnWrite else { return }
-            self.persist(value: wrappedValue)
-        }
+        get { storage.wrappedValue }
+        set { storage.wrappedValue = newValue }
     }
-    
-    /// Create a ubiquitous key-value persisted value wrapper.
-    ///
-    /// - Parameters:
-    ///   - wrappedValue: The wrapped value.
-    ///   - id: The identifier to use as a key.
-    ///   - saveOnWrite: Whether to automatically persist the value after every modification.
-    public init(wrappedValue: Value, _ id: String, saveOnWrite: Bool = true) {
-        self.id = id
-        self.saveOnWrite = saveOnWrite
-        self.wrappedValue = (try? UbiquitousKeyValueStoreAdaptor.shared.loadSynchronously(
-            with: CryoNamedKey(id: id, for: Value.self))) ?? wrappedValue
+
+    public init(wrappedValue: Value, _ id: String, saveOnWrite: Bool = true,
+                onError: ((Error) -> Void)? = nil) {
+        storage = .init(wrappedValue: wrappedValue, id, saveOnWrite: saveOnWrite,
+                        adaptor: UbiquitousKeyValueStoreAdaptor.shared, onError: onError)
     }
-    
-    /// Create a ubiquitous key-value persisted value wrapper.
-    ///
-    /// - Parameters:
-    ///   - defaultValue: The wrapped value.
-    ///   - id: The identifier to use as a key.
-    ///   - saveOnWrite: Whether to automatically persist the value after every modification.
-    public init(defaultValue: Value, _ id: String, saveOnWrite: Bool = true) {
-        self.id = id
-        self.saveOnWrite = saveOnWrite
-        self.wrappedValue = (try? UbiquitousKeyValueStoreAdaptor.shared.loadSynchronously(
-            with: CryoNamedKey(id: id, for: Value.self))) ?? defaultValue
+
+    public init(defaultValue: Value, _ id: String, saveOnWrite: Bool = true,
+                onError: ((Error) -> Void)? = nil) {
+        self.init(wrappedValue: defaultValue, id, saveOnWrite: saveOnWrite, onError: onError)
     }
-    
-    /// Make several modifications to the wrapped value while only persisting it once at the end.
-    ///
-    /// - Parameter modify: Closure to modify the value before it is persisted.
-    public mutating func modify(_ modify: (inout Value) -> Void) {
-        var value = wrappedValue
-        modify(&value)
-        
-        self.wrappedValue = value
-        if !saveOnWrite { self.persist(value: value) }
-    }
-    
-    /// Manually persist the value.
-    public func persist() async throws {
-        try await adaptor.persist(wrappedValue, for: key)
-    }
-    
-    /// Persist the value asynchronously.
-    func persist(value: Value) {
-        _Concurrency.Task { try await adaptor.persist(value, for: key) }
-    }
+
+    public mutating func modify(_ modify: (inout Value) -> Void) { storage.modify(modify) }
+    public func persist() async throws { try await storage.persist() }
+    public func flush() async throws { try await storage.flush() }
 }
 
-/// Property wrapper that automatically loads and persists values using ``DocumentAdaptor/sharedLocal``.
-///
-/// This property wrapper automatically loads and persists its value a local document.
-/// By default, the value is persisted after every modification. If you want to manually persist it instead, set the `saveOnWrite`
-/// parameter to `false` and manually call ``CryoLocalDocument/persist()`` to save the value.
-///
-/// ```swift
-/// struct PersistentCounter {
-///     @CryoLocalDocument("count") var count: Int = 0
-/// }
-///
-/// let counter = PersistentCounter()
-/// counter.count += 1
-///
-/// // Quit and relaunch the app...
-/// let counter = PersistentCounter()
-/// print(counter.count) // prints "1"
-/// ```
+/// Property wrapper backed by ``DocumentAdaptor/sharedLocal``.
 @propertyWrapper public struct CryoLocalDocument<Value: Codable> {
-    /// The ID of the persisted value.
-    let id: String
-    
-    /// The adaptor.
-    var adaptor: CryoAdaptor { DocumentAdaptor.sharedLocal }
-    
-    /// The key for this instance.
-    var key: CryoNamedKey<Value> { CryoNamedKey(id: id, for: Value.self) }
-    
-    /// Whether to automatically save after each modification.
-    let saveOnWrite: Bool
-    
-    /// The wrapped value.
+    private var storage: CryoPersisted<Value>
     public var wrappedValue: Value {
-        didSet {
-            guard saveOnWrite else { return }
-            self.persist(value: wrappedValue)
-        }
+        get { storage.wrappedValue }
+        set { storage.wrappedValue = newValue }
     }
-    
-    /// Create a local document persisted value wrapper.
-    ///
-    /// - Parameters:
-    ///   - wrappedValue: The wrapped value.
-    ///   - id: The identifier to use as a key.
-    ///   - saveOnWrite: Whether to automatically persist the value after every modification.
-    public init(wrappedValue: Value, _ id: String, saveOnWrite: Bool = true) {
-        self.id = id
-        self.saveOnWrite = saveOnWrite
-        self.wrappedValue = (try? DocumentAdaptor.sharedLocal.loadSynchronously(
-            with: CryoNamedKey(id: id, for: Value.self))) ?? wrappedValue
+
+    public init(wrappedValue: Value, _ id: String, saveOnWrite: Bool = true,
+                onError: ((Error) -> Void)? = nil) {
+        storage = .init(wrappedValue: wrappedValue, id, saveOnWrite: saveOnWrite,
+                        adaptor: DocumentAdaptor.sharedLocal, onError: onError)
     }
-    
-    /// Create a local document persisted value wrapper.
-    ///
-    /// - Parameters:
-    ///   - defaultValue: The wrapped value.
-    ///   - id: The identifier to use as a key.
-    ///   - saveOnWrite: Whether to automatically persist the value after every modification.
-    public init(defaultValue: Value, _ id: String, saveOnWrite: Bool = true) {
-        self.id = id
-        self.saveOnWrite = saveOnWrite
-        self.wrappedValue = (try? DocumentAdaptor.sharedLocal.loadSynchronously(
-            with: CryoNamedKey(id: id, for: Value.self))) ?? defaultValue
+
+    public init(defaultValue: Value, _ id: String, saveOnWrite: Bool = true,
+                onError: ((Error) -> Void)? = nil) {
+        self.init(wrappedValue: defaultValue, id, saveOnWrite: saveOnWrite, onError: onError)
     }
-    
-    /// Make several modifications to the wrapped value while only persisting it once at the end.
-    ///
-    /// - Parameter modify: Closure to modify the value before it is persisted.
-    public mutating func modify(_ modify: (inout Value) -> Void) {
-        var value = wrappedValue
-        modify(&value)
-        
-        self.wrappedValue = value
-        if !saveOnWrite { self.persist(value: value) }
-    }
-    
-    /// Manually persist the value.
-    public func persist() async throws {
-        try await adaptor.persist(wrappedValue, for: key)
-    }
-    
-    /// Persist the value asynchronously.
-    func persist(value: Value) {
-        _Concurrency.Task { try await adaptor.persist(value, for: key) }
-    }
+
+    public mutating func modify(_ modify: (inout Value) -> Void) { storage.modify(modify) }
+    public func persist() async throws { try await storage.persist() }
+    public func flush() async throws { try await storage.flush() }
 }

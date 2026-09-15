@@ -36,7 +36,7 @@ extension TestModel: Hashable {
     }
 }
 
-final class CryoSQLiteTests: XCTestCase {
+final class CryoSQLiteTests: CryoTestCase {
     struct AnyKey<Value: CryoModel>: CryoKey {
         let id: String
         
@@ -51,15 +51,11 @@ final class CryoSQLiteTests: XCTestCase {
     
     private var databaseUrl: URL? = nil
     
-    override func setUp() {
-        super.setUp()
-        
-        self.databaseUrl = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("_cryo_test.db")
-        
-        do { try FileManager.default.removeItem(at: self.databaseUrl!) } catch { }
-        FileManager.default.createFile(atPath: self.databaseUrl!.absoluteString, contents: nil)
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        databaseUrl = environment.sqliteURL
     }
-    
+
     func testCreateTableQuery() async throws {
         let adaptor = try SQLiteAdaptor(databaseUrl: self.databaseUrl!)
         
@@ -67,13 +63,13 @@ final class CryoSQLiteTests: XCTestCase {
         _ = try await query.execute()
         
         XCTAssertEqual(query.queryString, """
-CREATE TABLE IF NOT EXISTS TestModel(
-    _cryo_created TEXT NOT NULL,
-    _cryo_modified TEXT NOT NULL,
-    id TEXT NOT NULL UNIQUE,
-    x INTEGER,
-    y TEXT,
-    z INTEGER
+CREATE TABLE IF NOT EXISTS "TestModel"(
+    "_cryo_created" TEXT NOT NULL,
+    "_cryo_modified" TEXT NOT NULL,
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "x" INTEGER,
+    "y" TEXT,
+    "z" INTEGER
 );
 """);
     }
@@ -92,22 +88,6 @@ CREATE TABLE IF NOT EXISTS TestModel(
         XCTAssertEqual(loadedValue.count, 0)
     }
     
-    private func persistAndLoadOperationTest(_ value: TestModel, to store: SQLiteAdaptor) async throws {
-        let operation = try await store.insert(value).operation
-        try await store.execute(operation: operation)
-        
-        var loadedValue = try store.select(id: value.id, from: TestModel.self).execute()
-        XCTAssertEqual(loadedValue.first, value)
-        
-        let deleteOperation = try await store.delete(from: TestModel.self)
-            .where("x", equals: value.x)
-            .operation
-        try await store.execute(operation: deleteOperation)
-        
-        loadedValue = try store.select(id: value.id, from: TestModel.self).execute()
-        XCTAssertEqual(loadedValue.count, 0)
-    }
-    
     func testDatabasePersistence() async throws {
         let adaptor = try SQLiteAdaptor(databaseUrl: self.databaseUrl!, config: CryoConfig { print("[\($0)] \($1)") })
         try await adaptor.createTable(for: TestModel.self).execute()
@@ -115,7 +95,7 @@ CREATE TABLE IF NOT EXISTS TestModel(
         let value = TestModel(x: 123, y: "Hello there", z: .a)
         let value2 = TestModel(x: 3291, y: "Hello therexxx", z: .c)
         
-        XCTAssertEqual(TestModel.schema.columns.map { $0.columnName }, ["id", "x", "y", "z"])
+        XCTAssertEqual(try TestModel.schema.columns.map { $0.columnName }, ["id", "x", "y", "z"])
         
         do {
             _ = try adaptor.insert(value).execute()
@@ -141,7 +121,6 @@ CREATE TABLE IF NOT EXISTS TestModel(
             for _ in 0..<100 {
                 let model = TestModel.random()
                 try await self.persistAndLoadTest(model, to: adaptor)
-                try await self.persistAndLoadOperationTest(model, to: adaptor)
             }
         }
         catch {
@@ -270,21 +249,23 @@ CREATE TABLE IF NOT EXISTS TestModel(
             _ = try adaptor.insert(model).execute()
         }
         
-        models.sort { $0.x <= $1.x }
+        models.sort { $0.x < $1.x }
         
         let ascending = try adaptor.select(from: TestModel.self)
             .sort(by: "x", .ascending)
             .execute()
         
-        XCTAssertEqual(models, ascending)
+        XCTAssertEqual(models.map(\.x), ascending.map(\.x))
+        XCTAssertEqual(Set(models), Set(ascending))
         
-        models.sort { $0.x >= $1.x }
+        models.sort { $0.x > $1.x }
         
         let descending = try adaptor.select(from: TestModel.self)
             .sort(by: "x", .descending)
             .execute()
         
-        XCTAssertEqual(models, descending)
+        XCTAssertEqual(models.map(\.x), descending.map(\.x))
+        XCTAssertEqual(Set(models), Set(descending))
     }
     
     func testLimit() async throws {

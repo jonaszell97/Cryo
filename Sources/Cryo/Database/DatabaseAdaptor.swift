@@ -42,22 +42,6 @@ public protocol CryoDatabaseAdaptor {
     /// Create a CREATE TABLE query.
     func createTable<Model: CryoModel>(for: Model.Type) async throws -> any CryoCreateTableQuery<Model>
     
-    #if false
-    
-    /// Create a SELECT by ID query.
-    func select<Model: CryoModel>(id: String?, from: Model.Type) throws -> any CryoSelectQuery<Model>
-    
-    /// Create an INSERT query.
-    func insert<Model: CryoModel>(_ value: Model, replace: Bool) throws -> any CryoInsertQuery<Model>
-    
-    /// Create an UPDATE query.
-    func update<Model: CryoModel>(id: String?, from: Model.Type) throws -> any CryoUpdateQuery<Model>
-    
-    /// Create a DELETE query.
-    func delete<Model: CryoModel>(id: String?, from: Model.Type) throws -> any CryoDeleteQuery<Model>
-    
-    #endif
-    
     // MARK: Availability
     
     /// Check the availability of the database.
@@ -75,26 +59,5 @@ public protocol CryoDatabaseAdaptor {
 }
 
 extension CryoDatabaseAdaptor {
-    public var isAvailable: Bool { true }
-    public func ensureAvailability() { }
     public func observeAvailabilityChanges(_ callback: @escaping (Bool) -> Void) { }
-    
-    #if false
-    
-    /// Create an INSERT query.
-    public func insert<Model: CryoModel>(id: String, _ value: Model) async throws -> any CryoInsertQuery<Model> {
-        try await self.insert(id: id, value, replace: true)
-    }
-    
-    /// Create an UPDATE query.
-    public func update<Model: CryoModel>(from: Model.Type) async throws -> any CryoUpdateQuery<Model> {
-        try await self.update(id: nil, from: Model.self)
-    }
-    
-    /// Create a SELECT query.
-    public func select<Model: CryoModel>(from model: Model.Type) async throws -> any CryoSelectQuery<Model> {
-        try await self.select(id: nil, from: model)
-    }
-    
-    #endif
 }

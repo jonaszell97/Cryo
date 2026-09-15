@@ -14,6 +14,7 @@ public final class SQLiteInsertQuery<Model: CryoModel> {
 
 extension SQLiteInsertQuery: CryoInsertQuery {
     public var id: String { untypedQuery.id }
+    public var replace: Bool { untypedQuery.replace }
     public var value: Model { untypedQuery.value as! Model }
     
     public var queryString: String {
@@ -26,6 +27,7 @@ extension SQLiteInsertQuery: CryoInsertQuery {
 }
 
 internal class UntypedSQLiteInsertQuery {
+    private let schema: CryoSchema
     /// The ID to insert the value with.
     let id: String
     
@@ -54,9 +56,10 @@ internal class UntypedSQLiteInsertQuery {
     /// Create an INSERT query.
     internal init(id: String, value: any CryoModel, replace: Bool, connection: OpaquePointer, config: CryoConfig?) throws {
         self.id = id
+        self.schema = try CryoSchemaManager.shared.schema(for: type(of: value))
         self.value = value
         self.replace = replace
-        self.created = .now
+        self.created = config?.now() ?? Date()
         self.connection = connection
         
         #if DEBUG
@@ -71,31 +74,23 @@ internal class UntypedSQLiteInsertQuery {
         }
         
         let modelType = type(of: value)
-        let schema = CryoSchemaManager.shared.schema(for: modelType)
-        let columns: [String] = schema.columns.map { $0.columnName }
-        
-        let result = """
-INSERT \(replace ? "OR REPLACE " : "")INTO \(modelType.tableName)(_cryo_created,_cryo_modified,\(columns.joined(separator: ",")))
-    VALUES (?,?,\(columns.map { _ in "?" }.joined(separator: ",")));
-"""
+        let columns = schema.columns.map { SQLiteAdaptor.quoteIdentifier($0.columnName) }
+        let table = SQLiteAdaptor.quoteIdentifier(modelType.tableName)
+        let allColumns = ["\"_cryo_created\"", "\"_cryo_modified\""] + columns
+        let placeholders = Array(repeating: "?", count: allColumns.count).joined(separator: ",")
+        let updateColumns = (["\"_cryo_modified\""] + columns.filter { $0 != "\"id\"" })
+            .map { "\($0) = excluded.\($0)" }.joined(separator: ",")
+
+        var result = "INSERT INTO \(table)(\(allColumns.joined(separator: ","))) VALUES (\(placeholders))"
+        if replace {
+            result += " ON CONFLICT(\"id\") DO UPDATE SET \(updateColumns)"
+        }
+        result += ";"
         
         self.completeQueryString = result
         return result
     }
     
-    fileprivate var logQueryString: String {
-        let modelType = type(of: value)
-        let schema = CryoSchemaManager.shared.schema(for: modelType)
-        let columns: [String] = schema.columns.map { $0.columnName }
-        
-        let result = """
-INSERT \(replace ? "OR REPLACE " : "")INTO \(modelType.tableName)(_cryo_created,_cryo_modified,\(columns.joined(separator: ",")))
-    VALUES (?,?,\(columns.map { "\($0)" }.joined(separator: ",")));
-"""
-        
-        self.completeQueryString = result
-        return result
-    }
 }
 
 extension UntypedSQLiteInsertQuery {
@@ -118,13 +113,12 @@ extension UntypedSQLiteInsertQuery {
             throw CryoError.queryCompilationFailed(query: queryString, status: prepareStatus, message: message)
         }
         
-        let schema = CryoSchemaManager.shared.schema(for: type(of: value))
         
         var bindings: [CryoQueryValue] = [.date(value: created), .date(value: created)]
         bindings.append(contentsOf: try schema.columns.map { try .init(value: $0.getValue(value)) })
         
         for i in 0..<bindings.count {
-            SQLiteAdaptor.bind(queryStatement, value: bindings[i], index: Int32(i + 1))
+            try SQLiteAdaptor.bind(queryStatement, value: bindings[i], index: Int32(i + 1))
         }
         
         #if DEBUG
@@ -141,22 +135,19 @@ extension UntypedSQLiteInsertQuery {
         let queryStatement = try self.compiledQuery()
         defer {
             sqlite3_finalize(queryStatement)
+            self.queryStatement = nil
         }
         
         let executeStatus = sqlite3_step(queryStatement)
         guard executeStatus == SQLITE_DONE else {
-            // Check if UNIQUE constraint failed
-            if executeStatus == SQLITE_CONSTRAINT {
-                if let errorPointer = sqlite3_errmsg(connection) {
-                    let message = String(cString: errorPointer)
-                    if message.contains("UNIQUE") && message.contains("id") {
-                        throw CryoError.duplicateId(id: self.id)
-                    }
-                    if message.contains("FOREIGN") {
-                        throw CryoError.foreignKeyConstraintFailed(tableName: type(of: value).tableName,
-                                                                   message: message)
-                    }
-                }
+            let extendedCode = sqlite3_extended_errcode(connection)
+            if extendedCode == SQLiteAdaptor.constraintUnique || extendedCode == SQLiteAdaptor.constraintPrimaryKey {
+                throw CryoError.duplicateId(id: self.id)
+            }
+            if extendedCode == SQLiteAdaptor.constraintForeignKey {
+                let message = sqlite3_errmsg(connection).map { String(cString: $0) }
+                throw CryoError.foreignKeyConstraintFailed(tableName: type(of: value).tableName,
+                                                           message: message)
             }
             
             var message: String? = nil

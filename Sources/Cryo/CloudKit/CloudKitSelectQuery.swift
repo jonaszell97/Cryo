@@ -8,7 +8,7 @@ public final class CloudKitSelectQuery<Model: CryoModel> {
     let untypedQuery: UntypedCloudKitSelectQuery
     
     /// Create an UPDATE query.
-    internal init(from: Model.Type, id: String?, database: CKDatabase, config: CryoConfig?) throws {
+    internal init(from: Model.Type, id: String?, database: any CloudKitDatabase, config: CryoConfig?) throws {
         self.untypedQuery = try .init(for: Model.self, id: id, database: database, config: config)
     }
 }
@@ -65,13 +65,13 @@ internal class UntypedCloudKitSelectQuery {
     var sortingClauses: [(String, CryoSortingOrder)] = []
     
     /// The database to store to.
-    let database: CKDatabase
+    let database: any CloudKitDatabase
     
     /// The cryo config.
     let config: CryoConfig?
     
     /// Create a SELECT query.
-    internal init(for modelType: any CryoModel.Type, id: String?, database: CKDatabase, config: CryoConfig?) throws {
+    internal init(for modelType: any CryoModel.Type, id: String?, database: any CloudKitDatabase, config: CryoConfig?) throws {
         self.id = id
         self.database = database
         self.modelType = modelType
@@ -111,22 +111,8 @@ internal class UntypedCloudKitSelectQuery {
 }
 
 extension UntypedCloudKitSelectQuery {
-    static func fetch(id: String?,
-                      modelType: any CryoModel.Type,
-                      whereClauses: [CryoQueryWhereClause],
-                      resultsLimit: Int?,
-                      sortingClauses: [(String, CryoSortingOrder)],
-                      database: CKDatabase,
-                      log: Optional<(OSLogType, String) -> Void> = nil
-    ) async throws -> [CKRecord] {
-        if let id {
-            return try await CloudKitAdaptor.cloudKitOperation(log: log) {
-                try [await database.record(for: .init(recordName: id))]
-            }
-        }
-        
-        // Fetch all records matching WHERE clauses
-        
+    static func makePredicate(id: String?, whereClauses: [CryoQueryWhereClause]) -> NSPredicate {
+        // ID fetches bypass predicates, matching the existing query behavior.
         let predicate: NSPredicate
         if whereClauses.isEmpty {
             predicate = NSPredicate(value: true)
@@ -134,27 +120,66 @@ extension UntypedCloudKitSelectQuery {
         else {
             var predicateFormat = ""
             var predicateArgs = [Any]()
-            
+
             for i in 0..<whereClauses.count {
                 if i > 0 {
                     predicateFormat += " AND "
                 }
-                
+
                 let clause = whereClauses[i]
-                predicateFormat += "(\(clause.columnName) \(CloudKitAdaptor.formatOperator(clause.operation)) \(CloudKitAdaptor.placeholderSymbol(for: clause.value)))"
+                predicateFormat += "(%K \(CloudKitAdaptor.formatOperator(clause.operation)) %@)"
+                predicateArgs.append(clause.columnName)
                 predicateArgs.append(CloudKitAdaptor.queryArgument(for: clause.value))
             }
-            
+
             predicate = NSPredicate(format: predicateFormat, argumentArray: predicateArgs)
         }
-        
+
+        return predicate
+    }
+
+    static func fetch(id: String?,
+                      modelType: any CryoModel.Type,
+                      whereClauses: [CryoQueryWhereClause],
+                      resultsLimit: Int?,
+                      sortingClauses: [(String, CryoSortingOrder)],
+                      database: any CloudKitDatabase,
+                      log: Optional<(OSLogType, String) -> Void> = nil
+    ) async throws -> [CKRecord] {
+        guard resultsLimit.map({ $0 > 0 }) ?? true else { return [] }
+
+        if let id {
+            let record: CKRecord
+            do {
+                record = try await CloudKitAdaptor.cloudKitOperation(log: log) {
+                    try await database.record(for: .init(recordName: id))
+                }
+            } catch let error as CKError where error.code == .unknownItem {
+                return []
+            }
+
+            let matches: Bool
+            if whereClauses.isEmpty {
+                matches = true
+            } else {
+                matches = try recordMatches(record, modelType: modelType, whereClauses: whereClauses)
+            }
+            guard matches else { return [] }
+            return [record]
+        }
+
+        // Fetch all records matching WHERE clauses
+
+        let predicate = makePredicate(id: id, whereClauses: whereClauses)
+
         let query = CKQuery(recordType: modelType.tableName, predicate: predicate)
         query.sortDescriptors = sortingClauses.map { .init(key: $0.0, ascending: $0.1 == .ascending) }
         
         var data = [CKRecord]()
         
+        let firstLimit = resultsLimit ?? CKQueryOperation.maximumResults
         var (batch, cursor) = try await CloudKitAdaptor.cloudKitOperation(log: log) {
-            try await database.records(matching: query)
+            try await database.records(matching: query, resultsLimit: firstLimit)
         }
         
         data.append(contentsOf: try batch.map { recordId, recordResult in
@@ -166,9 +191,14 @@ extension UntypedCloudKitSelectQuery {
             }
         })
         
-        while cursor != nil {
+        if let resultsLimit, data.count >= resultsLimit {
+            return Array(data.prefix(resultsLimit))
+        }
+
+        while let currentCursor = cursor {
+            let remaining = resultsLimit.map { max(1, $0 - data.count) } ?? CKQueryOperation.maximumResults
             let (nextBatch, nextCursor) = try await CloudKitAdaptor.cloudKitOperation(log: log) {
-                try await database.records(continuingMatchFrom: cursor!)
+                try await database.records(continuingMatchFrom: currentCursor, resultsLimit: remaining)
             }
             
             data.append(contentsOf: try nextBatch.map { recordId, recordResult in
@@ -187,7 +217,40 @@ extension UntypedCloudKitSelectQuery {
             cursor = nextCursor
         }
         
-        return data
+        return resultsLimit.map { Array(data.prefix($0)) } ?? data
+    }
+
+    private static func recordMatches(_ record: CKRecord,
+                                      modelType: any CryoModel.Type,
+                                      whereClauses: [CryoQueryWhereClause]) throws -> Bool {
+        let schema = try CryoSchemaManager.shared.schema(for: modelType)
+        for clause in whereClauses {
+            guard let column = schema.columns.first(where: { $0.columnName == clause.columnName }) else {
+                throw CryoError.invalidModel(message: "Unknown column '\(clause.columnName)' in \(modelType.tableName)")
+            }
+            let object: _AnyCryoColumnValue
+            guard let rawValue = record[clause.columnName] else {
+                object = Optional<String>.none
+                if try !CloudKitAdaptor.check(clause: clause, object: object) { return false }
+                continue
+            }
+            switch column {
+            case .value(_, let type, _, _):
+                guard let decoded = CloudKitAdaptor.decodeValue(from: rawValue, as: type) else {
+                    throw CryoError.queryDecodeFailed(column: clause.columnName,
+                                                      message: "Stored value has the wrong CloudKit type")
+                }
+                object = decoded.value
+            case .oneToOneRelation:
+                guard let relationID = rawValue as? NSString else {
+                    throw CryoError.queryDecodeFailed(column: clause.columnName,
+                                                      message: "Stored relation has no identifier")
+                }
+                object = relationID as String
+            }
+            if try !CloudKitAdaptor.check(clause: clause, object: object) { return false }
+        }
+        return true
     }
     
     func decodeValue(from value: __CKRecordObjCValue?, column: CryoSchemaColumn) async throws -> CryoColumnValueWrapper? {
@@ -203,7 +266,11 @@ extension UntypedCloudKitSelectQuery {
             
             return CloudKitAdaptor.decodeValue(from: value, as: type)
         case .oneToOneRelation(_, let modelType, _):
-            let id = (value as! NSString) as String
+            guard let idValue = value as? NSString else {
+                throw CryoError.queryDecodeFailed(column: column.columnName,
+                                                  message: "Missing or invalid relation identifier")
+            }
+            let id = idValue as String
             guard let result = try await UntypedCloudKitSelectQuery(for: modelType, id: id, database: database, config: config)
                 .execute().first else {
                 return nil
@@ -227,7 +294,7 @@ extension UntypedCloudKitSelectQuery {
                                            resultsLimit: resultsLimit, sortingClauses: sortingClauses,
                                            database: database, log: log)
         
-        let schema = CryoSchemaManager.shared.schema(for: modelType)
+        let schema = try CryoSchemaManager.shared.schema(for: modelType)
         
         var results = [any CryoModel]()
         for record in records {

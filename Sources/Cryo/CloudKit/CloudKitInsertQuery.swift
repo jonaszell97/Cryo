@@ -8,13 +8,14 @@ public final class CloudKitInsertQuery<Model: CryoModel> {
     let untypedQuery: UntypedCloudKitInsertQuery
     
     /// Create an INSERT query.
-    internal init(id: String, value: Model, replace: Bool, database: CKDatabase, config: CryoConfig?) throws {
+    internal init(id: String, value: Model, replace: Bool, database: any CloudKitDatabase, config: CryoConfig?) throws {
         self.untypedQuery = try .init(id: id, value: value, replace: replace, database: database, config: config)
     }
 }
 
 extension CloudKitInsertQuery: CryoInsertQuery {
     public var id: String { untypedQuery.id }
+    public var replace: Bool { untypedQuery.replace }
     public var value: Model { untypedQuery.value as! Model }
     
     public var queryString: String {
@@ -27,6 +28,7 @@ extension CloudKitInsertQuery: CryoInsertQuery {
 }
 
 internal class UntypedCloudKitInsertQuery {
+    private let schema: CryoSchema
     /// The ID of the record to insert.
     let id: String
     
@@ -40,29 +42,25 @@ internal class UntypedCloudKitInsertQuery {
     let created: Date
     
     /// The database to store to.
-    let database: CKDatabase
+    let database: any CloudKitDatabase
     
-    #if DEBUG
     let config: CryoConfig?
-    #endif
     
     /// Create a INSERT query.
-    internal init(id: String, value: any CryoModel, replace: Bool, database: CKDatabase, config: CryoConfig?) throws {
+    internal init(id: String, value: any CryoModel, replace: Bool, database: any CloudKitDatabase, config: CryoConfig?) throws {
         self.id = id
+        self.schema = try CryoSchemaManager.shared.schema(for: type(of: value))
         self.value = value
         self.replace = replace
-        self.created = .now
+        self.created = config?.now() ?? Date()
         self.database = database
         
-        #if DEBUG
         self.config = config
-        #endif
     }
     
     /// The complete query string.
     public var queryString: String {
         let modelType = type(of: value)
-        let schema = CryoSchemaManager.shared.schema(for: modelType)
         let columns: [String] = schema.columns.map { $0.columnName }
         
         let result = """
@@ -78,7 +76,6 @@ extension UntypedCloudKitInsertQuery {
     @discardableResult public func execute() async throws -> Bool {
         let modelType = type(of: value)
         let record = CKRecord(recordType: modelType.tableName, recordID: CKRecord.ID(recordName: id))
-        let schema = CryoSchemaManager.shared.schema(for: modelType)
         
         for columnDetails in schema.columns {
             record[columnDetails.columnName] = try CloudKitAdaptor.nsObject(from: columnDetails.getValue(value),
@@ -98,24 +95,37 @@ extension UntypedCloudKitInsertQuery {
         #endif
         
         let (saveResults, _) = try await CloudKitAdaptor.cloudKitOperation(log: log) {
-            try await database.modifyRecords(
+            let results = try await database.modifyRecords(
                 saving: [record], deleting: [],
                 savePolicy: self.replace ? .changedKeys : .ifServerRecordUnchanged
             )
+            if let error = results.saveResults.values.compactMap({ result -> Error? in
+                guard case .failure(let error) = result,
+                      CloudKitAdaptor.isRetryableCloudKitError(error) else { return nil }
+                return error
+            }).first {
+                throw error
+            }
+            return results
         }
         
-        #if DEBUG
         for result in saveResults {
             switch result.value {
             case .success(let id):
+                #if DEBUG
                 config?.log?(.debug, "[CloudKitAdaptor] Success! \(id)")
+                #endif
             case .failure(let err):
+                if !replace, let cloudKitError = err as? CKError,
+                   cloudKitError.code == .serverRecordChanged {
+                    throw CryoError.duplicateId(id: self.id)
+                }
+                #if DEBUG
                 config?.log?(.debug, "[CloudKitAdaptor] FAILURE: \(err.localizedDescription)")
+                #endif
+                throw err
             }
         }
-        #else
-        _ = saveResults
-        #endif
         
         return true
     }

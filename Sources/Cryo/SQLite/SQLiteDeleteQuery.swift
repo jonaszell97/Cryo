@@ -75,7 +75,7 @@ internal class UntypedSQLiteDeleteQuery {
             return completeQueryString
         }
         
-        var result = "DELETE FROM \(modelType.tableName)"
+        var result = "DELETE FROM \(SQLiteAdaptor.quoteIdentifier(modelType.tableName))"
         let hasId = id != nil
         
         if hasId || !whereClauses.isEmpty {
@@ -83,7 +83,7 @@ internal class UntypedSQLiteDeleteQuery {
         }
         
         if hasId {
-            result += "id = ?"
+            result += "\"id\" = ?"
         }
         
         for i in 0..<whereClauses.count {
@@ -91,7 +91,7 @@ internal class UntypedSQLiteDeleteQuery {
                 result += " AND "
             }
             
-            result += "\(whereClauses[i].columnName) \(SQLiteAdaptor.formatOperator(whereClauses[i].operation)) ?"
+            result += "\(SQLiteAdaptor.quoteIdentifier(whereClauses[i].columnName)) \(SQLiteAdaptor.formatOperator(whereClauses[i].operation)) ?"
         }
         
         self.completeQueryString = result
@@ -121,12 +121,12 @@ extension UntypedSQLiteDeleteQuery {
         
         var indexOffset = 0
         if let id {
-            SQLiteAdaptor.bind(queryStatement, value: .string(value: id), index: Int32(1))
+            try SQLiteAdaptor.bind(queryStatement, value: .string(value: id), index: Int32(1))
             indexOffset += 1
         }
         
         for i in 0..<whereClauses.count {
-            SQLiteAdaptor.bind(queryStatement, value: whereClauses[i].value, index: Int32(i + 1 + indexOffset))
+            try SQLiteAdaptor.bind(queryStatement, value: whereClauses[i].value, index: Int32(i + 1 + indexOffset))
         }
         
         self.queryStatement = queryStatement
@@ -139,6 +139,7 @@ extension UntypedSQLiteDeleteQuery {
         let queryStatement = try self.compiledQuery()
         defer {
             sqlite3_finalize(queryStatement)
+            self.queryStatement = nil
         }
         
         #if DEBUG
@@ -147,15 +148,10 @@ extension UntypedSQLiteDeleteQuery {
         
         let executeStatus = sqlite3_step(queryStatement)
         guard executeStatus == SQLITE_DONE else {
-            // Check if FOREIGN KEY constraint failed
-            if executeStatus == SQLITE_CONSTRAINT {
-                if let errorPointer = sqlite3_errmsg(connection) {
-                    let message = String(cString: errorPointer)
-                    if message.contains("FOREIGN") {
-                        throw CryoError.foreignKeyConstraintFailed(tableName: modelType.tableName,
-                                                                   message: message)
-                    }
-                }
+            if sqlite3_extended_errcode(connection) == SQLiteAdaptor.constraintForeignKey {
+                let message = sqlite3_errmsg(connection).map { String(cString: $0) }
+                throw CryoError.foreignKeyConstraintFailed(tableName: modelType.tableName,
+                                                           message: message)
             }
             
             var message: String? = nil
@@ -184,6 +180,7 @@ extension UntypedSQLiteDeleteQuery {
         self.whereClauses.append(.init(columnName: columnName,
                                        operation: operation,
                                        value: try .init(value: value)))
+        self.completeQueryString = nil
         return self
     }
 }

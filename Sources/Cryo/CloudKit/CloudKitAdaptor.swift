@@ -43,10 +43,10 @@ public final class CloudKitAdaptor {
     let config: CryoConfig
     
     /// The iCloud container to store to.
-    let container: CKContainer
+    let container: CKContainer?
     
     /// The database to store to.
-    let database: CKDatabase
+    let database: any CloudKitDatabase
     
     /// Synchronizes access to availability state, including late connection results.
     private let availabilityLock: NSLock
@@ -83,6 +83,15 @@ public final class CloudKitAdaptor {
         self.availabilityObserverTokens = []
     }
 
+    internal init(config: CryoConfig, database: any CloudKitDatabase, userRecordID: String?) {
+        self.config = config
+        self.container = nil
+        self.database = database
+        self.availabilityLock = NSLock()
+        self.storedICloudRecordID = userRecordID
+        self.availabilityObserverTokens = []
+    }
+
     deinit {
         availabilityObserverTokens.forEach(NotificationCenter.default.removeObserver)
     }
@@ -97,6 +106,7 @@ public final class CloudKitAdaptor {
             return true
         }
 
+        guard let container else { return false }
         let request = Task { try await container.userRecordID().recordName }
         
         do {
@@ -123,7 +133,12 @@ public final class CloudKitAdaptor {
 
 extension CloudKitAdaptor {
     /// Check for availability of the database.
-    public func ensureAvailability(timeout: TimeInterval = 15) async throws {
+    public func ensureAvailability() async throws {
+        try await ensureAvailability(timeout: 15)
+    }
+
+    /// Check for availability of the database within a bounded amount of time.
+    public func ensureAvailability(timeout: TimeInterval) async throws {
         guard !isAvailable else {
             return
         }
@@ -161,7 +176,7 @@ extension CloudKitAdaptor: CryoDatabaseAdaptor {
     public func createTable<Model: CryoModel>(for model: Model.Type, initializeCloudKitSchema: Bool) async throws -> any CryoCreateTableQuery<Model> {
         guard isAvailable else { throw CryoError.backendNotAvailable }
         // Initialize the CryoSchema
-        await CryoSchemaManager.shared.createSchema(for: model)
+        try CryoSchemaManager.shared.createSchema(for: model)
         return try CloudKitCreateTableQuery(from: model, database: database, config: config, initializeCloudKitSchema: initializeCloudKitSchema)
     }
     
@@ -186,55 +201,6 @@ extension CloudKitAdaptor: CryoDatabaseAdaptor {
     }
 }
 
-// MARK: Schema initialization
-
-extension CloudKitAdaptor: ResilientStoreBackend {
-    func execute(operation: DatabaseOperation) async throws {
-        guard isAvailable else { throw CryoError.backendNotAvailable }
-        switch operation {
-        case .insert(_, let tableName, let rowId, let data):
-            guard let schema = CryoSchemaManager.shared.schema(tableName: tableName) else {
-                throw CryoError.schemaNotInitialized(tableName: tableName)
-            }
-            
-            var modelData = [String: CryoColumnValueWrapper]()
-            for item in data {
-                modelData[item.columnName] = .init(value: item.value.columnValue)
-            }
-            
-            let model = try schema.create(modelData)
-            _ = try await UntypedCloudKitInsertQuery(id: rowId, value: model, replace: false, database: database, config: config)
-                .execute()
-        case .update(_, let tableName, let rowId, let setClauses, let whereClauses):
-            guard let schema = CryoSchemaManager.shared.schema(tableName: tableName) else {
-                throw CryoError.schemaNotInitialized(tableName: tableName)
-            }
-            
-            let query = try UntypedCloudKitUpdateQuery(for: schema.`self`, id: rowId, database: database, config: config)
-            for setClause in setClauses {
-                _ = try query.set(setClause.columnName, to: setClause.value.columnValue)
-            }
-            for whereClause in whereClauses {
-                _ = try query.where(whereClause.columnName, operation: whereClause.operation, value: whereClause.value.columnValue)
-            }
-
-            _ = try await query.execute()
-            break
-        case .delete(_, let tableName, let rowId, let whereClauses):
-            guard let schema = CryoSchemaManager.shared.schema(tableName: tableName) else {
-                throw CryoError.schemaNotInitialized(tableName: tableName)
-            }
-            
-            let query = try UntypedCloudKitDeleteQuery(for: schema.`self`, id: rowId, database: database, config: config)
-            for whereClause in whereClauses {
-                _ = try query.where(whereClause.columnName, operation: whereClause.operation, value: whereClause.value.columnValue)
-            }
-            
-            _ = try await query.execute()
-        }
-    }
-}
-
 extension CloudKitAdaptor {
     static func formatOperator(_ queryOperator: CryoComparisonOperator) -> String {
         switch queryOperator {
@@ -254,18 +220,12 @@ extension CloudKitAdaptor {
     }
     
     static func placeholderSymbol(for value: CryoQueryValue) -> String {
-        switch value {
-        case .integer:
-            return "%d"
-        case .double:
-            return "%d"
-        default:
-            return "%@"
-        }
+        "%@"
     }
     
     static func queryArgument(for value: CryoQueryValue) -> NSObject {
         switch value {
+        case .null: return NSNull()
         case .string(let value):
             return value as NSString
         case .integer(let value):
@@ -354,9 +314,15 @@ extension CloudKitAdaptor {
     }
     
     static func check(clause: CryoQueryWhereClause, object: _AnyCryoColumnValue) throws -> Bool {
+        if let optional = object as? _CryoOptionalValue {
+            if let wrapped = optional.wrappedValue { return try check(clause: clause, object: wrapped) }
+            return clause.operation == .equals && clause.value == .null
+        }
+        if clause.value == .null { return clause.operation == .doesNotEqual }
         switch clause.operation {
         case .equals:
             switch clause.value {
+            case .null: return false
             case .string(value: let value):
                 guard let object = object as? CryoColumnStringValue else { return false }
                 return value == object.stringValue
@@ -378,6 +344,7 @@ extension CloudKitAdaptor {
             }
         case .doesNotEqual:
             switch clause.value {
+            case .null: return false
             case .string(value: let value):
                 guard let object = object as? CryoColumnStringValue else { return false }
                 return value != object.stringValue
@@ -399,6 +366,7 @@ extension CloudKitAdaptor {
             }
         case .isGreatherThan:
             switch clause.value {
+            case .null: return false
             case .string(value: let value):
                 guard let object = object as? CryoColumnStringValue else { return false }
                 return object.stringValue > value
@@ -419,6 +387,7 @@ extension CloudKitAdaptor {
             }
         case .isGreatherThanOrEquals:
             switch clause.value {
+            case .null: return false
             case .string(value: let value):
                 guard let object = object as? CryoColumnStringValue else { return false }
                 return object.stringValue >= value
@@ -439,6 +408,7 @@ extension CloudKitAdaptor {
             }
         case .isLessThan:
             switch clause.value {
+            case .null: return false
             case .string(value: let value):
                 guard let object = object as? CryoColumnStringValue else { return false }
                 return object.stringValue < value
@@ -459,6 +429,7 @@ extension CloudKitAdaptor {
             }
         case .isLessThanOrEquals:
             switch clause.value {
+            case .null: return false
             case .string(value: let value):
                 guard let object = object as? CryoColumnStringValue else { return false }
                 return object.stringValue <= value
@@ -482,11 +453,35 @@ extension CloudKitAdaptor {
 }
 
 public extension CloudKitAdaptor {
+    internal static func isRetryableCloudKitError(_ error: Error) -> Bool {
+        guard let error = error as? CKError else { return false }
+        let retryableCodes: Set<CKError.Code> = [
+            .requestRateLimited, .serviceUnavailable, .networkUnavailable, .zoneBusy
+        ]
+        if error.code == .partialFailure, let partialErrors = error.partialErrorsByItemID {
+            return partialErrors.values.contains(where: isRetryableCloudKitError)
+        }
+        return retryableCodes.contains(error.code)
+    }
+
+    internal static func retryDelay(for error: CKError, defaultDelay: TimeInterval) -> TimeInterval {
+        if let retryAfter = error.retryAfterSeconds { return retryAfter }
+        if error.code == .partialFailure, let partialErrors = error.partialErrorsByItemID {
+            for case let nested as CKError in partialErrors.values where isRetryableCloudKitError(nested) {
+                return retryDelay(for: nested, defaultDelay: defaultDelay)
+            }
+        }
+        return defaultDelay
+    }
+
     /// Execute a CloudKit operation, waiting and repeating as necessary in case of a rate limit.
     static func cloudKitOperation<Result>(
         maxAttempts: Int = 5,
         defaultDelay: TimeInterval = 3,
         log: Optional<(OSLogType, String) -> Void> = nil,
+        sleep: (TimeInterval) async throws -> Void = { delay in
+            try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+        },
         _ operation: () async throws -> Result
     ) async rethrows -> Result {
         do {
@@ -496,15 +491,17 @@ public extension CloudKitAdaptor {
         catch {
             guard maxAttempts > 0 else { throw error }
             guard let error = error as? CKError else { throw error }
-            guard error.code == .requestRateLimited || error.code == .serviceUnavailable else { throw error }
+            guard isRetryableCloudKitError(error) else { throw error }
             
-            let retryAfter = error.retryAfterSeconds ?? defaultDelay
+            let retryAfter = retryDelay(for: error, defaultDelay: defaultDelay)
             log?(.info, "Rate limit reached, retrying in \(retryAfter) seconds.")
             
-            try? await Task.sleep(nanoseconds: UInt64(retryAfter * 1_000_000_000))
+            try await sleep(retryAfter)
             return try await cloudKitOperation(
                 maxAttempts: maxAttempts - 1,
                 defaultDelay: min(defaultDelay * 2, 30),
+                log: log,
+                sleep: sleep,
                 operation
             )
         }
@@ -534,8 +531,9 @@ internal extension CryoQueryValue {
         }
     }
     
-    var recordValue: __CKRecordObjCValue {
+    var recordValue: __CKRecordObjCValue? {
         switch self {
+        case .null: return nil
         case .string(let value):
             return value as NSString
         case .integer(let value):

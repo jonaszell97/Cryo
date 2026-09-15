@@ -8,7 +8,7 @@ public final class CloudKitUpdateQuery<Model: CryoModel> {
     let untypedQuery: UntypedCloudKitUpdateQuery
     
     /// Create an UPDATE query.
-    internal init(from: Model.Type, id: String?, database: CKDatabase, config: CryoConfig?) throws {
+    internal init(from: Model.Type, id: String?, database: any CloudKitDatabase, config: CryoConfig?) throws {
         self.untypedQuery = try .init(for: Model.self, id: id, database: database, config: config)
     }
 }
@@ -59,23 +59,19 @@ internal class UntypedCloudKitUpdateQuery {
     var whereClauses: [CryoQueryWhereClause]
     
     /// The database to store to.
-    let database: CKDatabase
+    let database: any CloudKitDatabase
     
-    #if DEBUG
     let config: CryoConfig?
-    #endif
     
     /// Create an UPDATE query.
-    internal init(for modelType: any CryoModel.Type, id: String?, database: CKDatabase, config: CryoConfig?) throws {
+    internal init(for modelType: any CryoModel.Type, id: String?, database: any CloudKitDatabase, config: CryoConfig?) throws {
         self.id = id
         self.database = database
         self.modelType = modelType
         self.setClauses = []
         self.whereClauses = []
         
-        #if DEBUG
         self.config = config
-        #endif
     }
     
     /// The complete query string.
@@ -122,72 +118,25 @@ internal class UntypedCloudKitUpdateQuery {
 
 extension UntypedCloudKitUpdateQuery {
     func fetch() async throws -> [CKRecord] {
-        if let id {
-            // Fetch single record
-            let recordId = CKRecord.ID(recordName: id)
-            return [try await database.record(for: recordId)]
-        }
-        
-        // Fetch all records matching WHERE clauses
-        
-        let predicate: NSPredicate
-        if whereClauses.isEmpty {
-            predicate = NSPredicate(value: true)
-        }
-        else {
-            var predicateFormat = ""
-            var predicateArgs = [Any]()
-            
-            for i in 0..<whereClauses.count {
-                if i > 0 {
-                    predicateFormat += " AND "
-                }
-                
-                let clause = whereClauses[i]
-                predicateFormat += "(\(clause.columnName) \(CloudKitAdaptor.formatOperator(clause.operation)) \(CloudKitAdaptor.placeholderSymbol(for: clause.value)))"
-                predicateArgs.append(CloudKitAdaptor.queryArgument(for: clause.value))
-            }
-            
-            predicate = NSPredicate(format: predicateFormat, argumentArray: predicateArgs)
-        }
-        
-        let query = CKQuery(recordType: modelType.tableName, predicate: predicate)
-        
-        var data = [CKRecord]()
-        var (batch, cursor) =  try await database.records(matching: query)
-        data.append(contentsOf: try batch.map { recordId, recordResult in
-            switch recordResult {
-            case .success(let record):
-                return record
-            case .failure(let error):
-                throw error
-            }
-        })
-        
-        while cursor != nil {
-            let (nextBatch, nextCursor) =  try await database.records(continuingMatchFrom: cursor!)
-            data.append(contentsOf: try nextBatch.map { recordId, recordResult in
-                switch recordResult {
-                case .success(let record):
-                    return record
-                case .failure(let error):
-                    throw error
-                }
-            })
-            
-            cursor = nextCursor
-        }
-        
-        return data
+        try await UntypedCloudKitSelectQuery.fetch(
+            id: id, modelType: modelType, whereClauses: whereClauses,
+            resultsLimit: nil, sortingClauses: [], database: database, log: config?.log
+        )
     }
 }
 
 extension UntypedCloudKitUpdateQuery {
     @discardableResult public func execute() async throws -> Int {
         let records = try await self.fetch()
+        guard !records.isEmpty else { return 0 }
+        let schema = try CryoSchemaManager.shared.schema(for: modelType)
         for record in records {
             for clause in setClauses {
-                record[clause.columnName] = clause.value.recordValue
+                guard let column = schema.columns.first(where: { $0.columnName == clause.columnName }) else {
+                    throw CryoError.invalidModel(message: "Unknown column '\(clause.columnName)' in \(modelType.tableName)")
+                }
+                record[clause.columnName] = try CloudKitAdaptor.nsObject(from: clause.value.columnValue,
+                                                                         column: column)
             }
         }
         
@@ -199,23 +148,34 @@ extension UntypedCloudKitUpdateQuery {
         #endif
         
         let (saveResults, _) = try await CloudKitAdaptor.cloudKitOperation(log: log) {
-            try await database.modifyRecords(saving: records, deleting: [], savePolicy: .changedKeys)
+            let results = try await database.modifyRecords(saving: records, deleting: [], savePolicy: .changedKeys)
+            if let error = results.saveResults.values.compactMap({ result -> Error? in
+                guard case .failure(let error) = result,
+                      CloudKitAdaptor.isRetryableCloudKitError(error) else { return nil }
+                return error
+            }).first {
+                throw error
+            }
+            return results
         }
         
-        #if DEBUG
         for result in saveResults {
             switch result.value {
             case .success(let id):
+                #if DEBUG
                 config?.log?(.debug, "[CloudKitAdaptor] Success! \(id)")
+                #endif
             case .failure(let err):
+                #if DEBUG
                 config?.log?(.debug, "[CloudKitAdaptor] FAILURE: \(err.localizedDescription)")
+                #endif
+                throw err
             }
         }
-        #else
-        _ = saveResults
-        #endif
-        
-        return records.count
+
+        return saveResults.values.reduce(into: 0) { count, result in
+            if case .success = result { count += 1 }
+        }
     }
     
     public func set<Value: _AnyCryoColumnValue>(

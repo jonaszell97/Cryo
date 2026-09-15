@@ -3,6 +3,8 @@ import Foundation
 
 /// Common type for errors thrown in `Cryo`.
 public enum CryoError: Error {
+    case invalidStoredValue(type: Any.Type, value: String)
+    case invalidModel(message: String)
     /// A value cannot be persisted with the given adaptor.
     case cannotPersistValue(valueType: Any.Type, adaptorType: Any.Type)
     

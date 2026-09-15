@@ -27,7 +27,7 @@ internal enum CryoColumnType {
 /// Protocol for types that can be stored in a CloudKIt column.
 public protocol _AnyCryoColumnValue: Codable {
     /// A default value for this type.
-    static var defaultValue: Self { get }
+    static var defaultValue: Self { get throws }
 }
 
 /// Protocol for types that can be stored in a CloudKIt column as an `Int64`.
@@ -36,7 +36,7 @@ public protocol CryoColumnIntValue: _AnyCryoColumnValue {
     var integerValue: Int64 { get }
     
     /// Initialize from an integer value.
-    init (integerValue: Int64)
+    init (integerValue: Int64) throws
 }
 
 /// Protocol for types that can be stored in a CloudKIt column as a `Double`.
@@ -45,7 +45,7 @@ public protocol CryoColumnDoubleValue: _AnyCryoColumnValue {
     var doubleValue: Double { get }
     
     /// Initialize from an integer value.
-    init (doubleValue: Double)
+    init (doubleValue: Double) throws
 }
 
 /// Protocol for types that can be stored in a CloudKIt column as a `String`.
@@ -54,7 +54,7 @@ public protocol CryoColumnStringValue: _AnyCryoColumnValue {
     var stringValue: String { get }
     
     /// Initialize from a string value.
-    init (stringValue: String)
+    init (stringValue: String) throws
 }
 
 /// Protocol for types that can be stored in a CloudKIt column as a `Date`.
@@ -77,12 +77,12 @@ public protocol CryoColumnDataValue: _AnyCryoColumnValue {
 
 public extension _AnyCryoColumnValue {
     /// A default value for this type.
-    static var defaultValue: Self { try! .init(from: EmptyDecoder()) }
+    static var defaultValue: Self { get throws { try .init(from: EmptyDecoder()) } }
 }
 
 internal protocol _CryoOptionalValue {
     /// The column type of this optional.
-    static var columnType: CryoColumnType { get }
+    static var columnType: CryoColumnType { get throws }
     
     /// The wrapped value, if present.
     var wrappedValue: _AnyCryoColumnValue? { get }
@@ -94,14 +94,16 @@ internal protocol _CryoOptionalValue {
 extension Optional: _AnyCryoColumnValue, _CryoOptionalValue where Wrapped: _AnyCryoColumnValue {
     /// The column type of this optional.
     static var columnType: CryoColumnType {
-        switch Wrapped.self {
-        case is CryoColumnIntValue.Type: return .integer
-        case is CryoColumnDoubleValue.Type: return .double
-        case is CryoColumnStringValue.Type: return .text
-        case is CryoColumnDateValue.Type: return .date
-        case is CryoColumnDataValue.Type: return .data
-        default:
-            fatalError("\(Wrapped.self) is not a valid type for a CryoColumn")
+        get throws {
+            switch Wrapped.self {
+            case is CryoColumnIntValue.Type: return .integer
+            case is CryoColumnDoubleValue.Type: return .double
+            case is CryoColumnStringValue.Type: return .text
+            case is CryoColumnDateValue.Type: return .date
+            case is CryoColumnDataValue.Type: return .data
+            default:
+                throw CryoError.invalidModel(message: "\(Wrapped.self) is not a valid type for a CryoColumn")
+            }
         }
     }
     
@@ -115,7 +117,7 @@ extension Optional: _AnyCryoColumnValue, _CryoOptionalValue where Wrapped: _AnyC
     }
     
     /// A default value for this type.
-    public static var defaultValue: Self { .some(Wrapped.defaultValue) }
+    public static var defaultValue: Self { get throws { .some(try Wrapped.defaultValue) } }
     
     /// The nil value.
     static var nilValue: Self { nil }
@@ -128,7 +130,12 @@ extension Int: CryoColumnIntValue {
     public var integerValue: Int64 { Int64(self) }
     
     /// Initialize from an integer value.
-    public init (integerValue: Int64) { self = Self(integerValue) }
+    public init (integerValue: Int64) throws {
+        guard let value = Self(exactly: integerValue) else {
+            throw CryoError.invalidStoredValue(type: Self.self, value: "\(integerValue)")
+        }
+        self = value
+    }
     
     /// A default value for this type.
     public static var defaultValue: Self { 0 }
@@ -139,7 +146,12 @@ extension Int8: CryoColumnIntValue {
     public var integerValue: Int64 { Int64(self) }
     
     /// Initialize from an integer value.
-    public init (integerValue: Int64) { self = Self(integerValue) }
+    public init (integerValue: Int64) throws {
+        guard let value = Self(exactly: integerValue) else {
+            throw CryoError.invalidStoredValue(type: Self.self, value: "\(integerValue)")
+        }
+        self = value
+    }
     
     /// A default value for this type.
     public static var defaultValue: Self { 0 }
@@ -150,7 +162,12 @@ extension Int16: CryoColumnIntValue {
     public var integerValue: Int64 { Int64(self) }
     
     /// Initialize from an integer value.
-    public init (integerValue: Int64) { self = Self(integerValue) }
+    public init (integerValue: Int64) throws {
+        guard let value = Self(exactly: integerValue) else {
+            throw CryoError.invalidStoredValue(type: Self.self, value: "\(integerValue)")
+        }
+        self = value
+    }
     
     /// A default value for this type.
     public static var defaultValue: Self { 0 }
@@ -161,7 +178,12 @@ extension Int32: CryoColumnIntValue {
     public var integerValue: Int64 { Int64(self) }
     
     /// Initialize from an integer value.
-    public init (integerValue: Int64) { self = Self(integerValue) }
+    public init (integerValue: Int64) throws {
+        guard let value = Self(exactly: integerValue) else {
+            throw CryoError.invalidStoredValue(type: Self.self, value: "\(integerValue)")
+        }
+        self = value
+    }
     
     /// A default value for this type.
     public static var defaultValue: Self { 0 }
@@ -183,7 +205,12 @@ extension UInt: CryoColumnIntValue {
     public var integerValue: Int64 { Int64(self) }
     
     /// Initialize from an integer value.
-    public init (integerValue: Int64) { self = Self(integerValue) }
+    public init (integerValue: Int64) throws {
+        guard let value = Self(exactly: integerValue) else {
+            throw CryoError.invalidStoredValue(type: Self.self, value: "\(integerValue)")
+        }
+        self = value
+    }
     
     /// A default value for this type.
     public static var defaultValue: Self { 0 }
@@ -194,7 +221,12 @@ extension UInt8: CryoColumnIntValue {
     public var integerValue: Int64 { Int64(self) }
     
     /// Initialize from an integer value.
-    public init (integerValue: Int64) { self = Self(integerValue) }
+    public init (integerValue: Int64) throws {
+        guard let value = Self(exactly: integerValue) else {
+            throw CryoError.invalidStoredValue(type: Self.self, value: "\(integerValue)")
+        }
+        self = value
+    }
     
     /// A default value for this type.
     public static var defaultValue: Self { 0 }
@@ -205,7 +237,12 @@ extension UInt16: CryoColumnIntValue {
     public var integerValue: Int64 { Int64(self) }
     
     /// Initialize from an integer value.
-    public init (integerValue: Int64) { self = Self(integerValue) }
+    public init (integerValue: Int64) throws {
+        guard let value = Self(exactly: integerValue) else {
+            throw CryoError.invalidStoredValue(type: Self.self, value: "\(integerValue)")
+        }
+        self = value
+    }
     
     /// A default value for this type.
     public static var defaultValue: Self { 0 }
@@ -216,7 +253,12 @@ extension UInt32: CryoColumnIntValue {
     public var integerValue: Int64 { Int64(self) }
     
     /// Initialize from an integer value.
-    public init (integerValue: Int64) { self = Self(integerValue) }
+    public init (integerValue: Int64) throws {
+        guard let value = Self(exactly: integerValue) else {
+            throw CryoError.invalidStoredValue(type: Self.self, value: "\(integerValue)")
+        }
+        self = value
+    }
     
     /// A default value for this type.
     public static var defaultValue: Self { 0 }
@@ -238,24 +280,13 @@ extension RawRepresentable where RawValue: CryoColumnIntValue {
     public var integerValue: Int64 { self.rawValue.integerValue }
     
     /// Initialize from an integer value.
-    public init (integerValue: Int64) { self = Self(rawValue: .init(integerValue: integerValue))! }
-    
-    /// A default value for this type.
-    public static var defaultValue: Self { .init(rawValue: RawValue.defaultValue)! }
-}
-
-extension Optional: CryoColumnIntValue where Wrapped: CryoColumnIntValue {
-    /// The integer value of this instance.
-    public var integerValue: Int64 {
-        guard case .some(let wrapped) = self else {
-            return 0
+    public init (integerValue: Int64) throws {
+        guard let value = Self(rawValue: try .init(integerValue: integerValue)) else {
+            throw CryoError.invalidStoredValue(type: Self.self, value: "\(integerValue)")
         }
-        
-        return wrapped.integerValue
+        self = value
     }
-    
-    /// Initialize from an integer value.
-    public init (integerValue: Int64) { self = .some(.init(integerValue: integerValue)) }
+
 }
 
 extension Double: CryoColumnDoubleValue {
@@ -296,21 +327,12 @@ extension RawRepresentable where RawValue: CryoColumnDoubleValue {
     public var doubleValue: Double { self.rawValue.doubleValue }
     
     /// Initialize from an integer value.
-    public init (doubleValue: Double) { self = Self(rawValue: .init(doubleValue: doubleValue))! }
-}
-
-extension Optional: CryoColumnDoubleValue where Wrapped: CryoColumnDoubleValue {
-    /// The double value of this instance.
-    public var doubleValue: Double {
-        guard case .some(let wrapped) = self else {
-            return 0
+    public init (doubleValue: Double) throws {
+        guard let value = Self(rawValue: try .init(doubleValue: doubleValue)) else {
+            throw CryoError.invalidStoredValue(type: Self.self, value: "\(doubleValue)")
         }
-        
-        return wrapped.doubleValue
+        self = value
     }
-    
-    /// Initialize from an integer value.
-    public init (doubleValue: Double) { self = .some(.init(doubleValue: doubleValue)) }
 }
 
 extension String: CryoColumnStringValue {
@@ -329,7 +351,12 @@ extension URL: CryoColumnStringValue {
     public var stringValue: String { self.absoluteString }
     
     /// Initialize from a string value.
-    public init (stringValue: String) { self.init(string: stringValue)! }
+    public init (stringValue: String) throws {
+        guard let value = URL(string: stringValue) else {
+            throw CryoError.invalidStoredValue(type: Self.self, value: stringValue)
+        }
+        self = value
+    }
     
     /// A default value for this type.
     public static var defaultValue: Self { URL(string: "file:///")! }
@@ -340,7 +367,12 @@ extension UUID: CryoColumnStringValue {
     public var stringValue: String { self.uuidString }
     
     /// Initialize from a string value.
-    public init (stringValue: String) { self = .init(uuidString: stringValue) ?? Self.defaultValue }
+    public init (stringValue: String) throws {
+        guard let value = UUID(uuidString: stringValue) else {
+            throw CryoError.invalidStoredValue(type: Self.self, value: stringValue)
+        }
+        self = value
+    }
     
     /// A default value for this type.
     public static var defaultValue: Self { UUID(uuidString: "00000000-0000-0000-0000-000000000000")! }
@@ -363,26 +395,17 @@ extension Decimal: CryoColumnStringValue {
     public static var defaultValue: Self { 0 }
 }
 
-extension Optional: CryoColumnStringValue where Wrapped: CryoColumnStringValue {
-    /// The string value of this instance.
-    public var stringValue: String {
-        guard case .some(let wrapped) = self else {
-            return ""
-        }
-        
-        return wrapped.stringValue
-    }
-    
-    /// Initialize from a string value.
-    public init (stringValue: String) { self = .some(.init(stringValue: stringValue)) }
-}
-
-extension RawRepresentable where RawValue: CryoColumnStringValue, Self: CaseIterable {
+extension RawRepresentable where RawValue: CryoColumnStringValue {
     /// The string value of this instance.
     public var stringValue: String { self.rawValue.stringValue }
     
     /// Initialize from a string value.
-    public init (stringValue: String) { self = Self(rawValue: .init(stringValue: stringValue)) ?? .allCases.first! }
+    public init (stringValue: String) throws {
+        guard let value = Self(rawValue: try .init(stringValue: stringValue)) else {
+            throw CryoError.invalidStoredValue(type: Self.self, value: "\(stringValue)")
+        }
+        self = value
+    }
 }
 
 extension Data: CryoColumnDataValue {
@@ -394,22 +417,6 @@ extension Data: CryoColumnDataValue {
     
     /// A default value for this type.
     public static var defaultValue: Self { Data() }
-}
-
-extension Optional: CryoColumnDataValue where Wrapped: CryoColumnDataValue {
-    /// The data value of this instance.
-    public var dataValue: Data {
-        get throws {
-            guard case .some(let wrapped) = self else {
-                return Data()
-            }
-            
-            return try wrapped.dataValue
-        }
-    }
-    
-    /// Initialize from a data value.
-    public init (dataValue: Data) throws { self = .some(try .init(dataValue: dataValue)) }
 }
 
 extension Encodable {
@@ -456,4 +463,17 @@ extension Dictionary: _AnyCryoColumnValue, CryoColumnDataValue where Key: _AnyCr
     
     /// A default value for this type.
     public static var defaultValue: Self { [:] }
+}
+
+/// Case-iterable column enums use their first case when reflecting a schema.
+/// Other custom column types should provide an explicit `defaultValue`.
+extension _AnyCryoColumnValue where Self: CaseIterable {
+    public static var defaultValue: Self {
+        get throws {
+            guard let value = allCases.first else {
+                throw CryoError.invalidModel(message: "\(Self.self) has no default case")
+            }
+            return value
+        }
+    }
 }

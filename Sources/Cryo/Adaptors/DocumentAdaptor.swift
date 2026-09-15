@@ -18,6 +18,18 @@ import Foundation
 /// try await adaptor.persist(Date.now, CryoNamedKey(id: "dateValue", for: Date.self))
 /// ```
 public struct DocumentAdaptor {
+    internal var makeMetadataQuery: () -> any UbiquitousMetadataQuerying = { SystemUbiquitousMetadataQuery() }
+    internal var coordinate: (URL, Bool, @escaping (URL) -> Void) throws -> Void = { url, writing, accessor in
+        let coordinator = NSFileCoordinator()
+        var coordinationError: NSError?
+        if writing {
+            coordinator.coordinate(writingItemAt: url, options: [], error: &coordinationError, byAccessor: accessor)
+        } else {
+            coordinator.coordinate(readingItemAt: url, options: [], error: &coordinationError, byAccessor: accessor)
+        }
+        if let coordinationError { throw coordinationError }
+    }
+
     /// The cryo config.
     public let config: CryoConfig
     
@@ -29,17 +41,22 @@ public struct DocumentAdaptor {
     
     /// Whether or not this adaptor uses iCloud ubiquitous storage.
     public let usesUbiquitousStorage: Bool
+
+    /// Whether this adaptor owns the contents of `url` and may clear them.
+    public let ownsDirectory: Bool
     
     /// Create a document adaptor.
     ///
     /// - Parameters:
     ///   - url: The URL to the directory where data should be stored.
     ///   - fileManager: The file manager instance to use for file operations.
-    public init(config: CryoConfig, url: URL, usesUbiquitousStorage: Bool, fileManager: FileManager = .default) {
+    public init(config: CryoConfig, url: URL, usesUbiquitousStorage: Bool,
+                ownsDirectory: Bool = false, fileManager: FileManager = .default) {
         self.config = config
         self.url = url
         self.fileManager = fileManager
         self.usesUbiquitousStorage = usesUbiquitousStorage
+        self.ownsDirectory = ownsDirectory
     }
     
     /// The shared local document adaptor.
@@ -57,8 +74,13 @@ public struct DocumentAdaptor {
             url = url.appendingPathComponent(subdirectory)
         }
         
-        try? fileManager.createDirectory(at: url, withIntermediateDirectories: false)
-        return DocumentAdaptor(config: config, url: url, usesUbiquitousStorage: false, fileManager: fileManager)
+        do {
+            try fileManager.createDirectory(at: url, withIntermediateDirectories: true)
+        } catch {
+            config.log?(.error, "[DocumentAdaptor.local] failed to create directory: \(error)")
+        }
+        return DocumentAdaptor(config: config, url: url, usesUbiquitousStorage: false,
+                               ownsDirectory: subdirectory != nil, fileManager: fileManager)
     }
     
     /// Create an iCloud based document adaptor.
@@ -78,8 +100,13 @@ public struct DocumentAdaptor {
             containerUrl = containerUrl.appendingPathComponent(subdirectory)
         }
         
-        try? fileManager.createDirectory(at: containerUrl, withIntermediateDirectories: false)
-        return DocumentAdaptor(config: config, url: containerUrl, usesUbiquitousStorage: true, fileManager: fileManager)
+        do {
+            try fileManager.createDirectory(at: containerUrl, withIntermediateDirectories: true)
+        } catch {
+            config.log?(.error, "[DocumentAdaptor.cloud] failed to create directory: \(error)")
+        }
+        return DocumentAdaptor(config: config, url: containerUrl, usesUbiquitousStorage: true,
+                               ownsDirectory: subdirectory != nil, fileManager: fileManager)
     }
 
     /// Create an iCloud based document adaptor without performing ubiquity I/O on
@@ -99,13 +126,11 @@ public struct DocumentAdaptor {
 }
 
 extension DocumentAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
-    func documentUrl<Key: CryoKey>(for key: Key) -> URL {
-        if #available(iOS 16, macOS 13, *) {
-            return self.url.appending(component: key.id)
+    func documentUrl<Key: CryoKey>(for key: Key) throws -> URL {
+        guard !key.id.contains("/"), !key.id.contains("\\"), !key.id.contains("..") else {
+            throw CocoaError(.fileWriteInvalidFileName)
         }
-        else {
-            return self.url.appendingPathComponent(key.id)
-        }
+        return self.url.appendingPathComponent(key.id)
     }
     
     public func persist<Key: CryoKey>(_ value: Key.Value?, for key: Key) async throws {
@@ -149,21 +174,20 @@ extension DocumentAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
     public func persistSynchronously(_ data: Data?, url: URL) throws {
         config.log?(.info, "[DocumentAdaptor.persistSynchronously] to \(url)")
         
-        var coordinationError: NSError? = nil
         var writeError: Error? = nil
-        
-        // Use the coordinationError variable to capture the error information of the coordinate method.
-        // If an NSError pointer is not provided, errors occurring during the coordination process will not be caught and handled.
-        config.log?(.info, "[DocumentAdaptor.persistSynchronously] starting coordination")
-//        coordinator.coordinate(writingItemAt: url, options: [.forDeleting], error: &coordinationError) { url in
+        let access: (URL) -> Void = { coordinatedURL in
             config.log?(.info, "[DocumentAdaptor.persistSynchronously] in coordination callback")
             do {
                 if let data {
                     config.log?(.info, "[DocumentAdaptor.persistSynchronously] write \(data.count) bytes")
-                    try data.write(to: url)
+                    try data.write(to: coordinatedURL, options: .atomic)
                 }
                 else {
-                    try self.fileManager.removeItem(at: url)
+                    do {
+                        try self.fileManager.removeItem(at: coordinatedURL)
+                    } catch let error as CocoaError where error.code == .fileNoSuchFile {
+                        // Removing a missing value is a successful no-op.
+                    }
                 }
                 
                 config.log?(.info, "[DocumentAdaptor.persistSynchronously] completed coordination callback")
@@ -172,7 +196,13 @@ extension DocumentAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
                 writeError = error
                 config.log?(.info, "[DocumentAdaptor.persistSynchronously] error in coordination callback: \(error)")
             }
-//        }
+        }
+
+        if usesUbiquitousStorage {
+            try coordinate(url, true, access)
+        } else {
+            access(url)
+        }
         
         // Check outside the closure to see if an error occurred
         if let error = writeError {
@@ -180,11 +210,6 @@ extension DocumentAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
             throw error
         }
         
-        // Check if an error occurred during coordination
-        if let coordinationError = coordinationError {
-            config.log?(.info, "[DocumentAdaptor.persistSynchronously] throwing coordination error: \(coordinationError)")
-            throw coordinationError
-        }
     }
     
     public func remove<Key: CryoKey>(key: Key) async throws {
@@ -212,57 +237,76 @@ extension DocumentAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
     }
     
     public func loadSynchronously<Key: CryoKey>(with key: Key) throws -> Key.Value? {
-        let documentUrl = self.documentUrl(for: key)
-        
-        var coordinationError: NSError?
+        let documentUrl = try self.documentUrl(for: key)
+        guard let data = try loadDataSynchronously(for: documentUrl) else { return nil }
+        return try JSONDecoder().decode(Key.Value.self, from: data)
+    }
+
+    /// Read raw document data without decoding it.
+    public func loadData(for url: URL) async throws -> Data? {
+        try await Task.detached(priority: .userInitiated) {
+            try loadDataSynchronously(for: url)
+        }.value
+    }
+
+    func loadDataSynchronously(for documentUrl: URL) throws -> Data? {
         var readError: Error? = nil
         var data: Data? = nil
-        
-        // coordinator.coordinate(readingItemAt: url, options: [], error: &coordinationError) { url in
+
+        let access: (URL) -> Void = { coordinatedURL in
             do {
-                data = try Data(contentsOf: documentUrl)
+                data = try Data(contentsOf: coordinatedURL)
             } catch {
                 if (error as NSError).code != NSFileReadNoSuchFileError {
                     readError = error
                 }
             }
-        //}
+        }
+
+        if usesUbiquitousStorage {
+            try coordinate(documentUrl, false, access)
+        } else {
+            access(documentUrl)
+        }
         
         // Check outside the closure to see if an error occurred
         if let error = readError {
             throw error
         }
         
-        // Check if an error occurred during reconciliation
-        if let coordinationError = coordinationError {
-            throw coordinationError
-        }
-        
-        guard let data else {
-            return nil
-        }
-        
-        return try JSONDecoder().decode(Key.Value.self, from: data)
+        return data
     }
     
     public func removeAll() async throws {
-        let urls = try FileManager.default.contentsOfDirectory(at: self.url, includingPropertiesForKeys: nil)
+        guard ownsDirectory else {
+            throw CryoError.featureNotAvailable(message: "removeAll requires an adaptor that owns a scoped directory")
+        }
+        let urls = try fileManager.contentsOfDirectory(at: self.url, includingPropertiesForKeys: [.isDirectoryKey])
         for url in urls {
+            guard try url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory != true else { continue }
             try await self.persist(nil, url: url)
         }
     }
     
     public func removeAllSynchronously() throws {
-        let urls = try FileManager.default.contentsOfDirectory(at: self.url, includingPropertiesForKeys: nil)
+        guard ownsDirectory else {
+            throw CryoError.featureNotAvailable(message: "removeAll requires an adaptor that owns a scoped directory")
+        }
+        let urls = try fileManager.contentsOfDirectory(at: self.url, includingPropertiesForKeys: [.isDirectoryKey])
         for url in urls {
+            guard try url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory != true else { continue }
             try self.persistSynchronously(nil, url: url)
         }
     }
     
     public func removeAll(matching condition: (URL) -> Bool) async throws {
-        let urls = try FileManager.default.contentsOfDirectory(at: self.url, includingPropertiesForKeys: nil)
+        guard ownsDirectory else {
+            throw CryoError.featureNotAvailable(message: "removeAll requires an adaptor that owns a scoped directory")
+        }
+        let urls = try fileManager.contentsOfDirectory(at: self.url, includingPropertiesForKeys: [.isDirectoryKey])
         for url in urls {
             guard condition(url) else { continue }
+            guard try url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory != true else { continue }
             try await self.persist(nil, url: url)
         }
     }
@@ -271,7 +315,7 @@ extension DocumentAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
     ///
     /// - Note: This method is not available in all adaptors.
     public func listInstanceKeys() async throws -> [String]? {
-        try FileManager.default.contentsOfDirectory(
+        try fileManager.contentsOfDirectory(
             at: self.url, includingPropertiesForKeys: nil
         ).map { $0.lastPathComponent }
     }
@@ -280,7 +324,7 @@ extension DocumentAdaptor: CryoAdaptor, CryoSynchronousAdaptor {
     ///
     /// - Note: This method is not available in all adaptors.
     public func listInstanceKeysSynchronously() throws -> [String]? {
-        try FileManager.default.contentsOfDirectory(
+        try fileManager.contentsOfDirectory(
             at: self.url, includingPropertiesForKeys: nil
         ).map { $0.lastPathComponent }
     }
@@ -303,7 +347,7 @@ extension DocumentAdaptor {
             throw CryoError.featureNotAvailable(message: "loadUbiquitousDocuments is only available for an iCloud documents adaptor")
         }
         
-        let query = ItemQuery()
+        let query = ItemQuery(query: makeMetadataQuery())
         let predicate = query.createQueryPredicate(directory: url, filenamePattern: filenamePattern)
         
         return try await query.searchMetadataItems(baseUrl: url, predicate: predicate, onUpdate: updateReceiver)
@@ -314,259 +358,106 @@ extension DocumentAdaptor {
             throw CryoError.featureNotAvailable(message: "loadUbiquitousDocuments is only available for an iCloud documents adaptor")
         }
         
-        let query = ItemQuery()
+        let query = ItemQuery(query: makeMetadataQuery())
         let predicate = query.createQueryPredicate(directory: url, filenamePattern: filenamePattern)
         
         return query.downloadUbiqitousFiles(baseUrl: url, fileManager: fileManager, config: config, predicate: predicate)
     }
 }
 
-fileprivate class ItemQuery {
-    /// The metadata query object.
-    let query: NSMetadataQuery
-    
-    /// The queue on which to execute operations.
-    let queue: OperationQueue
-    
-    /// Create a new item query.
-    init (queue: OperationQueue = .main) {
-        self.query = NSMetadataQuery()
-        self.queue = queue
-    }
-    
-    /// Create a new predicate for a metadat query.
-    /// 
-    /// - Parameters:
-    ///  - directory: The directory to search in.
-    ///  - recursive: Whether to search recursively.
-    ///  - filenamePattern: The filename pattern to match.
-    /// - Returns: A new predicate.
+internal final class ItemQuery {
+    let query: any UbiquitousMetadataQuerying
+
+    init(query: any UbiquitousMetadataQuerying) { self.query = query }
+
     func createQueryPredicate(directory: URL, filenamePattern: String? = nil) -> NSPredicate {
         if let filenamePattern {
             return NSPredicate(format: "%K BEGINSWITH[cdw] %@ AND %K LIKE[cwd] %@",
                                NSMetadataItemPathKey, directory.path, NSMetadataItemFSNameKey, filenamePattern)
         }
-        else {
-            return NSPredicate(format: "%K BEGINSWITH[cdw] %@", NSMetadataItemPathKey, directory.path)
-        }
+        return NSPredicate(format: "%K BEGINSWITH[cdw] %@", NSMetadataItemPathKey, directory.path)
     }
-    
-    /// Search for metadata items.
-    ///
-    /// - Parameters:
-    ///  - predicate: The predicate to use for the search.
-    ///  - sortDescriptors: The sort descriptors to use for the search.
-    ///  - scopes: The search scopes to use for the search.
-    /// - Returns: An async stream of metadata items.
+
     func downloadUbiqitousFiles(baseUrl: URL, fileManager: FileManager, config: CryoConfig,
-                                predicate: NSPredicate? = nil,
-                                sortDescriptors: [NSSortDescriptor] = [],
-                                scopes: [String] = [NSMetadataQueryUbiquitousDocumentsScope]) -> AsyncThrowingStream<DocumentAdaptor.UbiquitousItemUpdate, Error> {
-        // Configure query
-        query.searchScopes = [NSMetadataQueryUbiquitousDocumentsScope]
-        query.sortDescriptors = []
-        query.predicate = predicate ?? NSPredicate(value: true)
-        
-        let queryId = "\(ObjectIdentifier(self))".prefix(5)
-        let log: (String) -> Void = { message in
-            config.log?(.debug, "[ItemQuery \(queryId)] \(message)")
-        }
-        
-        return AsyncThrowingStream { continuation in
-            var downloadingItems = Set<URL>()
-            log("setting up metadata query")
-            
-            // Set up handler for initial results
-            NotificationCenter.default.addObserver(
-                forName: .NSMetadataQueryDidFinishGathering,
-                object: query,
-                queue: queue
-            ) { _ in
-                let fileManager = FileManager()
-                log("received \(self.query.results.count) initial items")
-                
-                for result in self.query.results {
-                    guard let metadataItem = result as? NSMetadataItem else {
-                        continue
-                    }
-                    
-                    guard let item = UbiquitousDocumentMetadata(baseUrl: baseUrl, metadataItem: metadataItem) else {
-                        continue
-                    }
-                    
-                    if item.isDownloaded {
-                        continuation.yield(.item(item))
-                        continue
-                    }
-                    
-                    // If the download is not started, start it
-                    if !item.isDownloading {
-                        do {
-                            try fileManager.startDownloadingUbiquitousItem(at: item.fileUrl)
-                        }
-                        catch {
-                            continuation.finish(throwing: error)
-                        }
-                    }
-                    
-                    downloadingItems.insert(item.fileUrl)
+                               predicate: NSPredicate? = nil,
+                               sortDescriptors: [NSSortDescriptor] = [],
+                               scopes: [String] = [NSMetadataQueryUbiquitousDocumentsScope]) -> AsyncThrowingStream<DocumentAdaptor.UbiquitousItemUpdate, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task { @MainActor in
+                defer { query.stop() }
+                guard query.start(predicate: predicate ?? NSPredicate(value: true), sortDescriptors: sortDescriptors, scopes: scopes) else {
+                    continuation.finish(throwing: CryoError.queryExecutionFailed(query: "metadata", status: -1, message: "starting metadata query failed"))
+                    return
                 }
-                
-                log("\(downloadingItems.count) files need to be downloaded")
-                
-                // Remove observer for initial results
-                NotificationCenter.default.removeObserver(self, name: .NSMetadataQueryDidFinishGathering, object: self.query)
-                
-                // If no values are downloading, finish
-                if downloadingItems.isEmpty {
+                var downloadingItems = Set<URL>()
+                do {
+                    for await event in query.events {
+                        let items: [any UbiquitousMetadataItem]
+                        let initial: Bool
+                        switch event {
+                        case .gathered(let values): items = values; initial = true
+                        case .updated(let values): items = values; initial = false
+                        }
+                        var remaining = Set<URL>()
+                        for metadata in items {
+                            guard let item = UbiquitousDocumentMetadata(baseUrl: baseUrl, metadataItem: metadata),
+                                  initial || downloadingItems.contains(item.fileUrl) else { continue }
+                            if item.isDownloaded {
+                                continuation.yield(.item(item))
+                            } else {
+                                if !item.isDownloading {
+                                    try fileManager.startDownloadingUbiquitousItem(at: item.fileUrl)
+                                }
+                                remaining.insert(item.fileUrl)
+                            }
+                        }
+                        downloadingItems = remaining
+                        if remaining.isEmpty { break }
+                        continuation.yield(.progressUpdate(downloaded: items.count - remaining.count, total: items.count))
+                    }
                     continuation.finish()
-                }
-                else {
-                    // Send an update about the download progress
-                    continuation.yield(.progressUpdate(downloaded: self.query.results.count - downloadingItems.count, total: self.query.results.count))
-                }
+                } catch { continuation.finish(throwing: error) }
             }
-            
-            NotificationCenter.default.addObserver(
-                forName: .NSMetadataQueryDidUpdate,
-                object: query,
-                queue: queue
-            ) { _ in
-                let fileManager = FileManager()
-                log("received update with \(self.query.results) items")
-                
-                var newDownloadingItems = Set<URL>()
-                for result in self.query.results {
-                    guard let metadataItem = result as? NSMetadataItem else {
-                        continue
-                    }
-                    
-                    guard let item = UbiquitousDocumentMetadata(baseUrl: baseUrl, metadataItem: metadataItem) else {
-                        continue
-                    }
-                    
-                    guard downloadingItems.contains(item.fileUrl) else {
-                        continue
-                    }
-                    
-                    if item.isDownloaded {
-                        continuation.yield(.item(item))
-                        continue
-                    }
-                    
-                    // If the download is not started, start it
-                    if !item.isDownloading {
-                        do {
-                            try fileManager.startDownloadingUbiquitousItem(at: item.fileUrl)
-                        }
-                        catch {
-                            continuation.finish(throwing: error)
-                        }
-                    }
-                    
-                    newDownloadingItems.insert(item.fileUrl)
-                }
-                
-                log("\(newDownloadingItems.count) files still need to be downloaded")
-                downloadingItems = newDownloadingItems
-                
-                if newDownloadingItems.isEmpty {
-                    continuation.finish()
-                }
-                else {
-                    // Send an update about the download progress
-                    continuation.yield(.progressUpdate(downloaded: self.query.results.count - downloadingItems.count, total: self.query.results.count))
-                }
-            }
-            
-            continuation.onTermination = { termination in
-                NotificationCenter.default.removeObserver(self, name: .NSMetadataQueryDidUpdate, object: self.query)
-                self.query.stop()
-            }
-            
-            // Start the query
-            query.operationQueue = queue
-            queue.addOperation {
-                Task { @MainActor in
-                    let started = self.query.start()
-                    if !started {
-                        continuation.finish(throwing: CryoError.queryExecutionFailed(query: self.query.description, status: -1, message: "starting metadata query failed"))
-                    }
-                }
-            }
+            continuation.onTermination = { _ in task.cancel() }
         }
     }
-    
-    /// Search for metadata items.
-    /// 
-    /// - Parameters:
-    ///  - predicate: The predicate to use for the search.
-    ///  - sortDescriptors: The sort descriptors to use for the search.
-    ///  - scopes: The search scopes to use for the search.
-    /// - Returns: An async stream of metadata items.
-    func searchMetadataItems(baseUrl: URL,
-                             predicate: NSPredicate? = nil,
+
+    func searchMetadataItems(baseUrl: URL, predicate: NSPredicate? = nil,
                              sortDescriptors: [NSSortDescriptor] = [],
                              scopes: [String] = [NSMetadataQueryUbiquitousDocumentsScope],
                              onUpdate updateReceiver: Optional<([UbiquitousDocumentMetadata]) -> Bool>) async throws -> [UbiquitousDocumentMetadata] {
-        // Configure query
-        query.searchScopes = scopes
-        query.sortDescriptors = sortDescriptors
-        query.predicate = predicate ?? NSPredicate(value: true)
-        
-        // Set up handler for updates
-        if let updateReceiver {
-            NotificationCenter.default.addObserver(
-                forName: .NSMetadataQueryDidUpdate,
-                object: query,
-                queue: queue
-            ) { _ in
-                let result = self.query.results.compactMap { item -> UbiquitousDocumentMetadata? in
-                    guard let metadataItem = item as? NSMetadataItem else {
-                        return nil
+        let lifetime = MetadataSearchLifetime()
+        return try await withTaskCancellationHandler(operation: {
+            try await withCheckedThrowingContinuation { continuation in
+                let task = Task { @MainActor in
+                    defer { query.stop() }
+                    var deliveredInitialResults = false
+                    guard query.start(predicate: predicate ?? NSPredicate(value: true), sortDescriptors: sortDescriptors, scopes: scopes) else {
+                        continuation.resume(throwing: CryoError.queryExecutionFailed(query: "metadata", status: -1, message: "starting metadata query failed"))
+                        return
                     }
-                    
-                    return UbiquitousDocumentMetadata(baseUrl: baseUrl, metadataItem: metadataItem)
-                }
-                
-                let continueReceivingUpdates = updateReceiver(result)
-                if !continueReceivingUpdates {
-                    NotificationCenter.default.removeObserver(self, name: .NSMetadataQueryDidUpdate, object: self.query)
-                    self.query.stop()
-                }
-            }
-        }
-        
-        // Create and return the stream
-        return try await withCheckedThrowingContinuation { continuation in
-            // Set up handler for first results
-            NotificationCenter.default.addObserver(
-                forName: .NSMetadataQueryDidFinishGathering,
-                object: query,
-                queue: queue
-            ) { _ in
-                let result = self.query.results.compactMap { item -> UbiquitousDocumentMetadata? in
-                    guard let metadataItem = item as? NSMetadataItem else {
-                        return nil
+                    for await event in query.events {
+                        switch event {
+                        case .gathered(let items):
+                            guard !deliveredInitialResults else { continue }
+                            deliveredInitialResults = true
+                            continuation.resume(returning: items.compactMap {
+                                UbiquitousDocumentMetadata(baseUrl: baseUrl, metadataItem: $0)
+                            })
+                            if updateReceiver == nil { return }
+                        case .updated(let items):
+                            let result = items.compactMap { UbiquitousDocumentMetadata(baseUrl: baseUrl, metadataItem: $0) }
+                            if updateReceiver?(result) == false {
+                                if !deliveredInitialResults { continuation.resume(returning: result) }
+                                return
+                            }
+                        }
                     }
-
-                    return UbiquitousDocumentMetadata(baseUrl: baseUrl, metadataItem: metadataItem)
+                    if !deliveredInitialResults { continuation.resume(throwing: CancellationError()) }
                 }
-
-                NotificationCenter.default.removeObserver(self, name: .NSMetadataQueryDidFinishGathering, object: self.query)
-                continuation.resume(returning: result)
+                lifetime.install(task)
             }
-            
-            // Start the query
-            query.operationQueue = queue
-            queue.addOperation {
-                let started = self.query.start()
-                if !started {
-                    continuation.resume(throwing:
-                        CryoError.queryExecutionFailed(query: self.query.description, status: -1, message: "starting metadata query failed"))
-                }
-            }
-        }
+        }, onCancel: { lifetime.cancel() })
     }
 }
 
@@ -593,7 +484,7 @@ public struct UbiquitousDocumentMetadata: Codable, Sendable {
     public let downloadAmount: Double?
     
     /// Whether the item is fully downloaded.
-    public var isDownloaded: Bool { (downloadAmount ?? 0) >= 100 }
+    public let isDownloaded: Bool
 
     /// Whether the file is a directory.
     public let isDirectory: Bool
@@ -604,27 +495,29 @@ public struct UbiquitousDocumentMetadata: Codable, Sendable {
     /// Whether the file has been uploaded.
     public let isUploaded: Bool
     
-    fileprivate init? (baseUrl: URL, metadataItem: NSMetadataItem) {
+    internal init? (baseUrl: URL, metadataItem: any UbiquitousMetadataItem) {
         guard let fileName = metadataItem.value(forAttribute: NSMetadataItemFSNameKey) as? String else {
             return nil
         }
         guard
-            let fileUrlString = metadataItem.value(forAttribute: NSMetadataItemPathKey) as? String,
-            let fileUrl = URL(string: fileUrlString)
+            let fileUrlString = metadataItem.value(forAttribute: NSMetadataItemPathKey) as? String
         else {
             return nil
         }
+        let fileUrl = URL(fileURLWithPath: fileUrlString)
         
         self.fileName = fileName
         self.fileUrl = fileUrl
         
         self.fileSize = metadataItem.value(forAttribute: NSMetadataItemFSSizeKey) as? Int
         self.contentType = metadataItem.value(forAttribute: NSMetadataItemContentTypeKey) as? String
-        self.isPlaceholder = metadataItem.value(forAttribute: NSMetadataUbiquitousItemDownloadingStatusKey) as? Bool ?? false
+        let downloadStatus = metadataItem.value(forAttribute: NSMetadataUbiquitousItemDownloadingStatusKey) as? String
+        self.isPlaceholder = downloadStatus != NSMetadataUbiquitousItemDownloadingStatusCurrent
+            && downloadStatus != NSMetadataUbiquitousItemDownloadingStatusDownloaded
         self.downloadAmount = metadataItem.value(forAttribute: NSMetadataUbiquitousItemPercentDownloadedKey) as? Double
-        
-        let downloadStatus = metadataItem.value(forAttribute: NSMetadataUbiquitousItemIsDownloadingKey) as? String
-        self.isDownloading = downloadStatus == NSMetadataUbiquitousItemDownloadingStatusCurrent
+        self.isDownloading = metadataItem.value(forAttribute: NSMetadataUbiquitousItemIsDownloadingKey) as? Bool ?? false
+        self.isDownloaded = downloadStatus == NSMetadataUbiquitousItemDownloadingStatusCurrent
+            || downloadStatus == NSMetadataUbiquitousItemDownloadingStatusDownloaded
         
         // Check if it is a directory
         if let contentType = metadataItem.value(forAttribute: NSMetadataItemContentTypeKey) as? String {

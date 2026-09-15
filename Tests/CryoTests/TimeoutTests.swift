@@ -39,4 +39,47 @@ final class TimeoutTests: XCTestCase {
             XCTFail("unexpected error: \(error)")
         }
     }
+
+    func testCallerCancellationWinsImmediately() async {
+        let operationCancelled = expectation(description: "operation cancelled")
+        let task = Task {
+            try await withCryoTimeout(10) {
+                do {
+                    try await Task.sleep(nanoseconds: 10_000_000_000)
+                    return 1
+                } catch is CancellationError {
+                    operationCancelled.fulfill()
+                    throw CancellationError()
+                }
+            }
+        }
+        task.cancel()
+        do {
+            _ = try await task.value
+            XCTFail("Expected cancellation")
+        } catch is CancellationError { }
+        catch { XCTFail("Unexpected error: \(error)") }
+        await fulfillment(of: [operationCancelled], timeout: 1)
+    }
+
+    func testInfiniteTimeoutRunsOperation() async throws {
+        let result = try await withCryoTimeout(.infinity) { 7 }
+        XCTAssertEqual(result, 7)
+    }
+
+    func testZeroTimeoutDoesNotWaitForNonCooperativeOperation() async {
+        let start = Date()
+        do {
+            _ = try await withCryoTimeout(0) {
+                await withCheckedContinuation { continuation in
+                    DispatchQueue.global().asyncAfter(deadline: .now() + 1) {
+                        continuation.resume(returning: 1)
+                    }
+                }
+            }
+            XCTFail("Expected timeout")
+        } catch is CryoTimeoutError {
+            XCTAssertLessThan(Date().timeIntervalSince(start), 0.2)
+        } catch { XCTFail("Unexpected error: \(error)") }
+    }
 }
