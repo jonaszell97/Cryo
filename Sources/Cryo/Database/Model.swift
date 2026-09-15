@@ -35,11 +35,14 @@ import Foundation
 /// | 1   | "Hello"  | YYYY-MM-DD | /... |
 /// | 2   | "Hi"  | YYYY-MM-DD | /... |
 /// | 3   | "How are you?"  | YYYY-MM-DD | /... |
-public protocol CryoModel: Codable {
+public protocol CryoModel: Codable, _AnyCryoColumnValue {
     /// The name of the table representing this model.
     ///
     /// By default, the type name is used as the table name.
     static var tableName: String { get }
+    
+    /// The ID of this model.
+    var id: String { get }
 }
 
 extension CryoModel {
@@ -83,6 +86,50 @@ extension CryoColumn: Codable {
     }
 }
 
+@propertyWrapper public struct CryoOneToOne<Value: CryoModel> {
+    /// The wrapped value that is referenced by this column.
+    public var wrappedValue: Value
+    
+    /// Create a one-to-one relationship.
+    public init(wrappedValue: Value) {
+        self.wrappedValue = wrappedValue
+    }
+}
+
+extension CryoOneToOne: Codable {
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(wrappedValue)
+    }
+    
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        self.init(wrappedValue: try container.decode(Value.self))
+    }
+}
+
+@propertyWrapper public struct CryoOneToMany<Value: CryoModel> {
+    /// The wrapped value that is referenced by this column.
+    public var wrappedValue: [Value]
+    
+    /// Create a one-to-one relationship.
+    public init(wrappedValue: [Value]) {
+        self.wrappedValue = wrappedValue
+    }
+}
+
+extension CryoOneToMany: Codable {
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(wrappedValue)
+    }
+    
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        self.init(wrappedValue: try container.decode([Value].self))
+    }
+}
+
 /// Property wrapper for assets in a ``CryoModel``.
 ///
 /// Each property that is annotated as a `CryoAsset` will receive a column in the database table
@@ -115,73 +162,211 @@ extension CryoAsset: Codable {
 
 // MARK: Model reflection
 
-internal typealias CryoSchema = [String: (CryoColumnType, (any CryoModel) -> _AnyCryoColumnValue)]
+internal final class CryoSchemaManager {
+    // NSLock preserves the package's iOS 15 / macOS 12 deployment targets.
+    private let lock = NSLock()
+    private var schemas: [ObjectIdentifier: CryoSchema] = [:]
+    private var schemasByName: [String: CryoSchema] = [:]
+    static let shared = CryoSchemaManager()
+
+    func reset() {
+        lock.lock()
+        defer { lock.unlock() }
+        schemas.removeAll()
+        schemasByName.removeAll()
+    }
+
+    func createSchema(for modelType: any CryoModel.Type) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        let key = ObjectIdentifier(modelType)
+        guard schemas[key] == nil else { return }
+        let schema = try modelType.schema
+        schemas[key] = schema
+        schemasByName[modelType.tableName] = schema
+    }
+
+    func schema(for modelType: any CryoModel.Type) throws -> CryoSchema {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let schema = schemas[ObjectIdentifier(modelType)] else {
+            throw CryoError.schemaNotInitialized(tableName: modelType.tableName)
+        }
+        return schema
+    }
+
+    func schema(tableName: String) throws -> CryoSchema {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let schema = schemasByName[tableName] else {
+            throw CryoError.schemaNotInitialized(tableName: tableName)
+        }
+        return schema
+    }
+}
+
+internal enum CryoSchemaColumn {
+    /// A value column.
+    case value(columnName: String, type: CryoColumnType, metaType: _AnyCryoColumnValue.Type, getValue: (any CryoModel) throws -> _AnyCryoColumnValue)
+    
+    /// A one-to-one relationship.
+    case oneToOneRelation(columnName: String, modelType: any CryoModel.Type, getValue: (any CryoModel) throws -> _AnyCryoColumnValue)
+}
+
+extension CryoSchemaColumn {
+    var columnName: String {
+        switch self {
+        case .value(let columnName, _, _, _):
+            return columnName
+        case .oneToOneRelation(let columnName, _, _):
+            return columnName
+        }
+    }
+    
+    var getValue: (any CryoModel) throws -> _AnyCryoColumnValue {
+        switch self {
+        case .value(_, _, _, let getValue):
+            return getValue
+        case .oneToOneRelation(_, _, let getValue):
+            return getValue
+        }
+    }
+}
+
+internal struct CryoSchema {
+    /// The meta type.
+    let `self`: any CryoModel.Type
+    
+    /// The columns of this type.
+    var columns: [CryoSchemaColumn] = []
+    
+    /// Create a value of this model type from the given data dictionary.
+    let create: ([String: CryoColumnValueWrapper]) throws -> any CryoModel
+}
 
 internal extension CryoModel {
     static var schema: CryoSchema {
-        var schema = CryoSchema()
-        
-        // Create an empty instance and find columns from it
-        let emptyInstance = try! Self(from: EmptyDecoder())
-        let mirror = Mirror(reflecting: emptyInstance)
-        
-        for child in mirror.children {
-            guard
-                let label = child.label,
-                label.hasPrefix("_")
-            else {
-                continue
+        get throws {
+            var schema = CryoSchema(self: Self.self) {
+                try Self(from: CryoModelDecoder(data: $0))
             }
-            
-            let name = "\(label.dropFirst())"
-            guard !name.isEmpty else {
-                continue
-            }
-            
-            let childMirror = Mirror(reflecting: child.value)
-            let wrappedValue = childMirror.children.first {
-                $0.label == "wrappedValue"
-            }
-            
-            guard let wrappedValue else {
-                continue
-            }
-            
-            
-            let columnType: CryoColumnType
-            let childTypeName = "\(childMirror.subjectType)"
-            
-            let wrappedValueMirror = Mirror(reflecting: wrappedValue.value)
-            if childTypeName.starts(with: "CryoColumn") {
-                switch wrappedValueMirror.subjectType {
-                case is CryoColumnIntValue.Type: columnType = .integer
-                case is CryoColumnDoubleValue.Type: columnType = .double
-                case is CryoColumnStringValue.Type: columnType = .text
-                case is CryoColumnDateValue.Type: columnType = .date
-                case is CryoColumnDataValue.Type: columnType = .data
-                default:
-                    fatalError("\(wrappedValueMirror.subjectType) is not a valid type for a CryoColumn")
+
+            // Create an empty instance and find columns from it
+            let emptyInstance: Self
+            do { emptyInstance = try Self(from: EmptyDecoder()) }
+            catch { throw CryoError.invalidModel(message: "Cannot construct \(Self.self): \(error)") }
+            let mirror = Mirror(reflecting: emptyInstance)
+            var foundId = false
+
+            for child in mirror.children {
+                guard
+                    let label = child.label,
+                    label.hasPrefix("_")
+                else {
+                    continue
                 }
-            }
-            else if childTypeName.starts(with: "CryoAsset") {
-                columnType = .asset
-            }
-            else {
-                continue
-            }
-            
-            let extractValue: (any CryoModel) -> _AnyCryoColumnValue = { this in
-                let mirror = Mirror(reflecting: this)
-                let child = mirror.children.first { $0.label == label }!
+
+                let name = "\(label.dropFirst())"
+                guard !name.isEmpty else {
+                    continue
+                }
+
+
                 let childMirror = Mirror(reflecting: child.value)
-                let wrappedValue = childMirror.children.first { $0.label == "wrappedValue" }!.value
-                
-                return wrappedValue as! _AnyCryoColumnValue
+                let wrappedValue = childMirror.children.first {
+                    $0.label == "wrappedValue"
+                }
+
+                guard let wrappedValue else {
+                    continue
+                }
+
+                let columnType: CryoColumnType
+                let childTypeName = "\(childMirror.subjectType)"
+
+                let wrappedValueMirror = Mirror(reflecting: wrappedValue.value)
+                let column: CryoSchemaColumn
+
+                if childTypeName.starts(with: "CryoOneToOne") {
+                    let extractValue: (any CryoModel) throws -> _AnyCryoColumnValue = { this in
+                        let mirror = Mirror(reflecting: this)
+                        guard let child = mirror.children.first(where: { $0.label == label }) else {
+                            throw CryoError.invalidModel(message: "Missing column \(name)")
+                        }
+                        let childMirror = Mirror(reflecting: child.value)
+                        guard let wrappedValue = childMirror.children.first(where: { $0.label == "wrappedValue" })?.value else {
+                            throw CryoError.invalidModel(message: "Missing wrapped value for \(name)")
+                        }
+
+                        guard let model = wrappedValue as? any CryoModel else {
+                            throw CryoError.invalidModel(message: "Invalid relation \(name)")
+                        }
+                        return model.id
+                    }
+
+                    guard let modelType = wrappedValueMirror.subjectType as? any CryoModel.Type else {
+                        throw CryoError.invalidModel(message: "Invalid relation \(name)")
+                    }
+                    column = .oneToOneRelation(columnName: name,
+                                               modelType: modelType,
+                                               getValue: extractValue)
+                }
+                else {
+                    let extractValue: (any CryoModel) throws -> _AnyCryoColumnValue = { this in
+                        let mirror = Mirror(reflecting: this)
+                        guard let child = mirror.children.first(where: { $0.label == label }) else {
+                            throw CryoError.invalidModel(message: "Missing column \(name)")
+                        }
+                        let childMirror = Mirror(reflecting: child.value)
+                        guard let wrappedValue = childMirror.children.first(where: { $0.label == "wrappedValue" })?.value else {
+                            throw CryoError.invalidModel(message: "Missing wrapped value for \(name)")
+                        }
+
+                        guard let value = wrappedValue as? _AnyCryoColumnValue else {
+                            throw CryoError.invalidModel(message: "Invalid column \(name)")
+                        }
+                        return value
+                    }
+
+                    if childTypeName.starts(with: "CryoColumn") {
+                        if let optional = wrappedValueMirror.subjectType as? _CryoOptionalValue.Type {
+                            columnType = try optional.columnType
+                        }
+                        else {
+                            switch wrappedValueMirror.subjectType {
+                            case is CryoColumnIntValue.Type: columnType = .integer
+                            case is CryoColumnDoubleValue.Type: columnType = .double
+                            case is CryoColumnStringValue.Type: columnType = .text
+                            case is CryoColumnDateValue.Type: columnType = .date
+                            case is CryoColumnDataValue.Type: columnType = .data
+                            default:
+                                throw CryoError.invalidModel(message: "\(wrappedValueMirror.subjectType) is not a valid type for a CryoColumn")
+                            }
+                        }
+                    }
+                    else if childTypeName.starts(with: "CryoAsset") {
+                        columnType = .asset
+                    }
+                    else {
+                        continue
+                    }
+
+                    guard let metaType = wrappedValueMirror.subjectType as? _AnyCryoColumnValue.Type else {
+                        throw CryoError.invalidModel(message: "Invalid column \(name)")
+                    }
+                    column = .value(columnName: name, type: columnType, metaType: metaType,
+                                    getValue: extractValue)
+                }
+
+                foundId = foundId || (name == "id" && childTypeName.starts(with: "CryoColumn") && wrappedValueMirror.subjectType == String.self)
+                schema.columns.append(column)
             }
-            
-            schema[name] = (columnType, extractValue)
+
+            guard foundId else {
+                throw CryoError.invalidModel(message: "CryoModel must contain property `@CryoColumn var id: String`")
+            }
+
+            return schema
         }
-        
-        return schema
     }
 }

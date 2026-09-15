@@ -7,6 +7,9 @@ public struct CryoConfig {
     /// Used for logging non-critical errors and other messages.
     public var log: Optional<(OSLogType, String) -> Void> = nil
     
+    /// Clock used when creating persisted operations and queries.
+    public var now: @Sendable () -> Date = { Date() }
+
     /// Create a configuration instance.
     ///
     /// - Parameter log: Used for logging non-critical errors and other messages.

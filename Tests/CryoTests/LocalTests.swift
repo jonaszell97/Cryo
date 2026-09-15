@@ -1,10 +1,14 @@
 import XCTest
 @testable import Cryo
 
-final class CryoLocalTests: XCTestCase {
+final class CryoLocalTests: CryoTestCase {
     struct AnyKey<Value: Codable>: CryoKey {
         let id: String
         
+        init(id: String) {
+            self.id = id
+        }
+
         init(id: String, for: Value.Type) {
             self.id = id
         }
@@ -16,16 +20,7 @@ final class CryoLocalTests: XCTestCase {
         var z: Date = .distantPast
     }
     
-    private var userDefaults: UserDefaults? = nil
-    
-    override func setUp() {
-        super.setUp()
-        
-        userDefaults = UserDefaults(suiteName: "CryoTestsSuite")
-        userDefaults?.removePersistentDomain(forName: "CryoTestsSuite")
-    }
-    
-    func adaptorTest(for adaptor: CryoAdaptor) async {
+    func adaptorTest(for adaptor: CryoSynchronousAdaptor) async {
         do {
             // Remove All
             try await adaptor.removeAll()
@@ -89,17 +84,12 @@ final class CryoLocalTests: XCTestCase {
     }
     
     func testUserDefaultsAdaptor() async {
-        guard let userDefaults else {
-            XCTAssert(false, "failed to set up UserDefaults")
-            return
-        }
-        
-        let adaptor = UserDefaultsAdaptor(defaults: userDefaults)
+        let adaptor = environment.keyValueStore
         await self.adaptorTest(for: adaptor)
     }
     
     func testLocalDocumentAdaptor() async {
-        let adaptor = DocumentAdaptor.local()
+        let adaptor = environment.documents
         await self.adaptorTest(for: adaptor)
     }
 }

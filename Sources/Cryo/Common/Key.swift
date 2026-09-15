@@ -11,19 +11,8 @@ public protocol CryoKey {
     /// The unique identifier for the stored value.
     var id: String { get }
     
-    /// An optional default value returned if no value with this key is found.
-    var defaultValue: Value? { get }
-    
-    /// Whether values loaded from this key should be cached locally.
-    var shouldCacheValues: Bool { get }
-}
-
-extension CryoKey {
-    /// An optional default value returned if no value with this key is found.
-    public var defaultValue: Value? { nil }
-    
-    /// Whether values loaded from this key should be cached locally.
-    public var shouldCacheValues: Bool { true }
+    /// Create a key from a string identifier.
+    init (id: String)
 }
 
 /// Basic implementation of ``CryoKey`` with a configurable value type and identifier.
@@ -33,6 +22,11 @@ public struct CryoNamedKey<Value: Codable>: CryoKey {
     
     /// Create a named key.
     public init(id: String, for valueType: Value.Type) {
+        self.id = id
+    }
+    
+    /// Create a key from a string identifier.
+    public init (id: String) {
         self.id = id
     }
 }

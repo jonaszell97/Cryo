@@ -1,0 +1,23 @@
+{
+  "pins" : [
+    {
+      "identity" : "swift-syntax",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-syntax",
+      "state" : {
+        "revision" : "64889f0c732f210a935a0ad7cda38f77f876262d",
+        "version" : "509.1.1"
+      }
+    },
+    {
+      "identity" : "toolbox",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/jonaszell97/Toolbox.git",
+      "state" : {
+        "branch" : "dev",
+        "revision" : "c321da6cdac0d38d3085bc25a606406b0eeccc5c"
+      }
+    }
+  ],
+  "version" : 2
+}

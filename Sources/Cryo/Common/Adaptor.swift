@@ -1,8 +1,6 @@
 
 import Foundation
 
-// MARK: CryoAdaptor
-
 /// Provides a unified interface for heterogeneous persistence backends.
 ///
 /// `CryoAdaptor` implementations are responsible for persisting and loading data in `Cryo`.
@@ -33,29 +31,6 @@ public protocol CryoAdaptor {
     /// - Returns: The value previously persisted for `key`, or nil if none exists.
     func load<Key: CryoKey>(with key: Key) async throws -> Key.Value?
     
-    /// A synchronous version of ``CryoAdaptor/load(with:)-25w6c``.
-    ///
-    /// - Note: Not all adaptors support synchronous loading, so you should only call this method if you are sure
-    /// the adaptor supports it.
-    /// - Parameter key: The key that uniquely identifies the persisted value.
-    /// - Returns: The value previously persisted for `key`, or nil if none exists.
-    func loadSynchronously<Key: CryoKey>(with key: Key) throws -> Key.Value?
-    
-    /// Load all values of the given `Key` type. Not all adaptors support this operation.
-    ///
-    /// - Parameter key: The Key type of which all values should be loaded.
-    /// - Returns: All values of the given key, or `nil` if the adaptor does not support this operation.
-    func loadAll<Key: CryoKey>(with key: Key.Type) async throws -> [Key.Value]?
-    
-    /// Load all values of the given `Key` type in batches. Not all adaptors support this operation.
-    ///
-    /// - Parameters:
-    ///   - key: The Key type of which all values should be loaded.
-    ///   - receiveBatch: Closure that is invoked whenever a new batch of values is fetched. If this closure
-    ///   returns `false`, no more batches will be fetched.
-    /// - Returns: `true` if batched loading is supported.
-    func loadAllBatched<Key: CryoKey>(with key: Key.Type, receiveBatch: ([Key.Value]) -> Bool) async throws -> Bool
-    
     /// Remove the given value for a key.
     ///
     /// - Parameter key: The key that uniquely identifies the value to remove.
@@ -71,6 +46,11 @@ public protocol CryoAdaptor {
     ///
     /// - Note: Not all adaptors support this operation. If not supported, it is a no-op.
     func synchronize()
+    
+    /// List all instances available in this adaptor.
+    ///
+    /// - Note: This method is not available in all adaptors.
+    func listInstanceKeys() async throws -> [String]?
 }
 
 extension CryoAdaptor {
@@ -97,31 +77,70 @@ extension CryoAdaptor {
         try await persist(nil, for: key)
     }
     
+    public func synchronize() { }
+    
+    public func listInstanceKeys() async throws -> [String]? {
+        nil
+    }
+}
+
+public protocol CryoSynchronousAdaptor: CryoAdaptor {
+    /// Persist the given value for a key synchronously.
+    ///
+    /// - Parameters:
+    ///   - value: The value to persist. If this parameter is `nil`, the value for the given key is removed.
+    ///   - key: The key that uniquely identifies the persisted value.
+    func persistSynchronously<Key: CryoKey>(_ value: Key.Value?, for key: Key) throws
+    
+    /// A synchronous version of ``CryoAdaptor/load(with:)-25w6c``.
+    ///
+    /// - Parameter key: The key that uniquely identifies the persisted value.
+    /// - Returns: The value previously persisted for `key`, or nil if none exists.
+    func loadSynchronously<Key: CryoKey>(with key: Key) throws -> Key.Value?
+    
+    /// Remove the given value for a key synchronously.
+    ///
+    /// - Parameter key: The key that uniquely identifies the value to remove.
+    func removeSynchronously<Key: CryoKey>(with key: Key) throws
+    
+    /// Remove the values for all keys associated with this adaptor synchronously.
+    ///
+    /// - Warning: This is a destructive operation. Be sure to check whether you really want
+    /// to delete all data before calling it.
+    func removeAllSynchronously() throws
+    
+    /// List all instances available in this adaptor.
+    ///
+    /// - Note: This method is not available in all adaptors.
+    func listInstanceKeysSynchronously() throws -> [String]?
+    
+}
+
+extension CryoSynchronousAdaptor {
     public func load<Key: CryoKey>(with key: Key) async throws -> Key.Value? {
         try self.loadSynchronously(with: key)
     }
     
-    public func loadSynchronously<Key: CryoKey>(with key: Key) throws -> Key.Value? {
-        fatalError("adaptor \(Self.self) does not support synchronous loading")
+    public func removeSynchronously<Key: CryoKey>(with key: Key) throws {
+        try self.persistSynchronously(nil, for: key)
     }
     
-    public func loadAll<Key: CryoKey>(with key: Key.Type) async throws -> [Key.Value]? {
-        var values = [Key.Value]()
-        
-        let isSupported = try await self.loadAllBatched(with: Key.self) { nextBatch in
-            values.append(contentsOf: nextBatch)
-            return true
-        }
-        
-        guard isSupported else { return nil }
-        return values
+    public func listInstanceKeysSynchronously() throws -> [String]? {
+        nil
     }
+}
+
+
+public protocol CryoObservableAdaptor {
+    /// The change data type.
+    associatedtype ChangeData = Void
     
-    public func loadAllBatched<Key: CryoKey>(with key: Key.Type, receiveBatch: ([Key.Value]) -> Bool)
-        async throws -> Bool
-    {
-        false
-    }
+    /// The change observer identifier type.
+    associatedtype ObserverID = Void
     
-    public func synchronize() { }
+    /// Install a listener for external changes.
+    func observeChanges(_ callback: @escaping (ChangeData) -> Void) -> ObserverID
+    
+    /// Remove a change observer.
+    func removeObserver(withId id: ObserverID)
 }
