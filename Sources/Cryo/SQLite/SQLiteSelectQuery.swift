@@ -94,13 +94,13 @@ internal class UntypedSQLiteSelectQuery {
         
         let columnsString: String
         if let columns {
-            columnsString = columns.joined(separator: ",")
+            columnsString = columns.map(SQLiteAdaptor.quoteIdentifier).joined(separator: ",")
         }
         else {
-                columnsString = schema.columns.map { $0.columnName }.joined(separator: ",")
+            columnsString = schema.columns.map { SQLiteAdaptor.quoteIdentifier($0.columnName) }.joined(separator: ",")
         }
         
-        var result = "SELECT \(columnsString) FROM \(modelType.tableName)"
+        var result = "SELECT \(columnsString) FROM \(SQLiteAdaptor.quoteIdentifier(modelType.tableName))"
         for i in 0..<whereClauses.count {
             if i == 0 {
                 result += " WHERE "
@@ -109,14 +109,14 @@ internal class UntypedSQLiteSelectQuery {
                 result += " AND "
             }
             
-            result += "\(whereClauses[i].columnName) \(SQLiteAdaptor.formatOperator(whereClauses[i].operation)) ?"
+            result += "\(SQLiteAdaptor.quoteIdentifier(whereClauses[i].columnName)) \(SQLiteAdaptor.formatOperator(whereClauses[i].operation)) ?"
         }
         
         if !sortingClauses.isEmpty {
             result += " ORDER BY"
             for (i, ordering) in sortingClauses.enumerated() {
                 if i != 0 { result += "," }
-                result += " \(ordering.0) \(ordering.1 == .ascending ? "ASC" : "DESC")"
+                result += " \(SQLiteAdaptor.quoteIdentifier(ordering.0)) \(ordering.1 == .ascending ? "ASC" : "DESC")"
             }
         }
         
@@ -130,13 +130,17 @@ internal class UntypedSQLiteSelectQuery {
     
     /// Limit the number of results this query returns.
     public func limit(_ limit: Int) -> Self {
+        guard queryStatement == nil else { return self }
         self.resultsLimit = limit
+        self.completeQueryString = nil
         return self
     }
     
     /// Define a sorting for the results of this query.
     public func sort(by columnName: String, _ order: CryoSortingOrder) -> Self {
+        guard queryStatement == nil else { return self }
         self.sortingClauses.append((columnName, order))
+        self.completeQueryString = nil
         return self
     }
 }
@@ -162,7 +166,7 @@ extension UntypedSQLiteSelectQuery {
         }
         
         for i in 0..<whereClauses.count {
-            SQLiteAdaptor.bind(queryStatement, value: whereClauses[i].value, index: Int32(i + 1))
+            try SQLiteAdaptor.bind(queryStatement, value: whereClauses[i].value, index: Int32(i + 1))
         }
         
         self.queryStatement = queryStatement
@@ -185,14 +189,21 @@ extension UntypedSQLiteSelectQuery {
             }
             throw CryoError.queryDecodeFailed(column: columnName, message: "NULL in non-optional column")
         case .oneToOneRelation(let columnName, let modelType, _):
-            let id = try SQLiteAdaptor.columnValue(queryStatement,
-                                                   connection: connection,
-                                                   columnName: columnName,
-                                                   type: .text,
-                                                   index: index) as! String
-            return try UntypedSQLiteSelectQuery(modelType: modelType, connection: connection, config: config)
+            guard let id = try SQLiteAdaptor.columnValue(queryStatement,
+                                                          connection: connection,
+                                                          columnName: columnName,
+                                                          type: .text,
+                                                          index: index) as? String else {
+                throw CryoError.queryDecodeFailed(column: columnName,
+                                                  message: "NULL or invalid relation identifier")
+            }
+            guard let related = try UntypedSQLiteSelectQuery(modelType: modelType, connection: connection, config: config)
                 .where("id", operation: .equals, value: id)
-                .execute().first
+                .execute().first else {
+                throw CryoError.queryDecodeFailed(column: columnName,
+                                                  message: "Missing related \(modelType.tableName) row '\(id)'")
+            }
+            return related
         }
     }
 }
@@ -213,6 +224,7 @@ extension UntypedSQLiteSelectQuery {
         let queryStatement = try self.compiledQuery()
         defer {
             sqlite3_finalize(queryStatement)
+            self.queryStatement = nil
         }
         
         #if DEBUG
@@ -232,7 +244,11 @@ extension UntypedSQLiteSelectQuery {
                                                  column: schema.columns[i],
                                                  index: Int32(i))
                 
-                row.append(value!)
+                guard let value else {
+                    throw CryoError.queryDecodeFailed(column: schema.columns[i].columnName,
+                                                      message: "Missing column value")
+                }
+                row.append(value)
             }
             
             rows.append(row)
@@ -276,6 +292,7 @@ extension UntypedSQLiteSelectQuery {
         self.whereClauses.append(.init(columnName: columnName,
                                        operation: operation,
                                        value: try .init(value: value)))
+        self.completeQueryString = nil
         return self
     }
 }

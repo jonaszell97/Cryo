@@ -258,14 +258,7 @@ extension CloudKitAdaptor {
     }
     
     static func placeholderSymbol(for value: CryoQueryValue) -> String {
-        switch value {
-        case .integer:
-            return "%d"
-        case .double:
-            return "%d"
-        default:
-            return "%@"
-        }
+        "%@"
     }
     
     static func queryArgument(for value: CryoQueryValue) -> NSObject {
@@ -498,6 +491,27 @@ extension CloudKitAdaptor {
 }
 
 public extension CloudKitAdaptor {
+    internal static func isRetryableCloudKitError(_ error: Error) -> Bool {
+        guard let error = error as? CKError else { return false }
+        let retryableCodes: Set<CKError.Code> = [
+            .requestRateLimited, .serviceUnavailable, .networkUnavailable, .zoneBusy
+        ]
+        if error.code == .partialFailure, let partialErrors = error.partialErrorsByItemID {
+            return partialErrors.values.contains(where: isRetryableCloudKitError)
+        }
+        return retryableCodes.contains(error.code)
+    }
+
+    internal static func retryDelay(for error: CKError, defaultDelay: TimeInterval) -> TimeInterval {
+        if let retryAfter = error.retryAfterSeconds { return retryAfter }
+        if error.code == .partialFailure, let partialErrors = error.partialErrorsByItemID {
+            for case let nested as CKError in partialErrors.values where isRetryableCloudKitError(nested) {
+                return retryDelay(for: nested, defaultDelay: defaultDelay)
+            }
+        }
+        return defaultDelay
+    }
+
     /// Execute a CloudKit operation, waiting and repeating as necessary in case of a rate limit.
     static func cloudKitOperation<Result>(
         maxAttempts: Int = 5,
@@ -515,15 +529,16 @@ public extension CloudKitAdaptor {
         catch {
             guard maxAttempts > 0 else { throw error }
             guard let error = error as? CKError else { throw error }
-            guard error.code == .requestRateLimited || error.code == .serviceUnavailable else { throw error }
+            guard isRetryableCloudKitError(error) else { throw error }
             
-            let retryAfter = error.retryAfterSeconds ?? defaultDelay
+            let retryAfter = retryDelay(for: error, defaultDelay: defaultDelay)
             log?(.info, "Rate limit reached, retrying in \(retryAfter) seconds.")
             
-            try? await sleep(retryAfter)
+            try await sleep(retryAfter)
             return try await cloudKitOperation(
                 maxAttempts: maxAttempts - 1,
                 defaultDelay: min(defaultDelay * 2, 30),
+                log: log,
                 sleep: sleep,
                 operation
             )

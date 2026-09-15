@@ -63,13 +63,13 @@ final class CryoSQLiteTests: CryoTestCase {
         _ = try await query.execute()
         
         XCTAssertEqual(query.queryString, """
-CREATE TABLE IF NOT EXISTS TestModel(
-    _cryo_created TEXT NOT NULL,
-    _cryo_modified TEXT NOT NULL,
-    id TEXT NOT NULL UNIQUE,
-    x INTEGER,
-    y TEXT,
-    z INTEGER
+CREATE TABLE IF NOT EXISTS "TestModel"(
+    "_cryo_created" TEXT NOT NULL,
+    "_cryo_modified" TEXT NOT NULL,
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "x" INTEGER,
+    "y" TEXT,
+    "z" INTEGER
 );
 """);
     }

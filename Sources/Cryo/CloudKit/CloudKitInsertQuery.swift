@@ -44,9 +44,7 @@ internal class UntypedCloudKitInsertQuery {
     /// The database to store to.
     let database: any CloudKitDatabase
     
-    #if DEBUG
     let config: CryoConfig?
-    #endif
     
     /// Create a INSERT query.
     internal init(id: String, value: any CryoModel, replace: Bool, database: any CloudKitDatabase, config: CryoConfig?) throws {
@@ -57,9 +55,7 @@ internal class UntypedCloudKitInsertQuery {
         self.created = config?.now() ?? Date()
         self.database = database
         
-        #if DEBUG
         self.config = config
-        #endif
     }
     
     /// The complete query string.
@@ -99,24 +95,37 @@ extension UntypedCloudKitInsertQuery {
         #endif
         
         let (saveResults, _) = try await CloudKitAdaptor.cloudKitOperation(log: log) {
-            try await database.modifyRecords(
+            let results = try await database.modifyRecords(
                 saving: [record], deleting: [],
                 savePolicy: self.replace ? .changedKeys : .ifServerRecordUnchanged
             )
+            if let error = results.saveResults.values.compactMap({ result -> Error? in
+                guard case .failure(let error) = result,
+                      CloudKitAdaptor.isRetryableCloudKitError(error) else { return nil }
+                return error
+            }).first {
+                throw error
+            }
+            return results
         }
         
-        #if DEBUG
         for result in saveResults {
             switch result.value {
             case .success(let id):
+                #if DEBUG
                 config?.log?(.debug, "[CloudKitAdaptor] Success! \(id)")
+                #endif
             case .failure(let err):
+                if !replace, let cloudKitError = err as? CKError,
+                   cloudKitError.code == .serverRecordChanged {
+                    throw CryoError.duplicateId(id: self.id)
+                }
+                #if DEBUG
                 config?.log?(.debug, "[CloudKitAdaptor] FAILURE: \(err.localizedDescription)")
+                #endif
+                throw err
             }
         }
-        #else
-        _ = saveResults
-        #endif
         
         return true
     }

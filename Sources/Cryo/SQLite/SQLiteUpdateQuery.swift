@@ -90,12 +90,12 @@ internal class UntypedSQLiteUpdateQuery {
         }
         
         let hasId = id != nil
-        var result = "UPDATE \(modelType.tableName) SET _cryo_modified = ?"
+        var result = "UPDATE \(SQLiteAdaptor.quoteIdentifier(modelType.tableName)) SET \"_cryo_modified\" = ?"
         
         // Set clauses
         
         for i in 0..<setClauses.count {
-            result += ", \(setClauses[i].columnName) = ?"
+            result += ", \(SQLiteAdaptor.quoteIdentifier(setClauses[i].columnName)) = ?"
         }
         
         // Where clauses
@@ -105,7 +105,7 @@ internal class UntypedSQLiteUpdateQuery {
         }
         
         if hasId {
-            result += "id == ?"
+            result += "\"id\" == ?"
         }
         
         for i in 0..<whereClauses.count {
@@ -113,7 +113,7 @@ internal class UntypedSQLiteUpdateQuery {
                 result += " AND "
             }
             
-            result += "\(whereClauses[i].columnName) \(SQLiteAdaptor.formatOperator(whereClauses[i].operation)) ?"
+            result += "\(SQLiteAdaptor.quoteIdentifier(whereClauses[i].columnName)) \(SQLiteAdaptor.formatOperator(whereClauses[i].operation)) ?"
         }
         
         self.completeQueryString = result
@@ -143,21 +143,21 @@ extension UntypedSQLiteUpdateQuery {
         
         var bindIndex = 1
         
-        SQLiteAdaptor.bind(queryStatement, value: .date(value: .now), index: Int32(bindIndex))
+        try SQLiteAdaptor.bind(queryStatement, value: .date(value: config?.now() ?? Date()), index: Int32(bindIndex))
         bindIndex += 1
         
         for i in 0..<setClauses.count {
-            SQLiteAdaptor.bind(queryStatement, value: setClauses[i].value, index: Int32(bindIndex))
+            try SQLiteAdaptor.bind(queryStatement, value: setClauses[i].value, index: Int32(bindIndex))
             bindIndex += 1
         }
         
         if let id {
-            SQLiteAdaptor.bind(queryStatement, value: .string(value: id), index: Int32(bindIndex))
+            try SQLiteAdaptor.bind(queryStatement, value: .string(value: id), index: Int32(bindIndex))
             bindIndex += 1
         }
         
         for i in 0..<whereClauses.count {
-            SQLiteAdaptor.bind(queryStatement, value: whereClauses[i].value, index: Int32(bindIndex))
+            try SQLiteAdaptor.bind(queryStatement, value: whereClauses[i].value, index: Int32(bindIndex))
             bindIndex += 1
         }
         
@@ -171,6 +171,7 @@ extension UntypedSQLiteUpdateQuery {
         let queryStatement = try self.compiledQuery()
         defer {
             sqlite3_finalize(queryStatement)
+            self.queryStatement = nil
         }
         
         #if DEBUG
@@ -201,6 +202,7 @@ extension UntypedSQLiteUpdateQuery {
         }
         
         self.setClauses.append(.init(columnName: columnName, value: try .init(value: value)))
+        self.completeQueryString = nil
         return self
     }
     
@@ -216,6 +218,7 @@ extension UntypedSQLiteUpdateQuery {
         self.whereClauses.append(.init(columnName: columnName,
                                        operation: operation,
                                        value: try .init(value: value)))
+        self.completeQueryString = nil
         return self
     }
 }

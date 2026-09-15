@@ -6,6 +6,9 @@ final class InMemoryCloudKitDatabase: CloudKitDatabase {
     var isOnline = true
     var pageSize = 2
     var failures: [CKRecord.ID: Error] = [:]
+    var recordFailures: [CKRecord.ID: Error] = [:]
+    var saveFailures: [CKRecord.ID: Error] = [:]
+    var deleteFailures: [CKRecord.ID: Error] = [:]
     var nextOperationErrors: [Error] = []
     private(set) var fetchLog: [(query: CKQuery, resultsLimit: Int)] = []
     private(set) var continuationLimits: [Int] = []
@@ -35,7 +38,7 @@ final class InMemoryCloudKitDatabase: CloudKitDatabase {
 
     func record(for id: CKRecord.ID) async throws -> CKRecord {
         try checkOperation()
-        if let error = failures[id] { throw error }
+        if let error = recordFailures[id] ?? failures[id] { throw error }
         guard let record = rows[id] else { throw CKError(.unknownItem) }
         return snapshot(record)
     }
@@ -90,7 +93,7 @@ final class InMemoryCloudKitDatabase: CloudKitDatabase {
         var deleted: [CKRecord.ID: Result<Void, Error>] = [:]
         for record in saving {
             let id = record.recordID
-            if let error = failures[id] { saved[id] = .failure(error); continue }
+            if let error = saveFailures[id] ?? failures[id] { saved[id] = .failure(error); continue }
             if savePolicy == .ifServerRecordUnchanged, rows[id] != nil,
                fetchedVersions.object(forKey: record)?.intValue != versions[id] {
                 saved[id] = .failure(CKError(.serverRecordChanged)); continue
@@ -105,7 +108,7 @@ final class InMemoryCloudKitDatabase: CloudKitDatabase {
             saved[id] = .success(snapshot(stored))
         }
         for id in deleting {
-            if let error = failures[id] { deleted[id] = .failure(error); continue }
+            if let error = deleteFailures[id] ?? failures[id] { deleted[id] = .failure(error); continue }
             guard rows.removeValue(forKey: id) != nil else { deleted[id] = .failure(CKError(.unknownItem)); continue }
             versions.removeValue(forKey: id)
             deleted[id] = .success(())

@@ -55,9 +55,7 @@ internal class UntypedCloudKitDeleteQuery {
     /// The database to store to.
     let database: any CloudKitDatabase
     
-    #if DEBUG
     let config: CryoConfig?
-    #endif
     
     /// Create a DELETE query.
     internal init(for modelType: any CryoModel.Type, id: String?, database: any CloudKitDatabase, config: CryoConfig?) throws {
@@ -66,9 +64,7 @@ internal class UntypedCloudKitDeleteQuery {
         self.database = database
         self.whereClauses = []
         
-        #if DEBUG
         self.config = config
-        #endif
     }
     
     /// The complete query string.
@@ -97,6 +93,7 @@ extension UntypedCloudKitDeleteQuery {
                                                                  resultsLimit: nil,
                                                                  sortingClauses: [],
                                                                  database: database)
+        guard !records.isEmpty else { return 0 }
         
         var log: Optional<(OSLogType, String) -> Void> = nil
         
@@ -105,11 +102,22 @@ extension UntypedCloudKitDeleteQuery {
         config?.log?(.debug, "[CloudKitAdaptor] \(queryString), WHERE \(whereClauses.map { "\($0.value)" })")
         #endif
         
-        _ = try await CloudKitAdaptor.cloudKitOperation(log: log) {
+        let (_, deleteResults) = try await CloudKitAdaptor.cloudKitOperation(log: log) {
             try await database.modifyRecords(saving: [], deleting: records.map { $0.recordID })
         }
-        
-        return records.count
+
+        var deletedCount = 0
+        for result in deleteResults.values {
+            switch result {
+            case .success:
+                deletedCount += 1
+            case .failure(let error as CKError) where error.code == .unknownItem:
+                continue
+            case .failure(let error):
+                throw error
+            }
+        }
+        return deletedCount
     }
     
     /// Attach a WHERE clause to this query.
