@@ -14,6 +14,7 @@ public final class SQLiteInsertQuery<Model: CryoModel> {
 
 extension SQLiteInsertQuery: CryoInsertQuery {
     public var id: String { untypedQuery.id }
+    public var replace: Bool { untypedQuery.replace }
     public var value: Model { untypedQuery.value as! Model }
     
     public var queryString: String {
@@ -26,6 +27,7 @@ extension SQLiteInsertQuery: CryoInsertQuery {
 }
 
 internal class UntypedSQLiteInsertQuery {
+    private let schema: CryoSchema
     /// The ID to insert the value with.
     let id: String
     
@@ -54,6 +56,7 @@ internal class UntypedSQLiteInsertQuery {
     /// Create an INSERT query.
     internal init(id: String, value: any CryoModel, replace: Bool, connection: OpaquePointer, config: CryoConfig?) throws {
         self.id = id
+        self.schema = try CryoSchemaManager.shared.schema(for: type(of: value))
         self.value = value
         self.replace = replace
         self.created = config?.now() ?? Date()
@@ -71,7 +74,6 @@ internal class UntypedSQLiteInsertQuery {
         }
         
         let modelType = type(of: value)
-        let schema = CryoSchemaManager.shared.schema(for: modelType)
         let columns: [String] = schema.columns.map { $0.columnName }
         
         let result = """
@@ -85,7 +87,6 @@ INSERT \(replace ? "OR REPLACE " : "")INTO \(modelType.tableName)(_cryo_created,
     
     fileprivate var logQueryString: String {
         let modelType = type(of: value)
-        let schema = CryoSchemaManager.shared.schema(for: modelType)
         let columns: [String] = schema.columns.map { $0.columnName }
         
         let result = """
@@ -118,7 +119,6 @@ extension UntypedSQLiteInsertQuery {
             throw CryoError.queryCompilationFailed(query: queryString, status: prepareStatus, message: message)
         }
         
-        let schema = CryoSchemaManager.shared.schema(for: type(of: value))
         
         var bindings: [CryoQueryValue] = [.date(value: created), .date(value: created)]
         bindings.append(contentsOf: try schema.columns.map { try .init(value: $0.getValue(value)) })

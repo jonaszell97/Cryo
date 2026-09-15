@@ -3,13 +3,13 @@ import XCTest
 @testable import Cryo
 
 final class InjectionSeamTests: CryoTestCase {
-    @MainActor func testSchemaResetClearsBothIndexes() {
+    @MainActor func testSchemaResetClearsBothIndexes() throws {
         let manager = CryoSchemaManager()
-        manager.createSchema(for: SeamTestModel.self)
-        XCTAssertNotNil(manager.schema(tableName: SeamTestModel.tableName))
+        try manager.createSchema(for: SeamTestModel.self)
+        XCTAssertNotNil(try manager.schema(tableName: SeamTestModel.tableName))
         manager.reset()
-        XCTAssertTrue(manager.schemas.isEmpty)
-        XCTAssertNil(manager.schema(tableName: SeamTestModel.tableName))
+        XCTAssertThrowsError(try manager.schema(for: SeamTestModel.self))
+        XCTAssertThrowsError(try manager.schema(tableName: SeamTestModel.tableName))
     }
 
     func testInjectedUnavailableAdaptorDoesNotConnectToAnAccount() async {
@@ -37,7 +37,7 @@ final class InjectionSeamTests: CryoTestCase {
         let query = try cloud.insert(SeamTestModel())
         XCTAssertEqual(query.untypedQuery.created, now)
         let operation = try await query.operation(now: now)
-        guard case .insert(let date, _, _, _) = operation else { return XCTFail("Expected insert") }
+        guard case .insert(let date, _, _, _, _) = operation else { return XCTFail("Expected insert") }
         XCTAssertEqual(date, now)
         environment.clock.advance(by: 0.25)
         let sqlite = try SQLiteAdaptor(databaseUrl: environment.sqliteURL, config: environment.config)

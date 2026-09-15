@@ -23,11 +23,11 @@ internal class CryoModelDecoder: Decoder {
     }
     
     func unkeyedContainer() throws -> UnkeyedDecodingContainer {
-        fatalError("nested containers are not supported in CryoModel")
+        throw DecodingError.dataCorrupted(.init(codingPath: codingPath, debugDescription: "nested containers are not supported in CryoModel"))
     }
     
     func singleValueContainer() throws -> SingleValueDecodingContainer {
-        fatalError("nested containers are not supported in CryoModel")
+        throw DecodingError.dataCorrupted(.init(codingPath: codingPath, debugDescription: "nested containers are not supported in CryoModel"))
     }
 }
 
@@ -46,62 +46,84 @@ fileprivate class CryoModelKeyedDecodingContainer<K: CodingKey>: KeyedDecodingCo
     
     func contains(_ key: K) -> Bool { data[key.stringValue] != nil }
     
-    func decodeNil(forKey key: K) throws -> Bool { false }
+    func decodeNil(forKey key: K) throws -> Bool {
+        guard let value = data[key.stringValue] else {
+            throw DecodingError.keyNotFound(key, .init(codingPath: codingPath, debugDescription: "Missing column"))
+        }
+        return (value.value as? _CryoOptionalValue).map { $0.wrappedValue == nil } ?? false
+    }
     
     func decode(_ type: Bool.Type, forKey key: K) throws -> Bool {
-        guard let data = self.data[key.stringValue], let value = data.value as? Bool else {
-            throw DecodingError.keyNotFound(key, .init(codingPath: codingPath, debugDescription: ""))
+        guard let data = self.data[key.stringValue] else {
+            throw DecodingError.keyNotFound(key, .init(codingPath: codingPath, debugDescription: "Missing column"))
+        }
+        guard let value = data.value as? Bool else {
+            throw DecodingError.typeMismatch(type, .init(codingPath: codingPath + [key], debugDescription: "Unexpected column type"))
         }
         
         return value
     }
     
     func decode(_ type: String.Type, forKey key: K) throws -> String {
-        guard let data = self.data[key.stringValue], let value = data.value as? String else {
-            throw DecodingError.keyNotFound(key, .init(codingPath: codingPath, debugDescription: ""))
+        guard let data = self.data[key.stringValue] else {
+            throw DecodingError.keyNotFound(key, .init(codingPath: codingPath, debugDescription: "Missing column"))
+        }
+        guard let value = data.value as? String else {
+            throw DecodingError.typeMismatch(type, .init(codingPath: codingPath + [key], debugDescription: "Unexpected column type"))
         }
         
         return value
     }
     
     func decode(_ type: Date.Type, forKey key: K) throws -> Date {
-        guard let data = self.data[key.stringValue], let value = data.value as? Date else {
-            throw DecodingError.keyNotFound(key, .init(codingPath: codingPath, debugDescription: ""))
+        guard let data = self.data[key.stringValue] else {
+            throw DecodingError.keyNotFound(key, .init(codingPath: codingPath, debugDescription: "Missing column"))
+        }
+        guard let value = data.value as? Date else {
+            throw DecodingError.typeMismatch(type, .init(codingPath: codingPath + [key], debugDescription: "Unexpected column type"))
         }
         
         return value
     }
     
     func decode(_ type: Data.Type, forKey key: K) throws -> Data {
-        guard let data = self.data[key.stringValue], let value = data.value as? Data else {
-            throw DecodingError.keyNotFound(key, .init(codingPath: codingPath, debugDescription: ""))
+        guard let data = self.data[key.stringValue] else {
+            throw DecodingError.keyNotFound(key, .init(codingPath: codingPath, debugDescription: "Missing column"))
+        }
+        guard let value = data.value as? Data else {
+            throw DecodingError.typeMismatch(type, .init(codingPath: codingPath + [key], debugDescription: "Unexpected column type"))
         }
         
         return value
     }
     
     func decode(_ type: Double.Type, forKey key: K) throws -> Double {
-        guard let data = self.data[key.stringValue], let value = data.value as? Double else {
-            throw DecodingError.keyNotFound(key, .init(codingPath: codingPath, debugDescription: ""))
+        guard let data = self.data[key.stringValue] else {
+            throw DecodingError.keyNotFound(key, .init(codingPath: codingPath, debugDescription: "Missing column"))
+        }
+        guard let value = data.value as? Double else {
+            throw DecodingError.typeMismatch(type, .init(codingPath: codingPath + [key], debugDescription: "Unexpected column type"))
         }
         
         return value
     }
     
     func decode(_ type: Float.Type, forKey key: K) throws -> Float {
-        guard let data = self.data[key.stringValue], let value = data.value as? Float else {
-            throw DecodingError.keyNotFound(key, .init(codingPath: codingPath, debugDescription: ""))
+        guard let data = self.data[key.stringValue] else {
+            throw DecodingError.keyNotFound(key, .init(codingPath: codingPath, debugDescription: "Missing column"))
+        }
+        guard let value = data.value as? Float else {
+            throw DecodingError.typeMismatch(type, .init(codingPath: codingPath + [key], debugDescription: "Unexpected column type"))
         }
         
         return Float(value)
     }
     
     func decodeInt<T: BinaryInteger>(_ type: T.Type, forKey key: K) throws -> T {
-        guard let data = self.data[key.stringValue], let value = data.value as? T else {
-            throw DecodingError.keyNotFound(key, .init(codingPath: codingPath, debugDescription: ""))
+        guard let data = self.data[key.stringValue] else {
+            throw DecodingError.keyNotFound(key, .init(codingPath: codingPath, debugDescription: "Missing column"))
         }
-        
-        return T(value)
+        return try CryoModelSingleValueDecodingContainer(value: data).decodeInt(type)
     }
     
     func decode(_ type: Int.Type, forKey key: K) throws -> Int { try decodeInt(Int.self, forKey: key) }
@@ -113,7 +135,7 @@ fileprivate class CryoModelKeyedDecodingContainer<K: CodingKey>: KeyedDecodingCo
     func decode(_ type: UInt8.Type, forKey key: K) throws -> UInt8 { try decodeInt(UInt8.self, forKey: key) }
     func decode(_ type: UInt16.Type, forKey key: K) throws -> UInt16 { try decodeInt(UInt16.self, forKey: key) }
     func decode(_ type: UInt32.Type, forKey key: K) throws -> UInt32 { try decodeInt(UInt32.self, forKey: key) }
-    func decode(_ type: UInt64.Type, forKey key: K) throws -> UInt64 { fatalError("UInt64 cannot be represented") }
+    func decode(_ type: UInt64.Type, forKey key: K) throws -> UInt64 { try decodeInt(type, forKey: key) }
     
     func decode<T>(_ type: T.Type, forKey key: K) throws -> T where T: Decodable {
         guard let data = self.data[key.stringValue] else {
@@ -128,19 +150,19 @@ fileprivate class CryoModelKeyedDecodingContainer<K: CodingKey>: KeyedDecodingCo
     }
     
     func nestedContainer<NestedKey>(keyedBy type: NestedKey.Type, forKey key: K) throws -> KeyedDecodingContainer<NestedKey> where NestedKey : CodingKey {
-        fatalError("nested containers are not supported in CryoModel")
+        throw DecodingError.dataCorrupted(.init(codingPath: codingPath, debugDescription: "nested containers are not supported in CryoModel"))
     }
     
     func nestedUnkeyedContainer(forKey key: K) throws -> UnkeyedDecodingContainer {
-        fatalError("nested containers are not supported in CryoModel")
+        throw DecodingError.dataCorrupted(.init(codingPath: codingPath, debugDescription: "nested containers are not supported in CryoModel"))
     }
     
     func superDecoder() throws -> Decoder {
-        fatalError("super decoders are not supported in CryoModel")
+        throw DecodingError.dataCorrupted(.init(codingPath: codingPath, debugDescription: "super decoders are not supported in CryoModel"))
     }
     
     func superDecoder(forKey key: K) throws -> Decoder {
-        fatalError("super decoders are not supported in CryoModel")
+        throw DecodingError.dataCorrupted(.init(codingPath: codingPath, debugDescription: "super decoders are not supported in CryoModel"))
     }
 }
 
@@ -156,11 +178,11 @@ internal class CryoModelValueDecoder: Decoder {
     }
     
     func container<Key: CodingKey>(keyedBy type: Key.Type) throws -> KeyedDecodingContainer<Key> {
-        fatalError("nested containers are not supported in CryoModel")
+        throw DecodingError.dataCorrupted(.init(codingPath: codingPath, debugDescription: "nested containers are not supported in CryoModel"))
     }
     
     func unkeyedContainer() throws -> UnkeyedDecodingContainer {
-        fatalError("nested containers are not supported in CryoModel")
+        throw DecodingError.dataCorrupted(.init(codingPath: codingPath, debugDescription: "nested containers are not supported in CryoModel"))
     }
     
     func singleValueContainer() throws -> SingleValueDecodingContainer {
@@ -177,7 +199,7 @@ fileprivate struct CryoModelSingleValueDecodingContainer: SingleValueDecodingCon
         self.value = value
     }
 
-    func decodeNil() -> Bool { false }
+    func decodeNil() -> Bool { (value.value as? _CryoOptionalValue).map { $0.wrappedValue == nil } ?? false }
 
     func decode(_ type: Bool.Type) throws -> Bool {
         if let value = value.value as? Bool {
@@ -243,7 +265,10 @@ fileprivate struct CryoModelSingleValueDecodingContainer: SingleValueDecodingCon
             throw DecodingError.typeMismatch(T.self, .init(codingPath: codingPath, debugDescription: "unexpected CryoPersistable: \(value)"))
         }
 
-        return T(value.integerValue)
+        guard let result = T(exactly: value.integerValue) else {
+            throw DecodingError.dataCorrupted(.init(codingPath: codingPath, debugDescription: "Integer out of range for \(T.self)"))
+        }
+        return result
     }
     
     func decode<T: _AnyCryoColumnValue>(_ type: [T].Type) throws -> [T] {
@@ -263,7 +288,7 @@ fileprivate struct CryoModelSingleValueDecodingContainer: SingleValueDecodingCon
     func decode(_ type: UInt8.Type) throws -> UInt8 { try decodeInt(UInt8.self) }
     func decode(_ type: UInt16.Type) throws -> UInt16 { try decodeInt(UInt16.self) }
     func decode(_ type: UInt32.Type) throws -> UInt32 { try decodeInt(UInt32.self) }
-    func decode(_ type: UInt64.Type) throws -> UInt64 { fatalError("UInt64 cannot be represented") }
+    func decode(_ type: UInt64.Type) throws -> UInt64 { try decodeInt(type) }
 
     func decode<T>(_ type: T.Type) throws -> T where T: Decodable {
         if let value = value.value as? T {
@@ -278,12 +303,18 @@ fileprivate struct CryoModelSingleValueDecodingContainer: SingleValueDecodingCon
             return try dataType.init(dataValue: value.dataValue) as! T
         }
         
+        if let intType = T.self as? CryoColumnIntValue.Type, let raw = value.value as? CryoColumnIntValue {
+            return try intType.init(integerValue: raw.integerValue) as! T
+        }
+        if let doubleType = T.self as? CryoColumnDoubleValue.Type, let raw = value.value as? CryoColumnDoubleValue {
+            return try doubleType.init(doubleValue: raw.doubleValue) as! T
+        }
         if let stringType = T.self as? CryoColumnStringValue.Type {
             guard let value = value.value as? CryoColumnStringValue else {
                 throw DecodingError.typeMismatch(T.self, .init(codingPath: codingPath, debugDescription: "unexpected CryoPersistable: \(value)"))
             }
             
-            return stringType.init(stringValue: value.stringValue) as! T
+            return try stringType.init(stringValue: value.stringValue) as! T
         }
         
         return try T(from: CryoModelValueDecoder(value: value))

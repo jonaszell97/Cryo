@@ -30,7 +30,7 @@ final class CryoDatabaseTests: CryoTestCase {
         let value = CloudKitTestModel(x: 123, y: "Hello there", z: .a, w: assetUrl)
         let value2 = CloudKitTestModel(x: 3291, y: "Hello therexxx", z: .c, w: assetUrl)
         
-        XCTAssertEqual(CloudKitTestModel.schema.columns.map { $0.columnName }, ["id", "x", "y", "z", "w", "a", "b", "c"])
+        XCTAssertEqual(try CloudKitTestModel.schema.columns.map { $0.columnName }, ["id", "x", "y", "z", "w", "a", "b", "c"])
         
         do {
             try await adaptor.createTable(for: CloudKitTestModel.self).execute()

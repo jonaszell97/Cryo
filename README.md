@@ -47,3 +47,23 @@ and an in-memory CloudKit transport. The transport exercises Cryo's production
 queries without an iCloud account. Metadata queries and ubiquitous key-value
 storage also have test fakes. This infrastructure does not emulate Apple's
 server or fix the later-phase behavior issues recorded in `003_cryo-audit.md`.
+
+### Value and schema compatibility
+
+- Optional database columns now preserve `nil` as SQL NULL or an absent CloudKit
+  field. `CryoQueryValue.null` encodes as `{"null":true}`; existing value payloads
+  remain readable. Optional types no longer conform to the scalar column protocols.
+- Integer, double, and string column conversion initializers can throw. Invalid
+  stored enum values, URLs, UUIDs, and out-of-range integers produce errors.
+  Custom column types should provide a valid `defaultValue`; `CaseIterable` enums
+  use their first case for schema reflection. Generic `defaultValue` access can
+  also throw when an empty instance cannot be constructed.
+- Schema creation and lookup throw for invalid models or missing schemas. Query
+  builders capture the schema during their throwing initialization so reading
+  `queryString` remains nonthrowing. The schema cache uses `NSLock` to retain
+  support for iOS 15 and macOS 12.
+- Queued inserts retain their `replace` setting. Older queued inserts without the
+  flag decode as `replace: true`; updates and deletes without a row ID also decode.
+
+Phase 2's optional-data regression required bringing the SQLite blob-copying and
+empty-blob fixes forward from phase 5. Other later audit phases remain separate.

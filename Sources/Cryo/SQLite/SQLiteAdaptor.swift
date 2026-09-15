@@ -118,13 +118,13 @@ extension SQLiteAdaptor: CryoDatabaseAdaptor {
     /// Create a table if it does not exist yet.
     public func createTable<Model: CryoModel>(for model: Model.Type) async throws -> any CryoCreateTableQuery<Model> {
         // Initialize the CryoSchema
-        await CryoSchemaManager.shared.createSchema(for: model)
+        try CryoSchemaManager.shared.createSchema(for: model)
         return try SQLiteCreateTableQuery(for: model, connection: db.connection, config: config)
     }
     
     func createTable(modelType: any CryoModel.Type) async throws -> UntypedSQLiteCreateTableQuery {
         // Initialize the CryoSchema
-        await CryoSchemaManager.shared.createSchema(for: modelType)
+        try CryoSchemaManager.shared.createSchema(for: modelType)
         return try UntypedSQLiteCreateTableQuery(for: modelType, connection: db.connection, config: config)
     }
     
@@ -153,10 +153,8 @@ extension SQLiteAdaptor: CryoDatabaseAdaptor {
 extension SQLiteAdaptor: ResilientStoreBackend {
     func execute(operation: DatabaseOperation) async throws {
         switch operation {
-        case .insert(_, let tableName, let rowId, let data):
-            guard let schema = CryoSchemaManager.shared.schema(tableName: tableName) else {
-                throw CryoError.schemaNotInitialized(tableName: tableName)
-            }
+        case .insert(_, let tableName, let rowId, let data, let replace):
+            let schema = try CryoSchemaManager.shared.schema(tableName: tableName)
             
             var modelData = [String: CryoColumnValueWrapper]()
             for item in data {
@@ -164,12 +162,10 @@ extension SQLiteAdaptor: ResilientStoreBackend {
             }
             
             let model = try schema.create(modelData)
-            _ = try UntypedSQLiteInsertQuery(id: rowId, value: model, replace: false, connection: db.connection, config: config)
+            _ = try UntypedSQLiteInsertQuery(id: rowId, value: model, replace: replace, connection: db.connection, config: config)
                 .execute()
         case .update(_, let tableName, let rowId, let setClauses, let whereClauses):
-            guard let schema = CryoSchemaManager.shared.schema(tableName: tableName) else {
-                throw CryoError.schemaNotInitialized(tableName: tableName)
-            }
+            let schema = try CryoSchemaManager.shared.schema(tableName: tableName)
             
             let query = try UntypedSQLiteUpdateQuery(id: rowId, modelType: schema.`self`, connection: db.connection, config: config)
             for setClause in setClauses {
@@ -182,9 +178,7 @@ extension SQLiteAdaptor: ResilientStoreBackend {
             _ = try query.execute()
             break
         case .delete(_, let tableName, let rowId, let whereClauses):
-            guard let schema = CryoSchemaManager.shared.schema(tableName: tableName) else {
-                throw CryoError.schemaNotInitialized(tableName: tableName)
-            }
+            let schema = try CryoSchemaManager.shared.schema(tableName: tableName)
             
             let query = try UntypedSQLiteDeleteQuery(id: rowId, modelType: schema.`self`, connection: db.connection, config: config)
             for whereClause in whereClauses {
@@ -347,6 +341,9 @@ extension SQLiteAdaptor {
     static func bind(_ queryStatement: OpaquePointer, value: CryoQueryValue, index: Int32) {
         let stringValue: String
         switch value {
+        case .null:
+            sqlite3_bind_null(queryStatement, index)
+            return
         case .integer(let value):
             sqlite3_bind_int(queryStatement, index, Int32(value))
             return
@@ -354,8 +351,12 @@ extension SQLiteAdaptor {
             sqlite3_bind_double(queryStatement, index, value)
             return
         case .data(let value):
+            if value.isEmpty {
+                sqlite3_bind_zeroblob(queryStatement, index, 0)
+                return
+            }
             _ = value.withUnsafeBytes { (bytes: UnsafeRawBufferPointer) in
-                sqlite3_bind_blob(queryStatement, index, bytes.baseAddress, Int32(bytes.count), nil)
+                sqlite3_bind_blob(queryStatement, index, bytes.baseAddress, Int32(bytes.count), SQLiteAdaptor.SQLITE_TRANSIENT)
             }
             return
         case .string(let value):
@@ -373,7 +374,8 @@ extension SQLiteAdaptor {
     
     /// Get a result value from the given query.
     static func columnValue(_ statement: OpaquePointer, connection: OpaquePointer, columnName: String,
-                            type: CryoColumnType, index: Int32) throws -> _AnyCryoColumnValue {
+                            type: CryoColumnType, index: Int32) throws -> _AnyCryoColumnValue? {
+        guard sqlite3_column_type(statement, index) != SQLITE_NULL else { return nil }
         switch type {
         case .integer:
             return sqlite3_column_int(statement, index)
@@ -406,6 +408,7 @@ extension SQLiteAdaptor {
             return date
         case .data:
             let byteCount = sqlite3_column_bytes(statement, index)
+            if byteCount == 0 { return Data() }
             guard let blob = sqlite3_column_blob(statement, index) else {
                 var message: String? = nil
                 if let errorPointer = sqlite3_errmsg(connection) {

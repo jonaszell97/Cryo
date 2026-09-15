@@ -10,6 +10,7 @@ public enum CryoQueryResult<Model: CryoModel> {
 }
 
 public enum CryoQueryValue {
+    case null
     case string(value: String)
     case integer(value: Int)
     case double(value: Double)
@@ -140,6 +141,8 @@ public protocol CryoInsertQuery<Model>: CryoModelQuery
     /// The ID the value is inserted with.
     var id: String { get }
     
+    var replace: Bool { get }
+
     /// The value that will be inserted.
     var value: Model { get }
     
@@ -317,11 +320,12 @@ extension CryoWhereClauseQuery {
 
 extension CryoQueryValue: Codable {
     enum CodingKeys: String, CodingKey {
-        case string, integer, double, date, data, asset
+        case null, string, integer, double, date, data, asset
     }
     
     var codingKey: CodingKeys {
         switch self {
+        case .null: return .null
         case .string: return .string
         case .integer: return .integer
         case .double: return .double
@@ -334,6 +338,7 @@ extension CryoQueryValue: Codable {
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         switch self {
+        case .null: try container.encode(true, forKey: .null)
         case .string(let value):
             try container.encode(value, forKey: .string)
         case .integer(let value):
@@ -352,6 +357,11 @@ extension CryoQueryValue: Codable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         switch container.allKeys.first {
+        case .null:
+            guard try container.decode(Bool.self, forKey: .null) else {
+                throw DecodingError.dataCorruptedError(forKey: .null, in: container, debugDescription: "Expected true")
+            }
+            self = .null
         case .string:
             let value = try container.decode(String.self, forKey: .string)
             self = .string(value: value)
@@ -388,6 +398,7 @@ extension CryoQueryValue: Equatable {
         }
         
         switch lhs {
+        case .null: return true
         case .string(let value):
             guard case .string(let value_) = rhs else { return false }
             guard value == value_ else { return false }
@@ -417,6 +428,7 @@ extension CryoQueryValue: Hashable {
     public func hash(into hasher: inout Hasher) {
         hasher.combine(self.codingKey.rawValue)
         switch self {
+        case .null: break
         case .string(let value):
             hasher.combine(value)
         case .integer(let value):
@@ -436,6 +448,11 @@ extension CryoQueryValue: Hashable {
 
 internal extension CryoQueryValue {
     init (value: _AnyCryoColumnValue) throws {
+        if let optional = value as? _CryoOptionalValue {
+            if let wrapped = optional.wrappedValue { self = try .init(value: wrapped) }
+            else { self = .null }
+            return
+        }
         switch value {
         case let url as URL:
             self = .string(value: url.absoluteString)
@@ -456,6 +473,7 @@ internal extension CryoQueryValue {
     
     var columnValue: _AnyCryoColumnValue {
         switch self {
+        case .null: return Optional<String>.none as _AnyCryoColumnValue
         case .string(let value):
             return value
         case .integer(let value):
@@ -470,4 +488,8 @@ internal extension CryoQueryValue {
             return value
         }
     }
+}
+
+public extension CryoInsertQuery {
+    var replace: Bool { true }
 }

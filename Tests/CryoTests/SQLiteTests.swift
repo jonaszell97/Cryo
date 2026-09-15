@@ -111,7 +111,7 @@ CREATE TABLE IF NOT EXISTS TestModel(
         let value = TestModel(x: 123, y: "Hello there", z: .a)
         let value2 = TestModel(x: 3291, y: "Hello therexxx", z: .c)
         
-        XCTAssertEqual(TestModel.schema.columns.map { $0.columnName }, ["id", "x", "y", "z"])
+        XCTAssertEqual(try TestModel.schema.columns.map { $0.columnName }, ["id", "x", "y", "z"])
         
         do {
             _ = try adaptor.insert(value).execute()

@@ -234,7 +234,7 @@ extension UntypedCloudKitSelectQuery {
                                            resultsLimit: resultsLimit, sortingClauses: sortingClauses,
                                            database: database, log: log)
         
-        let schema = CryoSchemaManager.shared.schema(for: modelType)
+        let schema = try CryoSchemaManager.shared.schema(for: modelType)
         
         var results = [any CryoModel]()
         for record in records {

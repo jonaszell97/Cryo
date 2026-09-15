@@ -48,6 +48,7 @@ extension SQLiteSelectQuery: CryoSelectQuery {
 }
 
 internal class UntypedSQLiteSelectQuery {
+    private let schema: CryoSchema
     /// The columns to select.
     let columns: [String]?
     
@@ -78,6 +79,7 @@ internal class UntypedSQLiteSelectQuery {
     /// Create a SELECT query.
     internal init(columns: [String]? = nil, modelType: any CryoModel.Type, connection: OpaquePointer, config: CryoConfig?) throws {
         self.connection = connection
+        self.schema = try CryoSchemaManager.shared.schema(for: modelType)
         self.modelType = modelType
         self.columns = columns
         self.whereClauses = []
@@ -95,8 +97,7 @@ internal class UntypedSQLiteSelectQuery {
             columnsString = columns.joined(separator: ",")
         }
         else {
-            let schema = CryoSchemaManager.shared.schema(for: modelType)
-            columnsString = schema.columns.map { $0.columnName }.joined(separator: ",")
+                columnsString = schema.columns.map { $0.columnName }.joined(separator: ",")
         }
         
         var result = "SELECT \(columnsString) FROM \(modelType.tableName)"
@@ -172,12 +173,17 @@ extension UntypedSQLiteSelectQuery {
     func columnValue(_ queryStatement: OpaquePointer, connection: OpaquePointer,
                      column: CryoSchemaColumn, index: Int32) throws -> _AnyCryoColumnValue? {
         switch column {
-        case .value(let columnName, let type, _, _):
-            return try SQLiteAdaptor.columnValue(queryStatement,
+        case .value(let columnName, let type, let metaType, _):
+            let value = try SQLiteAdaptor.columnValue(queryStatement,
                                                  connection: connection,
                                                  columnName: columnName,
                                                  type: type,
                                                  index: index)
+            if let value { return value }
+            if let optional = metaType as? _CryoOptionalValue.Type {
+                return optional.nilValue as? _AnyCryoColumnValue
+            }
+            throw CryoError.queryDecodeFailed(column: columnName, message: "NULL in non-optional column")
         case .oneToOneRelation(let columnName, let modelType, _):
             let id = try SQLiteAdaptor.columnValue(queryStatement,
                                                    connection: connection,
@@ -213,7 +219,6 @@ extension UntypedSQLiteSelectQuery {
         config?.log?(.debug, "[SQLite3Connection] \(queryString), bindings \(whereClauses.map { "\($0.value)" })")
         #endif
         
-        let schema = CryoSchemaManager.shared.schema(for: modelType)
         
         var executeStatus = sqlite3_step(queryStatement)
         var rows = [[any _AnyCryoColumnValue]]()

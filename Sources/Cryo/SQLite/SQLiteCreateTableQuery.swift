@@ -23,6 +23,7 @@ extension SQLiteCreateTableQuery: CryoCreateTableQuery {
 }
 
 internal class UntypedSQLiteCreateTableQuery {
+    private let schema: CryoSchema
     /// The model type.
     let modelType: any CryoModel.Type
     
@@ -42,6 +43,7 @@ internal class UntypedSQLiteCreateTableQuery {
     /// Create a CREATE TABLE query.
     internal init(for modelType: any CryoModel.Type, connection: OpaquePointer, config: CryoConfig?) throws {
         self.connection = connection
+        self.schema = try CryoSchemaManager.shared.schema(for: modelType)
         self.modelType = modelType
         
         #if DEBUG
@@ -55,7 +57,6 @@ internal class UntypedSQLiteCreateTableQuery {
             return completeQueryString
         }
         
-        let schema = CryoSchemaManager.shared.schema(for: modelType)
         var columns = ""
         
         for columnDetails in schema.columns {

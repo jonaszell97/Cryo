@@ -4,7 +4,7 @@ import Foundation
 
 internal enum DatabaseOperation: CryoColumnDataValue {
     /// An insert operation.
-    case insert(date: Date, tableName: String, rowId: String, data: [DatabaseOperationValue])
+    case insert(date: Date, tableName: String, rowId: String, data: [DatabaseOperationValue], replace: Bool = true)
     
     /// An  update operation.
     case update(date: Date, tableName: String, rowId: String?,
@@ -31,13 +31,13 @@ extension CryoInsertQuery {
 
     internal func operation(now: Date) async throws -> DatabaseOperation {
         var data = [DatabaseOperationValue]()
-        let schema = CryoSchemaManager.shared.schema(for: Model.self)
+        let schema = try CryoSchemaManager.shared.schema(for: Model.self)
 
         for column in schema.columns {
             data.append(.init(columnName: column.columnName, value: try .init(value: column.getValue(self.value))))
         }
 
-        return .insert(date: now, tableName: Model.tableName, rowId: self.id, data: data)
+        return .insert(date: now, tableName: Model.tableName, rowId: self.id, data: data, replace: replace)
     }
 }
 
@@ -69,12 +69,12 @@ extension CryoDeleteQuery {
 extension DatabaseOperation: CustomStringConvertible {
     public var description: String {
         switch self {
-        case .insert(_, let tableName, _, let data):
+        case .insert(_, let tableName, _, let data, _):
             return "INSERT INTO \(tableName) (\(data.map(\.columnName).joined(separator: ", "))) VALUES (\(data.map { "\($0.value)" }.joined(separator: ", ")))"
         case .update(_, let tableName, _, let setClauses, let whereClauses):
-            return "UPDATE \(tableName) SET \(setClauses.map { "\($0.value)" }.joined(separator: ", ")) WHERE \(whereClauses.map { "\($0.value)" }.joined(separator: ", "))"
+            return "UPDATE \(tableName) SET \(setClauses.map { "\($0.columnName) = \($0.value)" }.joined(separator: ", ")) WHERE \(whereClauses.map { "\($0.columnName) \(SQLiteAdaptor.formatOperator($0.operation)) \($0.value)" }.joined(separator: " AND "))"
         case .delete(_, let tableName, _, let whereClauses):
-            return "DELETE FROM \(tableName) WHERE \(whereClauses.map { "\($0.value)" }.joined(separator: ", "))"
+            return "DELETE FROM \(tableName) WHERE \(whereClauses.map { "\($0.columnName) \(SQLiteAdaptor.formatOperator($0.operation)) \($0.value)" }.joined(separator: " AND "))"
         }
     }
 }
@@ -85,7 +85,7 @@ extension DatabaseOperation: Codable {
     }
     
     enum insertCodingKeys: CodingKey {
-        case _0, _1, _2, _3
+        case _0, _1, _2, _3, _4
     }
     enum updateCodingKeys: CodingKey {
         case _0, _1, _2, _3, _4
@@ -105,12 +105,13 @@ extension DatabaseOperation: Codable {
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         switch self {
-        case .insert(let date, let tableName, let rowId, let data):
+        case .insert(let date, let tableName, let rowId, let data, let replace):
             var nestedContainer = container.nestedContainer(keyedBy: insertCodingKeys.self, forKey: .insert)
             try nestedContainer.encode(date, forKey: ._0)
             try nestedContainer.encode(tableName, forKey: ._1)
             try nestedContainer.encode(rowId, forKey: ._2)
             try nestedContainer.encode(data, forKey: ._3)
+            try nestedContainer.encode(replace, forKey: ._4)
         case .update(let date, let tableName, let rowId, let setClauses, let whereClauses):
             var nestedContainer = container.nestedContainer(keyedBy: updateCodingKeys.self, forKey: .update)
             try nestedContainer.encode(date, forKey: ._0)
@@ -138,23 +139,23 @@ extension DatabaseOperation: Codable {
                 try nestedContainer.decode(String.self, forKey: ._2),
                 try nestedContainer.decode(Array<DatabaseOperationValue>.self, forKey: ._3)
             )
-            self = .insert(date: date, tableName: tableName, rowId: rowId, data: data)
+            self = .insert(date: date, tableName: tableName, rowId: rowId, data: data, replace: try nestedContainer.decodeIfPresent(Bool.self, forKey: ._4) ?? true)
         case .update:
             let nestedContainer = try container.nestedContainer(keyedBy: updateCodingKeys.self, forKey: .update)
-            let (date, tableName, rowId, setClauses, whereClauses): (Date, String, String, Array<CryoQuerySetClause>, Array<CryoQueryWhereClause>) = (
+            let (date, tableName, rowId, setClauses, whereClauses): (Date, String, String?, Array<CryoQuerySetClause>, Array<CryoQueryWhereClause>) = (
                 try nestedContainer.decode(Date.self, forKey: ._0),
                 try nestedContainer.decode(String.self, forKey: ._1),
-                try nestedContainer.decode(String.self, forKey: ._2),
+                try nestedContainer.decodeIfPresent(String.self, forKey: ._2),
                 try nestedContainer.decode(Array<CryoQuerySetClause>.self, forKey: ._3),
                 try nestedContainer.decode(Array<CryoQueryWhereClause>.self, forKey: ._4)
             )
             self = .update(date: date, tableName: tableName, rowId: rowId, setClauses: setClauses, whereClauses: whereClauses)
         case .delete:
             let nestedContainer = try container.nestedContainer(keyedBy: deleteCodingKeys.self, forKey: .delete)
-            let (date, tableName, rowId, whereClauses): (Date, String, String, Array<CryoQueryWhereClause>) = (
+            let (date, tableName, rowId, whereClauses): (Date, String, String?, Array<CryoQueryWhereClause>) = (
                 try nestedContainer.decode(Date.self, forKey: ._0),
                 try nestedContainer.decode(String.self, forKey: ._1),
-                try nestedContainer.decode(String.self, forKey: ._2),
+                try nestedContainer.decodeIfPresent(String.self, forKey: ._2),
                 try nestedContainer.decode(Array<CryoQueryWhereClause>.self, forKey: ._3)
             )
             self = .delete(date: date, tableName: tableName, rowId: rowId, whereClauses: whereClauses)
@@ -174,7 +175,7 @@ extension DatabaseOperation: Codable {
 internal extension CryoModel {
     var codableData: [DatabaseOperationValue] {
         get throws {
-            let schema = Self.schema
+            let schema = try Self.schema
             var data: [DatabaseOperationValue] = []
             
             for column in schema.columns {

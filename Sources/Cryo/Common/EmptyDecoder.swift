@@ -50,19 +50,7 @@ fileprivate class EmptyKeyedDecodingContainer<K: CodingKey>: KeyedDecodingContai
     func decode(_ type: UInt64.Type, forKey key: K) throws -> UInt64 { 0 }
     
     func decode<T>(_ type: T.Type, forKey key: K) throws -> T where T: Decodable {
-        if let colType = type as? _AnyCryoColumnValue.Type {
-            return colType.defaultValue as! T
-        }
-        
-        if T.self == URL.self { return URL(string: "file:///") as! T }
-        if T.self == Data.self { return Data() as! T }
-        if let intType = T.self as? CryoColumnIntValue.Type { return intType.init(integerValue: 0) as! T }
-        if let doubleType = T.self as? CryoColumnDoubleValue.Type { return doubleType.init(doubleValue: 0) as! T }
-        if let stringType = T.self as? CryoColumnStringValue.Type { return stringType.init(stringValue: "") as! T }
-        if let dateType = T.self as? CryoColumnDateValue.Type { return dateType.init(dateValue: .init()) as! T }
-        if let dataType = T.self as? CryoColumnDataValue.Type { return try dataType.init(dataValue: .init()) as! T }
-        
-        return try T(from: EmptyDecoder())
+        try emptyValue(type)
     }
     
     func nestedContainer<NestedKey>(keyedBy type: NestedKey.Type, forKey key: K) throws -> KeyedDecodingContainer<NestedKey> where NestedKey : CodingKey {
@@ -105,19 +93,7 @@ fileprivate struct EmptySingleValueDecodingContainer: SingleValueDecodingContain
     func decode(_ type: UInt64.Type) throws -> UInt64 { 0 }
 
     func decode<T>(_ type: T.Type) throws -> T where T: Decodable {
-        if let colType = type as? _AnyCryoColumnValue.Type {
-            return colType.defaultValue as! T
-        }
-        
-        if T.self == URL.self { return URL(string: "file:///") as! T }
-        if T.self == Data.self { return Data() as! T }
-        if let intType = T.self as? CryoColumnIntValue.Type { return intType.init(integerValue: 0) as! T }
-        if let doubleType = T.self as? CryoColumnDoubleValue.Type { return doubleType.init(doubleValue: 0) as! T }
-        if let stringType = T.self as? CryoColumnStringValue.Type { return stringType.init(stringValue: "") as! T }
-        if let dateType = T.self as? CryoColumnDateValue.Type { return dateType.init(dateValue: .init()) as! T }
-        if let dataType = T.self as? CryoColumnDataValue.Type { return try dataType.init(dataValue: .init()) as! T }
-        
-        return try T(from: EmptyDecoder())
+        try emptyValue(type)
     }
 }
 
@@ -151,19 +127,7 @@ fileprivate struct EmptyUnkeyedDecodingContainer: UnkeyedDecodingContainer {
     mutating func decode(_ type: UInt64.Type) throws -> UInt64 { 0 }
 
     mutating func decode<T>(_ type: T.Type) throws -> T where T: Decodable {
-        if let colType = type as? _AnyCryoColumnValue.Type {
-            return colType.defaultValue as! T
-        }
-        
-        if T.self == URL.self { return URL(string: "file:///") as! T }
-        if T.self == Data.self { return Data() as! T }
-        if let intType = T.self as? CryoColumnIntValue.Type { return intType.init(integerValue: 0) as! T }
-        if let doubleType = T.self as? CryoColumnDoubleValue.Type { return doubleType.init(doubleValue: 0) as! T }
-        if let stringType = T.self as? CryoColumnStringValue.Type { return stringType.init(stringValue: "") as! T }
-        if let dateType = T.self as? CryoColumnDateValue.Type { return dateType.init(dateValue: .init()) as! T }
-        if let dataType = T.self as? CryoColumnDataValue.Type { return try dataType.init(dataValue: .init()) as! T }
-        
-        return try T(from: EmptyDecoder())
+        try emptyValue(type)
     }
     
     mutating func nestedUnkeyedContainer() throws -> UnkeyedDecodingContainer { EmptyUnkeyedDecodingContainer() }
@@ -171,4 +135,11 @@ fileprivate struct EmptyUnkeyedDecodingContainer: UnkeyedDecodingContainer {
     mutating func nestedContainer<NestedKey>(keyedBy type: NestedKey.Type) throws -> KeyedDecodingContainer<NestedKey> where NestedKey: CodingKey {
         KeyedDecodingContainer(EmptyKeyedDecodingContainer<NestedKey>())
     }
+}
+
+private func emptyValue<T: Decodable>(_ type: T.Type) throws -> T {
+    if let column = type as? _AnyCryoColumnValue.Type {
+        return try column.defaultValue as! T
+    }
+    return try T(from: EmptyDecoder())
 }

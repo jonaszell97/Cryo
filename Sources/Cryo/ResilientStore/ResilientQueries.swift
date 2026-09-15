@@ -19,6 +19,7 @@ public final class ResilientInsertQuery<QueryType: CryoInsertQuery> {
 
 extension ResilientInsertQuery: CryoInsertQuery {
     public var id: String { query.id }
+    public var replace: Bool { query.replace }
     public var value: QueryType.Model { query.value }
     
     public typealias Model = QueryType.Model
