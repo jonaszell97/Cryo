@@ -8,7 +8,7 @@ public final class CloudKitInsertQuery<Model: CryoModel> {
     let untypedQuery: UntypedCloudKitInsertQuery
     
     /// Create an INSERT query.
-    internal init(id: String, value: Model, replace: Bool, database: CKDatabase, config: CryoConfig?) throws {
+    internal init(id: String, value: Model, replace: Bool, database: any CloudKitDatabase, config: CryoConfig?) throws {
         self.untypedQuery = try .init(id: id, value: value, replace: replace, database: database, config: config)
     }
 }
@@ -40,18 +40,18 @@ internal class UntypedCloudKitInsertQuery {
     let created: Date
     
     /// The database to store to.
-    let database: CKDatabase
+    let database: any CloudKitDatabase
     
     #if DEBUG
     let config: CryoConfig?
     #endif
     
     /// Create a INSERT query.
-    internal init(id: String, value: any CryoModel, replace: Bool, database: CKDatabase, config: CryoConfig?) throws {
+    internal init(id: String, value: any CryoModel, replace: Bool, database: any CloudKitDatabase, config: CryoConfig?) throws {
         self.id = id
         self.value = value
         self.replace = replace
-        self.created = .now
+        self.created = config?.now() ?? Date()
         self.database = database
         
         #if DEBUG

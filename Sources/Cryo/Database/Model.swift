@@ -178,6 +178,11 @@ internal final class CryoSchemaManager {
         self.schemasByName = [:]
     }
     
+    @MainActor func reset() {
+        schemas.removeAll()
+        schemasByName.removeAll()
+    }
+
     /// Create a schema if it does not exist.
     @MainActor func createSchema<Model: CryoModel>(for model: Model.Type) {
         let schemaKey = ObjectIdentifier(Model.self)

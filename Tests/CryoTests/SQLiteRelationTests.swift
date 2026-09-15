@@ -2,18 +2,14 @@
 @testable import Cryo
 import XCTest
 
-final class CryoSQLiteRelationTests: XCTestCase {
+final class CryoSQLiteRelationTests: CryoTestCase {
     private var databaseUrl: URL? = nil
     
-    override func setUp() {
-        super.setUp()
-        
-        self.databaseUrl = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("_cryo_test.db")
-        
-        do { try FileManager.default.removeItem(at: self.databaseUrl!) } catch { }
-        FileManager.default.createFile(atPath: self.databaseUrl!.absoluteString, contents: nil)
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        databaseUrl = environment.sqliteURL
     }
-    
+
     func testOneToOneRelation() async throws {
         struct ModelA: CryoModel {
             @CryoColumn var id: String

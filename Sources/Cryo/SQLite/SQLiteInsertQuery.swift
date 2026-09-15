@@ -56,7 +56,7 @@ internal class UntypedSQLiteInsertQuery {
         self.id = id
         self.value = value
         self.replace = replace
-        self.created = .now
+        self.created = config?.now() ?? Date()
         self.connection = connection
         
         #if DEBUG

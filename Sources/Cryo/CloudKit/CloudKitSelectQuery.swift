@@ -8,7 +8,7 @@ public final class CloudKitSelectQuery<Model: CryoModel> {
     let untypedQuery: UntypedCloudKitSelectQuery
     
     /// Create an UPDATE query.
-    internal init(from: Model.Type, id: String?, database: CKDatabase, config: CryoConfig?) throws {
+    internal init(from: Model.Type, id: String?, database: any CloudKitDatabase, config: CryoConfig?) throws {
         self.untypedQuery = try .init(for: Model.self, id: id, database: database, config: config)
     }
 }
@@ -65,13 +65,13 @@ internal class UntypedCloudKitSelectQuery {
     var sortingClauses: [(String, CryoSortingOrder)] = []
     
     /// The database to store to.
-    let database: CKDatabase
+    let database: any CloudKitDatabase
     
     /// The cryo config.
     let config: CryoConfig?
     
     /// Create a SELECT query.
-    internal init(for modelType: any CryoModel.Type, id: String?, database: CKDatabase, config: CryoConfig?) throws {
+    internal init(for modelType: any CryoModel.Type, id: String?, database: any CloudKitDatabase, config: CryoConfig?) throws {
         self.id = id
         self.database = database
         self.modelType = modelType
@@ -111,22 +111,8 @@ internal class UntypedCloudKitSelectQuery {
 }
 
 extension UntypedCloudKitSelectQuery {
-    static func fetch(id: String?,
-                      modelType: any CryoModel.Type,
-                      whereClauses: [CryoQueryWhereClause],
-                      resultsLimit: Int?,
-                      sortingClauses: [(String, CryoSortingOrder)],
-                      database: CKDatabase,
-                      log: Optional<(OSLogType, String) -> Void> = nil
-    ) async throws -> [CKRecord] {
-        if let id {
-            return try await CloudKitAdaptor.cloudKitOperation(log: log) {
-                try [await database.record(for: .init(recordName: id))]
-            }
-        }
-        
-        // Fetch all records matching WHERE clauses
-        
+    static func makePredicate(id: String?, whereClauses: [CryoQueryWhereClause]) -> NSPredicate {
+        // ID fetches bypass predicates, matching the existing query behavior.
         let predicate: NSPredicate
         if whereClauses.isEmpty {
             predicate = NSPredicate(value: true)
@@ -134,20 +120,41 @@ extension UntypedCloudKitSelectQuery {
         else {
             var predicateFormat = ""
             var predicateArgs = [Any]()
-            
+
             for i in 0..<whereClauses.count {
                 if i > 0 {
                     predicateFormat += " AND "
                 }
-                
+
                 let clause = whereClauses[i]
                 predicateFormat += "(\(clause.columnName) \(CloudKitAdaptor.formatOperator(clause.operation)) \(CloudKitAdaptor.placeholderSymbol(for: clause.value)))"
                 predicateArgs.append(CloudKitAdaptor.queryArgument(for: clause.value))
             }
-            
+
             predicate = NSPredicate(format: predicateFormat, argumentArray: predicateArgs)
         }
-        
+
+        return predicate
+    }
+
+    static func fetch(id: String?,
+                      modelType: any CryoModel.Type,
+                      whereClauses: [CryoQueryWhereClause],
+                      resultsLimit: Int?,
+                      sortingClauses: [(String, CryoSortingOrder)],
+                      database: any CloudKitDatabase,
+                      log: Optional<(OSLogType, String) -> Void> = nil
+    ) async throws -> [CKRecord] {
+        if let id {
+            return try await CloudKitAdaptor.cloudKitOperation(log: log) {
+                try [await database.record(for: .init(recordName: id))]
+            }
+        }
+
+        // Fetch all records matching WHERE clauses
+
+        let predicate = makePredicate(id: id, whereClauses: whereClauses)
+
         let query = CKQuery(recordType: modelType.tableName, predicate: predicate)
         query.sortDescriptors = sortingClauses.map { .init(key: $0.0, ascending: $0.1 == .ascending) }
         

@@ -36,7 +36,7 @@ extension TestModel: Hashable {
     }
 }
 
-final class CryoSQLiteTests: XCTestCase {
+final class CryoSQLiteTests: CryoTestCase {
     struct AnyKey<Value: CryoModel>: CryoKey {
         let id: String
         
@@ -51,15 +51,11 @@ final class CryoSQLiteTests: XCTestCase {
     
     private var databaseUrl: URL? = nil
     
-    override func setUp() {
-        super.setUp()
-        
-        self.databaseUrl = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("_cryo_test.db")
-        
-        do { try FileManager.default.removeItem(at: self.databaseUrl!) } catch { }
-        FileManager.default.createFile(atPath: self.databaseUrl!.absoluteString, contents: nil)
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        databaseUrl = environment.sqliteURL
     }
-    
+
     func testCreateTableQuery() async throws {
         let adaptor = try SQLiteAdaptor(databaseUrl: self.databaseUrl!)
         
@@ -270,21 +266,23 @@ CREATE TABLE IF NOT EXISTS TestModel(
             _ = try adaptor.insert(model).execute()
         }
         
-        models.sort { $0.x <= $1.x }
+        models.sort { $0.x < $1.x }
         
         let ascending = try adaptor.select(from: TestModel.self)
             .sort(by: "x", .ascending)
             .execute()
         
-        XCTAssertEqual(models, ascending)
+        XCTAssertEqual(models.map(\.x), ascending.map(\.x))
+        XCTAssertEqual(Set(models), Set(ascending))
         
-        models.sort { $0.x >= $1.x }
+        models.sort { $0.x > $1.x }
         
         let descending = try adaptor.select(from: TestModel.self)
             .sort(by: "x", .descending)
             .execute()
         
-        XCTAssertEqual(models, descending)
+        XCTAssertEqual(models.map(\.x), descending.map(\.x))
+        XCTAssertEqual(Set(models), Set(descending))
     }
     
     func testLimit() async throws {

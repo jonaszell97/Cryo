@@ -26,35 +26,41 @@ internal struct DatabaseOperationValue: Codable, CryoColumnDataValue {
 extension CryoInsertQuery {
     /// The database operation for this query.
     internal var operation: DatabaseOperation {
-        get async throws {
-            var data = [DatabaseOperationValue]()
-            let schema = CryoSchemaManager.shared.schema(for: Model.self)
-            
-            for column in schema.columns {
-                data.append(.init(columnName: column.columnName, value: try .init(value: column.getValue(self.value))))
-            }
-            
-            return .insert(date: .now, tableName: Model.tableName, rowId: self.id, data: data)
+        get async throws { try await operation(now: Date()) }
+    }
+
+    internal func operation(now: Date) async throws -> DatabaseOperation {
+        var data = [DatabaseOperationValue]()
+        let schema = CryoSchemaManager.shared.schema(for: Model.self)
+
+        for column in schema.columns {
+            data.append(.init(columnName: column.columnName, value: try .init(value: column.getValue(self.value))))
         }
+
+        return .insert(date: now, tableName: Model.tableName, rowId: self.id, data: data)
     }
 }
 
 extension CryoUpdateQuery {
     /// The database operation for this query.
     internal var operation: DatabaseOperation {
-        get async throws {
-            .update(date: .now, tableName: Model.tableName, rowId: self.id,
-                    setClauses: self.setClauses, whereClauses: self.whereClauses)
-        }
+        get async throws { try await operation(now: Date()) }
+    }
+
+    internal func operation(now: Date) async throws -> DatabaseOperation {
+        .update(date: now, tableName: Model.tableName, rowId: self.id,
+                setClauses: self.setClauses, whereClauses: self.whereClauses)
     }
 }
 
 extension CryoDeleteQuery {
     /// The database operation for this query.
     internal var operation: DatabaseOperation {
-        get async throws {
-            .delete(date: .now, tableName: Model.tableName, rowId: self.id, whereClauses: self.whereClauses)
-        }
+        get async throws { try await operation(now: Date()) }
+    }
+
+    internal func operation(now: Date) async throws -> DatabaseOperation {
+        .delete(date: now, tableName: Model.tableName, rowId: self.id, whereClauses: self.whereClauses)
     }
 }
 

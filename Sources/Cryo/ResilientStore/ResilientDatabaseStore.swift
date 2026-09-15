@@ -31,11 +31,15 @@ public struct ResilientCloudKitStoreConfig {
     /// The cryo config.
     let cryoConfig: CryoConfig
     
+    /// Persistence for the failed-operation queue; defaults to local documents.
+    public let queueStore: any CryoSynchronousAdaptor
+
     /// Create a configuration for a resilient CloudKit store.
-    public init(identifier: String, maximumNumberOfRetries: Int = 5, cryoConfig: CryoConfig = .init()) {
+    public init(identifier: String, maximumNumberOfRetries: Int = 5, cryoConfig: CryoConfig = .init(), queueStore: any CryoSynchronousAdaptor = DocumentAdaptor.sharedLocal) {
         self.identifier = identifier
         self.maximumNumberOfRetries = maximumNumberOfRetries
         self.cryoConfig = cryoConfig
+        self.queueStore = queueStore
     }
 }
 
@@ -111,13 +115,13 @@ final class ResilientStoreImpl<Backend: ResilientStoreBackend> {
     let config: ResilientCloudKitStoreConfig
     
     /// The local queue of failed operations.
-    @CryoLocalDocument fileprivate var failedOperationsQueue: [QueuedOperation]
+    @CryoPersisted fileprivate var failedOperationsQueue: [QueuedOperation]
     
     /// Create a resilient cloud kit store.
     public init(store: Backend, config: ResilientCloudKitStoreConfig) async throws {
         self.store = store
         self.config = config
-        self._failedOperationsQueue = .init(defaultValue: [], "_crcks_\(config.identifier)", saveOnWrite: false)
+        self._failedOperationsQueue = .init(defaultValue: [], "_crcks_\(config.identifier)", saveOnWrite: false, adaptor: config.queueStore)
         
         try await self.executeFailedOperations()
     }
@@ -137,7 +141,7 @@ extension ResilientStoreImpl {
             return false
         }
         
-        let queuedOperation = QueuedOperation(id: UUID(), date: .now, operation: operation)
+        let queuedOperation = QueuedOperation(id: UUID(), date: config.cryoConfig.now(), operation: operation)
         self.failedOperationsQueue.append(queuedOperation)
         
         return false
@@ -145,7 +149,7 @@ extension ResilientStoreImpl {
     
     /// Enqueue a failed operation.
     func enqueueFailedOperation(_ operation: DatabaseOperation) async throws {
-        let queuedOperation = QueuedOperation(id: UUID(), date: .now, operation: operation)
+        let queuedOperation = QueuedOperation(id: UUID(), date: config.cryoConfig.now(), operation: operation)
         self.failedOperationsQueue.append(queuedOperation)
         try await self._failedOperationsQueue.persist()
     }
@@ -189,7 +193,7 @@ extension ResilientStoreImpl where Backend == CloudKitAdaptor {
                                   replace: Bool = true) async throws -> ResilientInsertQuery<CloudKitInsertQuery<Model>> {
         let query = try store.insert(value, replace: replace)
         return ResilientInsertQuery(query: query) {
-            try await self.enqueueFailedOperation(query.operation)
+            try await self.enqueueFailedOperation(query.operation(now: self.config.cryoConfig.now()))
             return false
         }
     }
@@ -199,7 +203,7 @@ extension ResilientStoreImpl where Backend == CloudKitAdaptor {
     {
         let query = try store.update(id: id, from: modelType)
         return ResilientUpdateQuery(query: query) {
-            try await self.enqueueFailedOperation(query.operation)
+            try await self.enqueueFailedOperation(query.operation(now: self.config.cryoConfig.now()))
             return 0
         }
     }
@@ -209,7 +213,7 @@ extension ResilientStoreImpl where Backend == CloudKitAdaptor {
     {
         let query = try store.delete(id: id, from: modelType)
         return ResilientDeleteQuery(query: query) {
-            try await self.enqueueFailedOperation(query.operation)
+            try await self.enqueueFailedOperation(query.operation(now: self.config.cryoConfig.now()))
             return 0
         }
     }

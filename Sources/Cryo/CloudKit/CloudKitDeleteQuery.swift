@@ -8,7 +8,7 @@ public final class CloudKitDeleteQuery<Model: CryoModel> {
     let untypedQuery: UntypedCloudKitDeleteQuery
     
     /// Create an UPDATE query.
-    internal init(from: Model.Type, id: String?, database: CKDatabase, config: CryoConfig?) throws {
+    internal init(from: Model.Type, id: String?, database: any CloudKitDatabase, config: CryoConfig?) throws {
         self.untypedQuery = try .init(for: Model.self, id: id, database: database, config: config)
     }
     
@@ -53,14 +53,14 @@ internal class UntypedCloudKitDeleteQuery {
     var whereClauses: [CryoQueryWhereClause]
     
     /// The database to store to.
-    let database: CKDatabase
+    let database: any CloudKitDatabase
     
     #if DEBUG
     let config: CryoConfig?
     #endif
     
     /// Create a DELETE query.
-    internal init(for modelType: any CryoModel.Type, id: String?, database: CKDatabase, config: CryoConfig?) throws {
+    internal init(for modelType: any CryoModel.Type, id: String?, database: any CloudKitDatabase, config: CryoConfig?) throws {
         self.id = id
         self.modelType = modelType
         self.database = database

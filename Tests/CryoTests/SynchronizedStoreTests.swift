@@ -7,7 +7,7 @@ fileprivate struct TestModel: CryoModel {
     @CryoColumn var y: String = ""
     
     static func random(id: String = UUID().uuidString) -> Self {
-        .init(id: id, x: .random(in: Int16.min...Int16.max), y: String((0..<10).map { _ in
+        .init(id: id, x: .random(in: Int16.min..<Int16.max), y: String((0..<10).map { _ in
             "abcdefghijklmnopqrstuvwxyz0123456789".randomElement()!
         }))
     }
@@ -24,22 +24,18 @@ extension TestModel: Hashable {
     }
 }
 
-final class SynchronizedStoreTests: XCTestCase {
-    private typealias StoreType = SynchronizedStoreImpl<MockCloudKitAdaptor>
+final class SynchronizedStoreTests: CryoTestCase {
+    private typealias StoreType = SynchronizedStoreImpl<CloudKitAdaptor>
     
-    override func setUp() async throws {
-        try await UserDefaultsAdaptor.shared.removeAll()
-        try await DocumentAdaptor.sharedLocal.removeAll()
-    }
-    
-    private func createStore(identifier: String, deviceIdentifier: String, backend: MockCloudKitAdaptor? = nil) async throws -> StoreType {
+    private func createStore(identifier: String, deviceIdentifier: String, backend: CloudKitAdaptor? = nil) async throws -> StoreType {
+        environment.clock.advance()
         let config = SynchronizedStoreConfig(storeIdentifier: identifier,
-                                             localDatabaseUrl: DocumentAdaptor.sharedLocal.url.appendingPathComponent("\(UUID().uuidString).db"),
+                                             localDatabaseUrl: environment.sqliteURL,
                                              containerIdentifier: "",
                                              managedModels: [TestModel.self],
-                                             cryoConfig: CryoConfig { print("[\($0)] \($1)") })
+                                             cryoConfig: environment.config, keyValueStore: environment.keyValueStore)
         
-        let backend = backend ?? MockCloudKitAdaptor()
+        let backend = backend ?? environment.cloud
         try await backend.createTable(for: TestModel.self).execute()
         
         return try await StoreType(config: config, backend: backend, deviceIdentifier: deviceIdentifier)
@@ -85,6 +81,7 @@ final class SynchronizedStoreTests: XCTestCase {
             let model = TestModel.random(id: id)
             values.append(model)
             
+            environment.clock.advance()
             try await phoneStore.insert(model)
                 .execute()
         }
@@ -92,6 +89,8 @@ final class SynchronizedStoreTests: XCTestCase {
         // Retrieve records on other device
         for i in 0..<100 {
             let id = "\(i)"
+            environment.clock.advance()
+            try await tabletStore.externalChangeNotificationReceived()
             let record = try await tabletStore.select(id: id, from: TestModel.self)
                 .execute().first
             
@@ -112,6 +111,7 @@ final class SynchronizedStoreTests: XCTestCase {
             let model = TestModel.random(id: id)
             values.append(model)
             
+            environment.clock.advance()
             try await phoneStore.insert(model)
                 .execute()
         }
@@ -119,6 +119,8 @@ final class SynchronizedStoreTests: XCTestCase {
         // Delete records on other device
         for i in 0..<10 {
             let id = "\(i)"
+            environment.clock.advance()
+            try await tabletStore.externalChangeNotificationReceived()
             try await tabletStore.delete(id: id, from: TestModel.self)
                 .execute()
         }
@@ -126,6 +128,8 @@ final class SynchronizedStoreTests: XCTestCase {
         // Load on original device
         for i in 0..<10 {
             let id = "\(i)"
+            environment.clock.advance()
+            try await phoneStore.externalChangeNotificationReceived()
             let record = try await phoneStore.select(id: id, from: TestModel.self)
                 .execute().first
             
@@ -146,6 +150,7 @@ final class SynchronizedStoreTests: XCTestCase {
             let model = TestModel.random(id: id)
             values.append(model)
             
+            environment.clock.advance()
             try await phoneStore.insert(model)
                 .execute()
         }
@@ -153,11 +158,14 @@ final class SynchronizedStoreTests: XCTestCase {
         // Modify records on other device
         for i in 0..<10 {
             let id = "\(i)"
+            environment.clock.advance()
+            try await tabletStore.externalChangeNotificationReceived()
             let record = try await tabletStore.select(id: id, from: TestModel.self)
                 .execute().first
             
             XCTAssertNotNil(record)
             
+            environment.clock.advance()
             try await tabletStore.update(id: id, from: TestModel.self)
                 .set("x", to: record!.x + 1)
                 .execute()
@@ -166,6 +174,8 @@ final class SynchronizedStoreTests: XCTestCase {
         // Load on original device
         for i in 0..<10 {
             let id = "\(i)"
+            environment.clock.advance()
+            try await phoneStore.externalChangeNotificationReceived()
             let record = try await phoneStore.select(id: id, from: TestModel.self)
                 .execute().first
             
@@ -184,6 +194,7 @@ final class SynchronizedStoreTests: XCTestCase {
             let model = TestModel.random(id: id)
             values.append(model)
             
+            environment.clock.advance()
             try await phoneStore.insert(model)
                 .execute()
         }
@@ -196,6 +207,8 @@ final class SynchronizedStoreTests: XCTestCase {
         // Retrieve records on other device
         for i in 0..<10 {
             let id = "\(i)"
+            environment.clock.advance()
+            try await tabletStore.externalChangeNotificationReceived()
             let record = try await tabletStore.select(id: id, from: TestModel.self)
                 .execute().first
             

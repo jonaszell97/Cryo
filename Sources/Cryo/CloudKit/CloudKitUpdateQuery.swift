@@ -8,7 +8,7 @@ public final class CloudKitUpdateQuery<Model: CryoModel> {
     let untypedQuery: UntypedCloudKitUpdateQuery
     
     /// Create an UPDATE query.
-    internal init(from: Model.Type, id: String?, database: CKDatabase, config: CryoConfig?) throws {
+    internal init(from: Model.Type, id: String?, database: any CloudKitDatabase, config: CryoConfig?) throws {
         self.untypedQuery = try .init(for: Model.self, id: id, database: database, config: config)
     }
 }
@@ -59,14 +59,14 @@ internal class UntypedCloudKitUpdateQuery {
     var whereClauses: [CryoQueryWhereClause]
     
     /// The database to store to.
-    let database: CKDatabase
+    let database: any CloudKitDatabase
     
     #if DEBUG
     let config: CryoConfig?
     #endif
     
     /// Create an UPDATE query.
-    internal init(for modelType: any CryoModel.Type, id: String?, database: CKDatabase, config: CryoConfig?) throws {
+    internal init(for modelType: any CryoModel.Type, id: String?, database: any CloudKitDatabase, config: CryoConfig?) throws {
         self.id = id
         self.database = database
         self.modelType = modelType

@@ -43,10 +43,10 @@ public final class CloudKitAdaptor {
     let config: CryoConfig
     
     /// The iCloud container to store to.
-    let container: CKContainer
+    let container: CKContainer?
     
     /// The database to store to.
-    let database: CKDatabase
+    let database: any CloudKitDatabase
     
     /// Synchronizes access to availability state, including late connection results.
     private let availabilityLock: NSLock
@@ -83,6 +83,15 @@ public final class CloudKitAdaptor {
         self.availabilityObserverTokens = []
     }
 
+    internal init(config: CryoConfig, database: any CloudKitDatabase, userRecordID: String?) {
+        self.config = config
+        self.container = nil
+        self.database = database
+        self.availabilityLock = NSLock()
+        self.storedICloudRecordID = userRecordID
+        self.availabilityObserverTokens = []
+    }
+
     deinit {
         availabilityObserverTokens.forEach(NotificationCenter.default.removeObserver)
     }
@@ -97,6 +106,7 @@ public final class CloudKitAdaptor {
             return true
         }
 
+        guard let container else { return false }
         let request = Task { try await container.userRecordID().recordName }
         
         do {
@@ -487,6 +497,9 @@ public extension CloudKitAdaptor {
         maxAttempts: Int = 5,
         defaultDelay: TimeInterval = 3,
         log: Optional<(OSLogType, String) -> Void> = nil,
+        sleep: (TimeInterval) async throws -> Void = { delay in
+            try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+        },
         _ operation: () async throws -> Result
     ) async rethrows -> Result {
         do {
@@ -501,10 +514,11 @@ public extension CloudKitAdaptor {
             let retryAfter = error.retryAfterSeconds ?? defaultDelay
             log?(.info, "Rate limit reached, retrying in \(retryAfter) seconds.")
             
-            try? await Task.sleep(nanoseconds: UInt64(retryAfter * 1_000_000_000))
+            try? await sleep(retryAfter)
             return try await cloudKitOperation(
                 maxAttempts: maxAttempts - 1,
                 defaultDelay: min(defaultDelay * 2, 30),
+                sleep: sleep,
                 operation
             )
         }

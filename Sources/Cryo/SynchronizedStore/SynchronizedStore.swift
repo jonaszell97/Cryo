@@ -57,17 +57,22 @@ public struct SynchronizedStoreConfig {
     /// The cryo config.
     public let cryoConfig: CryoConfig
     
+    /// Persistence for synchronization metadata; defaults to standard user defaults.
+    public let keyValueStore: any CryoSynchronousAdaptor
+
     /// Create a synchronized store config.
     public init(storeIdentifier: String,
                 localDatabaseUrl: URL,
                 containerIdentifier: String,
                 managedModels: [CryoModel.Type],
-                cryoConfig: CryoConfig) {
+                cryoConfig: CryoConfig,
+                keyValueStore: any CryoSynchronousAdaptor = UserDefaultsAdaptor.shared) {
         self.storeIdentifier = storeIdentifier
         self.localDatabaseUrl = localDatabaseUrl
         self.containerIdentifier = containerIdentifier
         self.managedModels = managedModels
         self.cryoConfig = cryoConfig
+        self.keyValueStore = keyValueStore
     }
 }
 
@@ -130,13 +135,13 @@ internal final class SynchronizedStoreImpl<Backend: SynchronizedStoreBackend> {
     let deviceIdentifier: String
     
     /// The date of the last modification to the store.
-    @CryoKeyValue var lastModificationDate: Date
+    @CryoPersisted var lastModificationDate: Date
     
     /// The date of the last synchronization with the cloud store.
-    @CryoKeyValue var lastSynchronizationDate: Date
+    @CryoPersisted var lastSynchronizationDate: Date
     
     /// Whether the CloudKit subscription was setup.
-    @CryoKeyValue var changeSubscriptionSetup: Bool
+    @CryoPersisted var changeSubscriptionSetup: Bool
     
     /// Create a cloud-backed SQLite adaptor.
     init(config: SynchronizedStoreConfig,
@@ -153,9 +158,9 @@ internal final class SynchronizedStoreImpl<Backend: SynchronizedStoreBackend> {
         let synchronizationDateKey = "_cssls_\(config.storeIdentifier)~\(deviceIdentifier)"
         let subscriptionSetupKey = "_csssub_\(config.storeIdentifier)~\(deviceIdentifier)"
         
-        self._lastModificationDate = .init(defaultValue: .distantPast, modificationDateKey)
-        self._lastSynchronizationDate = .init(defaultValue: .distantPast, synchronizationDateKey)
-        self._changeSubscriptionSetup = .init(defaultValue: false, subscriptionSetupKey)
+        self._lastModificationDate = .init(defaultValue: .distantPast, modificationDateKey, adaptor: config.keyValueStore)
+        self._lastSynchronizationDate = .init(defaultValue: .distantPast, synchronizationDateKey, adaptor: config.keyValueStore)
+        self._changeSubscriptionSetup = .init(defaultValue: false, subscriptionSetupKey, adaptor: config.keyValueStore)
         
         for modelType in config.managedModels {
             try await localStore.createTable(modelType: modelType).execute()
@@ -260,19 +265,19 @@ extension SynchronizedStoreImpl {
 fileprivate extension SynchronizedStoreImpl {
     /// Synchronize an INSERT operation that was executed locally.
     func didExecute<Model: CryoModel>(_ query: SQLiteInsertQuery<Model>) async throws {
-        let operation = try await query.operation
+        let operation = try await query.operation(now: config.cryoConfig.now())
         try await self.publish(operation: operation, tableName: Model.tableName)
     }
     
     /// Synchronize an UPDATE operation that was executed locally.
     func didExecute<Model: CryoModel>(_ query: SQLiteUpdateQuery<Model>) async throws {
-        let operation = try await query.operation
+        let operation = try await query.operation(now: config.cryoConfig.now())
         try await self.publish(operation: operation, tableName: Model.tableName)
     }
     
     /// Synchronize a DELETE operation that was executed locally.
     func didExecute<Model: CryoModel>(_ query: SQLiteDeleteQuery<Model>) async throws {
-        let operation = try await query.operation
+        let operation = try await query.operation(now: config.cryoConfig.now())
         try await self.publish(operation: operation, tableName: Model.tableName)
     }
     
@@ -284,7 +289,7 @@ fileprivate extension SynchronizedStoreImpl {
         
         let syncOperation = try SyncOperation(storeIdentifier: config.storeIdentifier,
                                               deviceIdentifier: deviceIdentifier,
-                                              date: .now, operation: operation)
+                                              date: config.cryoConfig.now(), operation: operation)
         
         config.cryoConfig.log?(.debug, "[SynchronizedStore \(config.storeIdentifier)] publishing operation \(syncOperation)")
         try await operationsStore.persist(operation: syncOperation)
