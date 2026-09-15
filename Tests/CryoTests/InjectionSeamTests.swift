@@ -3,6 +3,24 @@ import XCTest
 @testable import Cryo
 
 final class InjectionSeamTests: CryoTestCase {
+    private func assertDatabaseAdaptor<Adaptor: CryoDatabaseAdaptor>(_: Adaptor.Type) { }
+
+    func testDatabaseAdaptorsProvideAvailabilityImplementations() async throws {
+        assertDatabaseAdaptor(SQLiteAdaptor.self)
+        assertDatabaseAdaptor(CloudKitAdaptor.self)
+
+        let sqlite = try SQLiteAdaptor(databaseUrl: environment.sqliteURL, config: environment.config)
+        XCTAssertTrue(sqlite.isAvailable)
+        try await sqlite.ensureAvailability()
+
+        let cloud = CloudKitAdaptor(config: .init(), database: environment.database, userRecordID: nil)
+        XCTAssertFalse(cloud.isAvailable)
+        do {
+            try await cloud.ensureAvailability()
+            XCTFail("Expected unavailable CloudKit adaptor to throw")
+        } catch CryoError.backendNotAvailable { }
+    }
+
     @MainActor func testSchemaResetClearsBothIndexes() throws {
         let manager = CryoSchemaManager()
         try manager.createSchema(for: SeamTestModel.self)
@@ -30,15 +48,12 @@ final class InjectionSeamTests: CryoTestCase {
         XCTAssertNotEqual(environment.sqliteURL, other.sqliteURL)
     }
 
-    func testClockControlsQueriesAndOperations() async throws {
+    func testClockControlsQueryTimestamps() async throws {
         let cloud = environment.cloud
         try await cloud.createTable(for: SeamTestModel.self, initializeCloudKitSchema: false).execute()
         let now = environment.clock.now()
         let query = try cloud.insert(SeamTestModel())
         XCTAssertEqual(query.untypedQuery.created, now)
-        let operation = try await query.operation(now: now)
-        guard case .insert(let date, _, _, _, _) = operation else { return XCTFail("Expected insert") }
-        XCTAssertEqual(date, now)
         environment.clock.advance(by: 0.25)
         let sqlite = try SQLiteAdaptor(databaseUrl: environment.sqliteURL, config: environment.config)
         try await sqlite.createTable(for: SeamTestModel.self).execute()

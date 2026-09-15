@@ -223,6 +223,10 @@ extension SQLiteAdaptor {
 // MARK: Queries
 
 extension SQLiteAdaptor: CryoDatabaseAdaptor {
+    public nonisolated var isAvailable: Bool { true }
+
+    public func ensureAvailability() async throws { }
+
     /// Create a table if it does not exist yet.
     public func createTable<Model: CryoModel>(for model: Model.Type) async throws -> any CryoCreateTableQuery<Model> {
         // Initialize the CryoSchema
@@ -255,56 +259,6 @@ extension SQLiteAdaptor: CryoDatabaseAdaptor {
     
     public func delete<Model: CryoModel>(id: String? = nil, from: Model.Type) throws -> SQLiteDeleteQuery<Model> {
         try SQLiteDeleteQuery(id: id, connection: db.connection, config: config)
-    }
-}
-
-extension SQLiteAdaptor: ResilientStoreBackend {
-    func execute(operation: DatabaseOperation) async throws {
-        switch operation {
-        case .insert(_, let tableName, let rowId, let data, let replace):
-            let schema = try CryoSchemaManager.shared.schema(tableName: tableName)
-            
-            var modelData = [String: CryoColumnValueWrapper]()
-            for item in data {
-                modelData[item.columnName] = .init(value: item.value.columnValue)
-            }
-            
-            let model = try schema.create(modelData)
-            _ = try UntypedSQLiteInsertQuery(id: rowId, value: model, replace: replace, connection: db.connection, config: config)
-                .execute()
-        case .update(_, let tableName, let rowId, let setClauses, let whereClauses):
-            let schema = try CryoSchemaManager.shared.schema(tableName: tableName)
-            
-            let query = try UntypedSQLiteUpdateQuery(id: rowId, modelType: schema.`self`, connection: db.connection, config: config)
-            for setClause in setClauses {
-                _ = try query.set(setClause.columnName, to: setClause.value.columnValue)
-            }
-            for whereClause in whereClauses {
-                _ = try query.where(whereClause.columnName, operation: whereClause.operation, value: whereClause.value.columnValue)
-            }
-            
-            _ = try query.execute()
-            break
-        case .delete(_, let tableName, let rowId, let whereClauses):
-            let schema = try CryoSchemaManager.shared.schema(tableName: tableName)
-            
-            let query = try UntypedSQLiteDeleteQuery(id: rowId, modelType: schema.`self`, connection: db.connection, config: config)
-            for whereClause in whereClauses {
-                _ = try query.where(whereClause.columnName, operation: whereClause.operation, value: whereClause.value.columnValue)
-            }
-            
-            _ = try query.execute()
-        }
-    }
-    
-    public nonisolated var isAvailable: Bool { true }
-    
-    public func ensureAvailability() async throws {
-        
-    }
-    
-    public nonisolated func observeAvailabilityChanges(_ callback: @escaping (Bool) -> Void) {
-        
     }
 }
 

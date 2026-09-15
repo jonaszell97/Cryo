@@ -1,7 +1,15 @@
-name: Cryo tests
+name: Cryo test suite
+
 on:
   push:
   pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cryo-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   cryo-tests:

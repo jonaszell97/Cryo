@@ -2,6 +2,8 @@
 
 Cryo is a persistence library for Swift apps using Swift Concurrency. It provides a unified API for `UserDefaults`, `NSUbiquitousKeyValueStore`, local and iCloud document storage, as well as CloudKit.
 
+The unsupported experimental resilient and synchronized database stores have been removed. Use the SQLite and CloudKit adaptors directly.
+
 ## Installation
 
 Cryo can be added as a dependency in your project using Swift Package Manager.
@@ -62,8 +64,5 @@ server or fix the later-phase behavior issues recorded in `003_cryo-audit.md`.
   builders capture the schema during their throwing initialization so reading
   `queryString` remains nonthrowing. The schema cache uses `NSLock` to retain
   support for iOS 15 and macOS 12.
-- Queued inserts retain their `replace` setting. Older queued inserts without the
-  flag decode as `replace: true`; updates and deletes without a row ID also decode.
-
 Phase 2's optional-data regression required bringing the SQLite blob-copying and
 empty-blob fixes forward from phase 5. Other later audit phases remain separate.

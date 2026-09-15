@@ -12,12 +12,6 @@ public final class CloudKitDeleteQuery<Model: CryoModel> {
         self.untypedQuery = try .init(for: Model.self, id: id, database: database, config: config)
     }
     
-    /// The database operation for this query.
-    var operation: DatabaseOperation {
-        get async throws {
-            .delete(date: .now, tableName: Model.tableName, rowId: untypedQuery.id, whereClauses: untypedQuery.whereClauses)
-        }
-    }
 }
 
 extension CloudKitDeleteQuery: CryoDeleteQuery {

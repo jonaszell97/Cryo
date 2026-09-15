@@ -46,19 +46,4 @@ final class DatabaseAdaptorContractTests: CryoTestCase {
         let remote = try await cloud.select(from: OptionalModel.self).execute()
         XCTAssertNil(remote.first?.integer)
     }
-
-    func testSQLiteReplayPreservesReplaceAndNull() async throws {
-        let sqlite = try SQLiteAdaptor(databaseUrl: environment.sqliteURL, config: environment.config)
-        try await sqlite.createTable(for: OptionalModel.self).execute()
-        let insert = try sqlite.insert(OptionalModel(), replace: false)
-        let operation = try await insert.operation
-        try await sqlite.execute(operation: operation)
-        do {
-            try await sqlite.execute(operation: operation)
-            XCTFail("Expected duplicate")
-        } catch CryoError.duplicateId { }
-        let replacement = try await sqlite.insert(OptionalModel(integer: 7), replace: true).operation
-        try await sqlite.execute(operation: replacement)
-        XCTAssertEqual(try sqlite.select(from: OptionalModel.self).execute().first?.integer, 7)
-    }
 }

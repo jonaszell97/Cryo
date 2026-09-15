@@ -133,7 +133,12 @@ public final class CloudKitAdaptor {
 
 extension CloudKitAdaptor {
     /// Check for availability of the database.
-    public func ensureAvailability(timeout: TimeInterval = 15) async throws {
+    public func ensureAvailability() async throws {
+        try await ensureAvailability(timeout: 15)
+    }
+
+    /// Check for availability of the database within a bounded amount of time.
+    public func ensureAvailability(timeout: TimeInterval) async throws {
         guard !isAvailable else {
             return
         }
@@ -193,49 +198,6 @@ extension CloudKitAdaptor: CryoDatabaseAdaptor {
     public func delete<Model: CryoModel>(id: String? = nil, from: Model.Type) throws -> CloudKitDeleteQuery<Model> {
         guard isAvailable else { throw CryoError.backendNotAvailable }
         return try CloudKitDeleteQuery(from: Model.self, id: id, database: database, config: config)
-    }
-}
-
-// MARK: Schema initialization
-
-extension CloudKitAdaptor: ResilientStoreBackend {
-    func execute(operation: DatabaseOperation) async throws {
-        guard isAvailable else { throw CryoError.backendNotAvailable }
-        switch operation {
-        case .insert(_, let tableName, let rowId, let data, let replace):
-            let schema = try CryoSchemaManager.shared.schema(tableName: tableName)
-            
-            var modelData = [String: CryoColumnValueWrapper]()
-            for item in data {
-                modelData[item.columnName] = .init(value: item.value.columnValue)
-            }
-            
-            let model = try schema.create(modelData)
-            _ = try await UntypedCloudKitInsertQuery(id: rowId, value: model, replace: replace, database: database, config: config)
-                .execute()
-        case .update(_, let tableName, let rowId, let setClauses, let whereClauses):
-            let schema = try CryoSchemaManager.shared.schema(tableName: tableName)
-            
-            let query = try UntypedCloudKitUpdateQuery(for: schema.`self`, id: rowId, database: database, config: config)
-            for setClause in setClauses {
-                _ = try query.set(setClause.columnName, to: setClause.value.columnValue)
-            }
-            for whereClause in whereClauses {
-                _ = try query.where(whereClause.columnName, operation: whereClause.operation, value: whereClause.value.columnValue)
-            }
-
-            _ = try await query.execute()
-            break
-        case .delete(_, let tableName, let rowId, let whereClauses):
-            let schema = try CryoSchemaManager.shared.schema(tableName: tableName)
-            
-            let query = try UntypedCloudKitDeleteQuery(for: schema.`self`, id: rowId, database: database, config: config)
-            for whereClause in whereClauses {
-                _ = try query.where(whereClause.columnName, operation: whereClause.operation, value: whereClause.value.columnValue)
-            }
-            
-            _ = try await query.execute()
-        }
     }
 }
 
